@@ -88,10 +88,50 @@ def scene_shapes(plane: pgp.Plane, surface: pygame.Surface) -> None:
     plane.points(surface, np.column_stack((xs, -4.5 + 0.4 * np.sin(xs))), radius=3)
 
 
+def scene_log(plane: pgp.Plane, surface: pygame.Surface) -> None:
+    """Plot power laws and exponentials, which are straight on log axes.
+
+    Args:
+        plane: The plane.
+        surface: The surface to draw on.
+    """
+    plane.plot(surface, lambda x: x)
+    plane.plot(surface, lambda x: x**2)
+    plane.plot(surface, np.sqrt)
+    plane.plot(surface, lambda x: 1 / x)
+    plane.plot(surface, np.exp)
+    xs = np.geomspace(0.02, 50, 12)
+    plane.points(surface, np.column_stack((xs, 3 * xs**0.5)), edge_color="white")
+
+
+def scene_curves(plane: pgp.Plane, surface: pygame.Surface) -> None:
+    """Draw parametric and polar curves: loops, cusps, poles and domain edges.
+
+    Args:
+        plane: The plane.
+        surface: The surface to draw on.
+    """
+    plane.polar(surface, lambda a: 2 * np.cos(4 * a))
+    plane.polar(surface, lambda a: 3 * np.sqrt(np.cos(2 * a)))
+    plane.polar(surface, lambda a: 0.2 * a, (0, 8 * math.pi), width=1.2)
+    plane.parametric(
+        surface,
+        lambda t: 5 + 1.5 * np.cos(3 * t),
+        lambda t: 2 + 1.5 * np.sin(2 * t),
+        (0, 2 * math.pi),
+    )
+    plane.parametric(
+        surface, lambda t: -5 + t - np.sin(t), lambda t: -3 + (1 - np.cos(t)), (-6, 6)
+    )
+    plane.parametric(surface, np.tan, lambda t: -4 + 0.3 * t, (-4, 4))
+
+
 SCENES: dict[str, Scene] = {
     "test_set": scene_test_set,
     "hard": scene_hard,
     "shapes": scene_shapes,
+    "log": scene_log,
+    "curves": scene_curves,
 }
 
 
@@ -101,21 +141,30 @@ class GalleryView:
 
     Attributes:
         name: File name (without extension).
-        center: World point at the middle of the plane.
-        scale: Pixels per world unit (one number, or ``(x, y)``).
+        center: World point at the middle of the plane (default: the
+            plane's default).
+        scale: Pixels per world unit or per decade (one number, or ``(x, y)``).
         theme: Theme name: ``"light"`` or ``"dark"``.
         overrides: Theme fields to override.
         embedded: Draw the plane in a sub-rectangle of the surface.
         scene: Name of the plots to draw on top (see :data:`SCENES`), if any.
+        log_x: Make the x axis logarithmic.
+        log_y: Make the y axis logarithmic.
+        x_range: Initial x range (overrides centre and scale for x).
+        y_range: Initial y range (overrides centre and scale for y).
     """
 
     name: str
-    center: tuple[float, float] = (0.0, 0.0)
-    scale: float | tuple[float, float] = 50.0
+    center: tuple[float, float] | None = None
+    scale: float | tuple[float, float] | None = None
     theme: str = "light"
     overrides: dict[str, object] = field(default_factory=dict)
     embedded: bool = False
     scene: str | None = None
+    log_x: bool = False
+    log_y: bool = False
+    x_range: tuple[float, float] | None = None
+    y_range: tuple[float, float] | None = None
 
 
 VIEWS: tuple[GalleryView, ...] = (
@@ -143,6 +192,25 @@ VIEWS: tuple[GalleryView, ...] = (
     GalleryView("22_zoomed_function", center=(1.0, 0.8415), scale=4e5, scene="hard"),
     GalleryView("23_shapes", scale=55.0, scene="shapes"),
     GalleryView("24_shapes_embedded", scale=40.0, embedded=True, scene="shapes"),
+    GalleryView("25_loglog_default", log_x=True, log_y=True, scene="log"),
+    GalleryView("26_semilog_y", log_y=True, scale=(60.0, 120.0), scene="log"),
+    GalleryView("27_semilog_x", log_x=True, center=(1.0, 2.0), scene="log"),
+    GalleryView("28_log_coarse", log_x=True, log_y=True, scale=20.0),
+    GalleryView("29_log_fade_decades", log_x=True, log_y=True, scale=100 / 2**0.5),
+    GalleryView("30_log_paper", log_x=True, log_y=True, scale=110.0),
+    GalleryView("31_log_125", log_x=True, log_y=True, scale=400.0),
+    GalleryView("32_log_fine", log_x=True, log_y=True, scale=1500.0, center=(3, 3)),
+    GalleryView("33_log_deep", log_x=True, log_y=True, scale=1e5, center=(3.7, 3.7)),
+    GalleryView("34_log_sci", log_x=True, log_y=True, center=(1e8, 1e-7)),
+    GalleryView("35_log_dark", log_x=True, log_y=True, theme="dark", scene="log"),
+    GalleryView(
+        "36_ranges", x_range=(-2.0, 8.0), y_range=(-1.0, 3.0), scene="test_set"
+    ),
+    GalleryView("37_log_ranges", log_y=True, x_range=(0, 10), y_range=(0.1, 1e4)),
+    GalleryView("38_curves", scale=60.0, scene="curves"),
+    GalleryView("39_curves_dark", scale=60.0, theme="dark", scene="curves"),
+    GalleryView("40_curve_cusp_zoom", center=(-5.0, -3.0), scale=3e4, scene="curves"),
+    GalleryView("41_curves_loglog", log_x=True, log_y=True, scene="curves"),
 )
 
 
@@ -176,9 +244,13 @@ def render_view(view: GalleryView, size: tuple[int, int]) -> pygame.Surface:
         rect = pygame.Rect(220, 40, size[0] - 260, size[1] - 80)
     plane = pgp.Plane(
         rect,
+        x_range=view.x_range,
+        y_range=view.y_range,
+        log_x=view.log_x,
+        log_y=view.log_y,
         center=view.center,
         scale=view.scale,
-        equal_aspect=not isinstance(view.scale, tuple),
+        equal_aspect=False if isinstance(view.scale, tuple) else None,
         theme=theme_for(view),
     )
     plane.draw_grid(surface)

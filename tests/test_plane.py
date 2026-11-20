@@ -95,3 +95,104 @@ def test_show_runs_until_quit() -> None:
     pygame.event.post(pygame.event.Event(pygame.QUIT))
     pgp.show(size=(320, 240), theme=pgp.DARK)  # returns once QUIT is seen
     assert pygame.get_init()  # pygame was initialised by the caller: left running
+
+
+# ----------------------------------------------------------------------
+# Initial ranges and logarithmic axes
+# ----------------------------------------------------------------------
+def visible(plane: pgp.Plane) -> tuple[float, float, float, float]:
+    """Return the plane's visible world bounds."""
+    b = plane.view.bounds
+    return (b.x_min, b.x_max, b.y_min, b.y_max)
+
+
+def test_ranges_fill_each_axis_exactly() -> None:
+    plane = pgp.Plane(pygame.Rect(0, 0, 800, 600), x_range=(-2, 8), y_range=(-1, 3))
+    assert not plane.view.equal_aspect  # both ranges given: each fills its axis
+    assert plane.view.scale_x == pytest.approx(399.5 / 5)
+    assert plane.view.scale_y == pytest.approx(299.5 / 2)
+    x_min, x_max, y_min, y_max = visible(plane)
+    assert x_min <= -2 < 8 <= x_max
+    assert y_min <= -1 < 3 <= y_max
+    plane.view.zoom(2.0)
+    plane.reset_view()  # the fitted view is the home view
+    assert plane.view.scale_x == pytest.approx(399.5 / 5)
+
+
+def test_one_range_keeps_equal_aspect() -> None:
+    plane = pgp.Plane(pygame.Rect(0, 0, 800, 600), x_range=(0, 16))
+    assert plane.view.equal_aspect
+    assert plane.view.center == (8.0, 0.0)
+    assert plane.view.scale == pytest.approx(399.5 / 8)
+
+
+def test_ranges_wait_for_the_real_size() -> None:
+    plane = pgp.Plane(x_range=(0, 10), y_range=(0, 5))
+    plane.draw_grid(pygame.Surface((1000, 500)))  # not the display's size
+    assert plane.view.scale_x == pytest.approx(499.5 / 5)
+    assert plane.view.scale_y == pytest.approx(249.5 / 2.5)
+    plane.reset_view()
+    assert plane.view.scale_x == pytest.approx(499.5 / 5)
+
+
+def test_moving_the_view_before_the_first_frame_is_kept() -> None:
+    plane = pgp.Plane(x_range=(0, 10), y_range=(0, 5))
+    plane.view.center = (100.0, 100.0)
+    plane.draw_grid(pygame.Surface((1000, 500)))
+    assert plane.view.center == (100.0, 100.0)  # not refitted over the change
+
+
+def test_invalid_ranges_raise_straight_away() -> None:
+    with pytest.raises(ValueError, match="low < high"):
+        pgp.Plane(x_range=(5, 1))
+    with pytest.raises(ValueError, match="positive"):
+        pgp.Plane(x_range=(0, 10), log_x=True)
+    plane = pgp.Plane(log_y=True)
+    with pytest.raises(ValueError, match="positive"):
+        plane.set_view(y_range=(-1, 1))
+
+
+def test_log_axes_from_the_constructor() -> None:
+    plane = pgp.Plane(pygame.Rect(0, 0, 800, 600), log_x=True, log_y=True)
+    assert plane.log_x
+    assert plane.log_y
+    assert plane.view.center == (1.0, 1.0)
+    assert plane.view.equal_aspect  # same kind of axis: same scale per decade
+    semi = pgp.Plane(pygame.Rect(0, 0, 800, 600), log_y=True)
+    assert not semi.view.equal_aspect  # a unit and a decade are not comparable
+    ranged = pgp.Plane(
+        pygame.Rect(0, 0, 800, 600), x_range=(1, 1e4), y_range=(1e-3, 1), log_x=True
+    )
+    x_min, x_max, _, _ = visible(ranged)
+    assert x_min <= 1.0 < 1e4 <= x_max * (1 + 1e-12)
+
+
+def test_log_axes_can_be_switched_at_run_time() -> None:
+    plane = pgp.Plane(pygame.Rect(0, 0, 800, 600), center=(5.0, 5.0))
+    plane.log_x = True
+    assert plane.log_x
+    assert not plane.view.equal_aspect  # mixed axes
+    assert visible(plane)[0] > 0
+    plane.view.zoom(3.0)
+    plane.reset_view()  # home is the view right after switching
+    assert plane.view.scale_y == 50.0
+    plane.log_x = False
+    assert plane.view.equal_aspect  # back to the automatic choice
+    plane.draw_grid(pygame.Surface((800, 600)))
+
+
+def test_explicit_equal_aspect_is_respected_when_switching() -> None:
+    plane = pgp.Plane(pygame.Rect(0, 0, 800, 600), equal_aspect=False)
+    plane.log_y = True
+    plane.log_y = False
+    assert not plane.view.equal_aspect
+
+
+def test_plots_follow_log_axes() -> None:
+    surface = pygame.Surface((400, 300))
+    plane = pgp.Plane(pygame.Rect(0, 0, 400, 300), log_x=True, log_y=True)
+    plane.draw_grid(surface)
+    plane.plot(surface, lambda x: x, color="red")
+    plane.points(surface, (1.0, 1.0), color="blue", radius=5)
+    assert tuple(surface.get_at((200, 150)))[:3] == (0, 0, 255)  # the point at 1, 1
+    assert tuple(surface.get_at((275, 75)))[:3] == (255, 0, 0)  # y = x at 10^0.5

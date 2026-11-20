@@ -16,6 +16,10 @@ Current primitives:
 * :class:`Fill`: filled polygons (closed rings).
 * :class:`Markers`: points drawn as fixed-size markers.
 
+and the vocabulary they are described in: :class:`LabelText` (a label made
+of typeset :class:`TextRun` pieces), :data:`MarkerShape` and
+:data:`FillRule`.
+
 All coordinates are continuous screen pixels (integer values are pixel
 centres; see :mod:`pygridplot.core.pixels`).
 
@@ -27,14 +31,90 @@ from __future__ import annotations
 
 import enum
 from dataclasses import dataclass
-from typing import Final, Protocol
+from typing import Final, Literal, Protocol, TypeAlias
 
 import numpy as np
 from numpy.typing import NDArray
 
 from pygridplot.core.coords import ColorLike
-from pygridplot.core.labels import LabelText
-from pygridplot.core.style import FillRule, MarkerShape
+
+MarkerShape: TypeAlias = Literal["circle", "square", "diamond", "cross", "plus"]
+"""The shape drawn for each point."""
+
+FillRule: TypeAlias = Literal["nonzero", "evenodd"]
+"""How overlapping parts of a polygon are filled (as in SVG and the HTML canvas).
+
+``"nonzero"`` fills everything enclosed by the outline, and ``"evenodd"``
+leaves areas that are enclosed an even number of times empty (for example
+the middle of a five-pointed star).
+"""
+
+MARKER_SHAPES: tuple[MarkerShape, ...] = (
+    "circle",
+    "square",
+    "diamond",
+    "cross",
+    "plus",
+)
+"""All supported marker shapes."""
+
+FILL_RULES: tuple[FillRule, ...] = ("nonzero", "evenodd")
+"""All supported fill rules."""
+
+RunRole: TypeAlias = Literal["text", "sign", "superscript"]
+"""How a :class:`TextRun` should be typeset.
+
+* ``"text"``: normal text on the baseline.
+* ``"sign"``: a leading minus sign. It is drawn like ``"text"`` but kept
+  separate so layout can let it hang outside the digits.
+* ``"superscript"``: a smaller, raised exponent.
+"""
+
+
+@dataclass(frozen=True, slots=True)
+class TextRun:
+    """A piece of a label with a single typesetting role.
+
+    Attributes:
+        text: The characters in this run.
+        role: How the run is typeset (see :data:`RunRole`).
+    """
+
+    text: str
+    role: RunRole = "text"
+
+
+@dataclass(frozen=True, slots=True)
+class LabelText:
+    """A formatted label made up of one or more :class:`TextRun` pieces.
+
+    Attributes:
+        runs: The pieces of the label in reading order.
+    """
+
+    runs: tuple[TextRun, ...]
+
+    @property
+    def plain(self) -> str:
+        """The label as plain text, with ``^`` before superscripts.
+
+        Useful for debugging and tests, e.g. ``"2×10^6"``.
+        """
+        return "".join(
+            f"^{run.text}" if run.role == "superscript" else run.text
+            for run in self.runs
+        )
+
+    @property
+    def has_sign(self) -> bool:
+        """Whether the label starts with a separate minus-sign run."""
+        return bool(self.runs) and self.runs[0].role == "sign"
+
+    @property
+    def has_superscript(self) -> bool:
+        """Whether any run of the label is a superscript."""
+        return any(run.role == "superscript" for run in self.runs)
+
 
 FULL_OPACITY: Final = 0.999
 """Opacities above this are treated as exactly 1 (absorbs float round-off)."""
@@ -152,7 +232,7 @@ class Markers:
         positions: Marker centres, shape ``(N, 2)``.
         shape: The marker shape.
         radius: Marker size in pixels (see
-            :attr:`pygridplot.core.style.PointStyle.radius`).
+            :attr:`pygridplot.core.plot.style.PointStyle.radius`).
         color: Fill colour.
         edge_color: Outline colour, or ``None`` for no outline.
         edge_width: Outline thickness in pixels.

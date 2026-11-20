@@ -14,15 +14,16 @@ A       toggle axes
 L       toggle labels
 H       toggle label halos
 S       toggle eased (smooth) zooming
-P       cycle plots: none / functions / shapes
+X / Y   toggle a logarithmic x / y axis
+P       cycle plots: none / functions / shapes / power laws / curves
 [ / ]   decrease / increase the target major spacing
 F1      show or hide this overlay
 Esc     quit
 ======  ==============================================
 
-The overlay shows the current scale, centre, chosen spacings (including
-cross-fade weights), frame time and the time spent drawing the grid and the
-plots.
+The overlay shows the current scale, centre, visible range, chosen spacings
+(including cross-fade weights; decades on a log axis), frame time and the
+time spent drawing the grid and the plots.
 """
 
 from __future__ import annotations
@@ -35,15 +36,15 @@ import numpy as np
 import pygame
 
 import pygridplot as pgp
-from pygridplot.core.spacing import SpacingChoice
+from pygridplot.core.grid.spacing import SpacingChoice
 from pygridplot.render.fonts import bundled_font_path
 
 HELP = (
     "T theme  F fade/snap  R rule  N minor  J major  A axes  L labels  "
-    "H halo  S smooth  P plots  [ ] spacing  F1 overlay"
+    "H halo  S smooth  X/Y log  P plots  [ ] spacing  F1 overlay"
 )
 
-OVERLAYS = ("none", "functions", "shapes")
+OVERLAYS = ("none", "functions", "shapes", "power laws", "curves")
 """What the P key cycles through."""
 
 
@@ -67,6 +68,19 @@ def draw_plots(plane: pgp.Plane, screen: pygame.Surface, overlay: str) -> None:
         plane.polyline(screen, np.column_stack((xs, np.sin(xs) - 3)), width=1.5)
         plane.points(screen, np.column_stack((xs, np.sin(xs) - 3)), radius=3)
         plane.points(screen, [(-4, 3), (-3, 3), (-2, 3)], marker="diamond", radius=7)
+    elif overlay == "power laws":  # straight lines on log-log axes
+        for power in (-1.0, 0.5, 1.0, 2.0, 3.0):
+            plane.plot(screen, lambda x, k=power: x**k)
+        plane.plot(screen, np.exp)
+        xs = np.geomspace(0.01, 100, 15)
+        plane.points(screen, np.column_stack((xs, 2 * xs**1.5)), edge_color="white")
+    elif overlay == "curves":  # parametric and polar curves
+        plane.polar(screen, lambda a: 3 * np.cos(4 * a))
+        plane.polar(screen, lambda a: 3 * np.sqrt(np.cos(2 * a)))
+        plane.parametric(
+            screen, lambda t: t - np.sin(t), lambda t: 1 - np.cos(t), (-9, 9)
+        )
+        plane.parametric(screen, np.tan, lambda t: -3 + 0.3 * t, (-4, 4))
 
 
 def describe_spacing(choice: SpacingChoice) -> str:
@@ -151,9 +165,13 @@ def draw_overlay(
     view = plane.view
     grid = plane.last_grid
     theme = plane.theme
+    bounds = view.bounds
+    units = ["px/decade" if log else "px/unit" for log in (view.log_x, view.log_y)]
     lines = [
-        f"scale  {view.scale_x:.6g} px/unit",
+        f"scale  x {view.scale_x:.6g} {units[0]}   y {view.scale_y:.6g} {units[1]}",
         f"centre ({view.center_x:.10g}, {view.center_y:.10g})",
+        f"view   x [{bounds.x_min:.6g}, {bounds.x_max:.6g}]"
+        f"   y [{bounds.y_min:.6g}, {bounds.y_max:.6g}]",
     ]
     if grid is not None:
         lines.append(f"x step {describe_spacing(grid.x_spacing)}")
@@ -206,6 +224,10 @@ def main() -> None:
                     plane.interaction = replace(plane.interaction, smoothing=smoothing)
                 elif event.key == pygame.K_p:
                     overlay = (overlay + 1) % len(OVERLAYS)
+                elif event.key == pygame.K_x:
+                    plane.log_x = not plane.log_x
+                elif event.key == pygame.K_y:
+                    plane.log_y = not plane.log_y
                 elif toggle_theme_setting(plane, event.key):
                     pass
             plane.handle_event(event)

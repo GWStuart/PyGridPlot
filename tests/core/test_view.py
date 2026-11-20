@@ -249,3 +249,141 @@ def test_multiples_to_screen_keeps_even_spacing_when_deeply_zoomed() -> None:
     positions = view.multiples_to_screen("x", step, indices)
     gaps = np.diff(positions)
     np.testing.assert_allclose(gaps, step * 1e11, rtol=1e-3)
+
+
+# ----------------------------------------------------------------------
+# Logarithmic axes
+# ----------------------------------------------------------------------
+def log_log(**kwargs: object) -> View:
+    """Return an 800x600 log-log view."""
+    return make_view(log_x=True, log_y=True, **kwargs)
+
+
+def test_log_axes_default_to_a_centre_of_one_and_decades() -> None:
+    view = log_log()
+    assert view.center == (1.0, 1.0)
+    assert view.scale == 150.0  # pixels per decade
+    assert view.equal_aspect
+    assert view.to_screen(10.0, 100.0) == pytest.approx((550.0, 0.0))
+    assert view.axis_center("x") == 0.0  # transformed: log10(1)
+
+
+def test_mixed_axes_have_independent_default_scales() -> None:
+    view = make_view(log_y=True)
+    assert not view.equal_aspect
+    assert (view.scale_x, view.scale_y) == (50.0, 150.0)
+    assert view.center == (0.0, 1.0)
+
+
+def test_log_axis_rejects_a_centre_it_cannot_show() -> None:
+    with pytest.raises(ValueError, match="positive"):
+        log_log(center=(0.0, 1.0))
+    view = log_log()
+    with pytest.raises(ValueError, match="positive"):
+        view.center = (1.0, -2.0)
+    with pytest.raises(ValueError, match="positive"):
+        view.pan_world(-5.0, 0.0)
+
+
+def test_log_bounds_are_positive_and_transformed_bounds_are_decades() -> None:
+    view = log_log(center=(100.0, 0.1), scale=100.0)
+    bounds = view.bounds
+    assert bounds.x_min == pytest.approx(10**-2.005)
+    assert bounds.x_max == pytest.approx(10**5.995)
+    t = view.transformed_bounds
+    assert (t.x_min, t.x_max) == pytest.approx((-2.005, 5.995))
+    assert (t.y_min, t.y_max) == pytest.approx((-3.995, 2.005))  # y points up
+
+
+@given(
+    x=st.floats(1e-200, 1e200),
+    y=st.floats(1e-200, 1e200),
+    scale=st.floats(1.0, 1e6),
+)
+def test_log_round_trip(x: float, y: float, scale: float) -> None:
+    view = log_log(center=(3.0, 0.02), scale=scale)
+    px, py = view.to_screen(x, y)
+    assert view.to_world(px, py) == pytest.approx((x, y), rel=1e-9)
+
+
+def test_values_a_log_axis_cannot_show_go_off_screen() -> None:
+    view = log_log()
+    assert math.isnan(view.to_screen_x(-1.0))
+    assert view.to_screen_x(0.0) == -math.inf  # infinitely far to the left
+    assert view.to_screen_y(0.0) == math.inf  # infinitely far down
+
+
+def test_zoom_at_keeps_the_cursor_value_on_a_log_axis() -> None:
+    view = log_log(center=(5.0, 5.0))
+    before = view.to_world(123.0, 456.0)
+    view.zoom_at(123.0, 456.0, 3.7)
+    assert view.to_world(123.0, 456.0) == pytest.approx(before, rel=1e-12)
+    assert view.scale == pytest.approx(150.0 * 3.7)
+
+
+def test_fit_on_log_axes_works_in_decades() -> None:
+    view = make_view(log_x=True, equal_aspect=False)
+    view.fit(x_range=(1.0, 1000.0), y_range=(-1.0, 1.0))
+    assert view.center_x == pytest.approx(10**1.5)
+    assert view.scale_x == pytest.approx(399.5 / 1.5)  # pixels per decade
+    assert view.bounds.x_min <= 1.0
+    assert view.bounds.x_max >= 1000.0
+    with pytest.raises(ValueError, match="positive"):
+        view.fit(x_range=(0.0, 10.0))
+
+
+def test_log_axes_limit_their_centre_and_zoom() -> None:
+    view = log_log()
+    view.pan_pixels(-1e9, 0.0)
+    assert view.axis_center("x") == 300.0  # 10**300 at most
+    view.set_scale(1e-6)
+    assert view.scale == 1.0  # at least a pixel per decade
+    view.set_scale(1e20)
+    assert view.scale < 1e14  # still precise near the (huge) centre
+
+
+def test_set_log_keeps_the_visible_range() -> None:
+    view = make_view(center=(50.0, 0.0), scale=10.0, equal_aspect=False)
+    for log in (True, False):
+        low, high = view.bounds.range("x")  # first 9.95 to 89.95
+        view.set_log("x", log=log)
+        assert view.log_x is log
+        # The old range still spans the plane, with at most a pixel to spare.
+        left, right = view.to_screen_x(low), view.to_screen_x(high)
+        assert -0.5 - 1e-6 <= left <= 0.5 + 1e-6
+        assert 798.5 - 1e-6 <= right <= 799.5 + 1e-6
+
+
+def test_switching_to_log_with_negatives_visible_keeps_the_top_decades() -> None:
+    view = make_view(equal_aspect=False)  # x from -8 to 8
+    view.set_log("x", log=True)
+    x_min, x_max = view.bounds.range("x")
+    assert x_max >= 7.99 * (1 - 1e-12)
+    assert x_min <= 7.99e-3 * (1 + 1e-12)
+    assert (x_min, x_max) == pytest.approx((7.99e-3, 7.99), rel=0.01)
+    view = make_view(center=(-100.0, 0.0), equal_aspect=False)  # nothing positive
+    view.set_log("x", log=True)
+    assert view.center_x == 1.0
+    assert view.scale_x == 150.0
+
+
+def test_state_restore_ignores_centres_a_log_axis_cannot_show() -> None:
+    linear = make_view(center=(-3.0, 4.0))
+    view = log_log(center=(7.0, 7.0))
+    view.restore(linear.state())
+    assert view.center_x == pytest.approx(7.0)  # -3 is not shown on a log axis
+    assert view.center_y == pytest.approx(4.0)
+
+
+def test_equal_aspect_can_be_switched_on_later() -> None:
+    view = make_view(scale=(20.0, 80.0), equal_aspect=False)
+    view.equal_aspect = True
+    assert view.scale == 20.0  # the tighter of the two
+
+
+def test_copy_keeps_the_axis_kinds() -> None:
+    view = make_view(log_y=True)
+    clone = view.copy()
+    assert clone.log_y
+    assert not clone.log_x
+    assert "log_y=True" in repr(clone)

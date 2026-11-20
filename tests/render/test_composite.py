@@ -123,21 +123,53 @@ def test_transparent_primitives_draw_nothing() -> None:
     )
 
 
-def test_dense_blending_of_big_strokes_matches_per_pixel_blending() -> None:
-    from pygridplot.render import composite
-
+def big_coverage() -> SparseCoverage:
+    """Return random coverage of every pixel of a 300x200 block."""
     rng = np.random.default_rng(1)
     xs, ys = np.meshgrid(np.arange(300), np.arange(200))
-    coverage = SparseCoverage(
+    return SparseCoverage(
         xs.ravel().astype(np.intp), ys.ravel().astype(np.intp), rng.random(60000)
     )
-    per_pixel = pygame.Surface((300, 200))
-    per_pixel.fill((10, 200, 30))
-    patched = per_pixel.copy()
-    composite._over_opaque(  # the per-pixel path, called directly
-        per_pixel, coverage.x, coverage.y, coverage.alpha, RED
+
+
+def blended(surface: pygame.Surface, draw: object) -> np.ndarray:
+    """Fill a surface, apply ``draw`` to it and return its pixels."""
+    surface.fill((10, 200, 30))
+    draw(surface)  # type: ignore[operator]
+    return pygame.surfarray.array3d(surface).astype(int)
+
+
+def test_packed_blending_matches_per_channel_blending() -> None:
+    from pygridplot.render import composite
+
+    coverage = big_coverage()
+    surface = pygame.Surface((300, 200))
+    assert composite._packed_shifts(surface) is not None  # a 32-bit surface
+    per_channel = blended(
+        surface,
+        lambda s: composite._over_opaque(
+            s, coverage.x, coverage.y, coverage.alpha, RED
+        ),
     )
-    blend_sparse(patched, coverage, RED)  # takes the patch path (> threshold)
-    a = pygame.surfarray.array3d(per_pixel).astype(int)
-    b = pygame.surfarray.array3d(patched).astype(int)
-    assert np.abs(a - b).max() <= 1  # identical up to 8-bit rounding
+    packed = blended(surface, lambda s: blend_sparse(s, coverage, RED))
+    # float32 arithmetic may round a value lying exactly between two levels
+    # the other way, which is invisible.
+    difference = np.abs(per_channel - packed)
+    assert difference.max() <= 1
+    assert (difference > 0).mean() < 0.001
+
+
+def test_surfaces_without_packed_access_blend_big_strokes_as_a_patch() -> None:
+    from pygridplot.render import composite
+
+    coverage = big_coverage()
+    surface = pygame.Surface((300, 200), depth=24)
+    assert composite._packed_shifts(surface) is None
+    per_pixel = blended(
+        surface,
+        lambda s: composite._over_opaque(
+            s, coverage.x, coverage.y, coverage.alpha, RED
+        ),
+    )
+    patched = blended(surface, lambda s: blend_sparse(s, coverage, RED))  # > threshold
+    assert np.abs(per_pixel - patched).max() <= 1  # identical up to 8-bit rounding

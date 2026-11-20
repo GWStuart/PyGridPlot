@@ -175,3 +175,42 @@ def test_styles_and_keyword_overrides() -> None:
 def test_show_plots_functions() -> None:
     pygame.event.post(pygame.event.Event(pygame.QUIT))
     pgp.show(np.sin, lambda x: x**2, size=(200, 150))
+
+
+def test_parametric_and_polar_curves_draw_through_the_right_pixels() -> None:
+    plane, surface = blank_plane()
+    plane.parametric(surface, np.cos, np.sin, (0, 2 * np.pi), color=BLACK)
+    plane.polar(surface, 2.0, color=BLACK)
+    painted = ink(surface)
+    cx, cy = (round(v) for v in plane.to_screen(0.0, 0.0))
+    assert painted[cy, cx + 50] > 0.9  # the unit circle (50 px per unit)
+    assert painted[cy - 100, cx] > 0.9  # the circle r = 2, at the top
+    assert painted[cy, cx + 75] < 0.05  # nothing in between
+
+
+def test_curves_take_palette_colours_and_styles() -> None:
+    plane, surface = blank_plane()
+    plane.parametric(surface, np.cos, np.sin, (0, 2 * np.pi))
+    plane.polar(surface, 2.0, style=pgp.LineStyle(width=4.0))
+    cx, cy = (round(v) for v in plane.to_screen(0.0, 0.0))
+    first, second = plane.theme.palette[:2]
+    assert tuple(surface.get_at((cx + 50, cy)))[:3] == first
+    assert tuple(surface.get_at((cx + 100, cy)))[:3] == second
+    assert tuple(surface.get_at((cx + 101, cy)))[:3] == second  # 4 px wide
+
+
+@pytest.mark.parametrize(("dx", "dy"), [(7, -3), (-12, 5)])
+def test_curves_move_rigidly_when_panning(dx: int, dy: int) -> None:
+    plane, surface = blank_plane()
+    rose = lambda t: 2 * np.cos(3 * t)  # noqa: E731
+    plane.polar(surface, rose, color=BLACK)
+    before = ink(surface)
+    plane.view.pan_pixels(dx, dy)
+    plane.draw_grid(surface)
+    plane.polar(surface, rose, color=BLACK)
+    after = ink(surface)
+    inner = (slice(40, 200), slice(40, 280))
+    shifted = np.roll(np.roll(before, dy, axis=0), dx, axis=1)
+    # As for function plots, float round-off may change a pixel by a level.
+    np.testing.assert_allclose(after[inner], shifted[inner], atol=2 / 255)
+    assert before.max() > 0.9  # the curve was drawn at all

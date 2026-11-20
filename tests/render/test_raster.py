@@ -223,3 +223,48 @@ def test_vertical_lines_with_long_pieces_keep_their_width() -> None:
     image = as_image(stroke([(80.4, 5.0), (80.4, 115.0)], 3.0))
     row_sums = image[20:100, :].sum(axis=1)
     np.testing.assert_allclose(row_sums, 3.0, atol=0.02)
+
+
+def test_duplicate_merging_strategies_agree() -> None:
+    """The buffer and sort strategies of ``_unique_max`` give the same result."""
+    from pygridplot.render import raster
+
+    rng = np.random.default_rng(3)
+    qx = rng.integers(10, 60, 5000).astype(np.intp)
+    qy = rng.integers(5, 40, 5000).astype(np.intp)
+    alpha = (rng.random(5000) * 2 - 0.5).astype(np.float32)
+    tight = raster._unique_max(qx, qy, alpha, (10, 5, 60, 40))  # buffer
+    loose = raster._unique_max(qx, qy, alpha, (0, 0, 5000, 5000))  # sort
+    assert tight is not None
+    assert loose is not None
+    assert np.array_equal(tight.x, loose.x)
+    assert np.array_equal(tight.y, loose.y)
+    assert np.array_equal(tight.alpha, loose.alpha)
+    assert tight.alpha.min() > 0
+    keys = qy * 1000 + qx
+    expected = {
+        k: max(a for kk, a in zip(keys, alpha, strict=True) if kk == k)
+        for k in set(keys.tolist())
+    }
+    got = dict(
+        zip((tight.y * 1000 + tight.x).tolist(), tight.alpha.tolist(), strict=True)
+    )
+    assert got == {k: float(v) for k, v in expected.items() if v > 0}
+
+
+def test_dense_tangles_rasterise_like_their_parts() -> None:
+    """Many overlapping segments give each pixel its best coverage once."""
+    xs = np.linspace(0, 40, 400)
+    tangle = np.column_stack((20 + 15 * np.sin(xs * 7), 20 + 15 * np.cos(xs * 3)))
+    coverage = stroke_coverage([tangle], 2.0, (0, 0, 64, 64))
+    assert coverage is not None
+    flat = coverage.y * 64 + coverage.x
+    assert np.unique(flat).size == flat.size
+    pieces = [
+        stroke_coverage([tangle[i : i + 2]], 2.0, (0, 0, 64, 64)) for i in range(399)
+    ]
+    best = np.zeros(64 * 64)
+    for piece in pieces:
+        if piece is not None:
+            np.maximum.at(best, piece.y * 64 + piece.x, piece.alpha)
+    assert np.allclose(best[flat], coverage.alpha, atol=1e-5)

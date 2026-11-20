@@ -1,7 +1,7 @@
 """The public :class:`Plane` class: an interactive Cartesian plane for pygame.
 
 A plane ties together a :class:`~pygridplot.core.view.View` (what is
-visible), a :class:`~pygridplot.core.theme.GridTheme` (how it looks), an
+visible), a :class:`~pygridplot.core.grid.theme.GridTheme` (how it looks), an
 :class:`~pygridplot.interaction.InteractionController` (pan and zoom) and a
 renderer (drawing). It is a *library* object: your program owns the main
 loop and calls the plane each frame::
@@ -23,6 +23,7 @@ loop and calls the plane each frame::
             plane.handle_event(event)
         plane.draw_grid(screen)
         plane.plot(screen, np.sin)
+        plane.polar(screen, lambda t: 1 + np.cos(t))
         plane.points(screen, [(0, 0), (np.pi, 0)])
         plane.polygon(screen, [(1, 1), (3, 1), (2, 2.5)])
         pygame.display.flip()
@@ -35,33 +36,37 @@ them needs no extra work.
 
 from __future__ import annotations
 
-from typing import Any, overload
+import math
+from typing import Any, Literal, overload
 
 import numpy as np
 import pygame
 from numpy.typing import ArrayLike, NDArray
 
 from pygridplot.core.coords import ColorLike, ScreenRect
-from pygridplot.core.evaluation import Function
-from pygridplot.core.grid import GridScene, GridState, build_grid
-from pygridplot.core.plotting import (
+from pygridplot.core.framing import ViewFraming, aspect_choice, equal_aspect_for
+from pygridplot.core.grid.scene import GridScene, GridState, build_grid
+from pygridplot.core.grid.theme import LIGHT, GridTheme
+from pygridplot.core.plot.builders import (
+    CurveComponent,
     function_stroke,
+    parametric_stroke,
     point_markers,
+    polar_stroke,
     polygon_shapes,
     polyline_stroke,
 )
-from pygridplot.core.primitives import Fill, Markers, Stroke
-from pygridplot.core.sampling import DEFAULT_SAMPLING, SamplingConfig
-from pygridplot.core.style import (
+from pygridplot.core.plot.curves import DEFAULT_CURVE_SAMPLING, CurveSampling
+from pygridplot.core.plot.evaluation import Function
+from pygridplot.core.plot.sampling import DEFAULT_SAMPLING, SamplingConfig
+from pygridplot.core.plot.style import (
     ColorCycle,
-    FillRule,
     LineStyle,
-    MarkerShape,
     PointStyle,
     PolygonStyle,
     with_overrides,
 )
-from pygridplot.core.theme import LIGHT, GridTheme
+from pygridplot.core.primitives import Fill, FillRule, Markers, MarkerShape, Stroke
 from pygridplot.core.view import View, ViewLimits, ViewState
 from pygridplot.interaction import InteractionConfig, InteractionController
 from pygridplot.render.pygame_renderer import PygameRenderer
@@ -74,14 +79,31 @@ _DEFAULT_POLYGON = PolygonStyle()
 class Plane:
     """An interactive Cartesian plane drawn into a rectangle of a pygame surface.
 
+    The initial view can be given like a graphing calculator's window
+    settings, ``x_range=(x_min, x_max)`` and ``y_range=(y_min, y_max)``, or as a
+    ``center`` and ``scale``. Either axis can be logarithmic.
+
     Args:
         rect: The screen rectangle to draw into. ``None`` (the default) fills
             whatever surface :meth:`draw_grid` is given and follows it when
             the window is resized.
+        x_range: ``(x_min, x_max)`` to show across the plane's width at
+            first. Overrides ``center`` and ``scale`` for the x axis.
+        y_range: ``(y_min, y_max)`` to show across the plane's height at
+            first. Overrides ``center`` and ``scale`` for the y axis.
+        log_x: Make the x axis logarithmic (base 10). Only positive x values
+            can be shown.
+        log_y: Make the y axis logarithmic (base 10). Only positive y values
+            can be shown.
         center: World point initially shown at the middle of the plane.
-        scale: Initial pixels per world unit: one number, or an ``(x, y)``
-            pair when ``equal_aspect`` is off.
-        equal_aspect: Keep both axes at the same scale (circles stay round).
+            Defaults to 0 on a linear axis and 1 on a log axis.
+        scale: Initial pixels per world unit (per decade on a log axis): one
+            number, or an ``(x, y)`` pair when the aspect is not equal.
+            Defaults to 50 per unit and 150 per decade.
+        equal_aspect: Keep both axes at the same scale, so circles stay
+            round. ``None`` (the default) decides automatically: on, unless
+            both ranges are given (each then fills its axis exactly) or only
+            one axis is logarithmic.
         theme: Grid appearance. Defaults to :data:`pygridplot.LIGHT`.
         interactive: Whether the built-in pan/zoom controls are active.
         interaction: Settings for the built-in controls.
@@ -96,9 +118,13 @@ class Plane:
         self,
         rect: object | None = None,
         *,
-        center: tuple[float, float] = (0.0, 0.0),
-        scale: float | tuple[float, float] = 50.0,
-        equal_aspect: bool = True,
+        x_range: tuple[float, float] | None = None,
+        y_range: tuple[float, float] | None = None,
+        log_x: bool = False,
+        log_y: bool = False,
+        center: tuple[float, float] | None = None,
+        scale: float | tuple[float, float] | None = None,
+        equal_aspect: bool | None = None,
         theme: GridTheme | None = None,
         interactive: bool = True,
         interaction: InteractionConfig | None = None,
@@ -108,10 +134,21 @@ class Plane:
     ) -> None:
         self._auto_rect = rect is None
         initial = _display_rect() if rect is None else ScreenRect.from_any(rect)
+        choice = aspect_choice(equal_aspect, x_range, y_range)
         self._view = View(
-            initial, center, scale, equal_aspect=equal_aspect, limits=limits
+            initial,
+            center,
+            scale,
+            equal_aspect=equal_aspect_for(choice, log_x, log_y),
+            limits=limits,
+            log_x=log_x,
+            log_y=log_y,
         )
-        self._home = self._view.state()
+        # An automatic plane only learns its real size when it is first drawn
+        # (the window may not exist, or may still change size, until then).
+        self._framing = ViewFraming(self._view, choice, settled=not self._auto_rect)
+        if x_range is not None or y_range is not None:
+            self._framing.fit((x_range, y_range), home=True)
         self._theme = theme if theme is not None else LIGHT
         self.interactive = interactive
         """Whether :meth:`handle_event` reacts to input at all."""
@@ -152,6 +189,30 @@ class Plane:
         self._auto_rect = rect is None
         if rect is not None:
             self._view.rect = rect
+            self._framing.settle()
+
+    @property
+    def log_x(self) -> bool:
+        """Whether the x axis is logarithmic.
+
+        Assign to switch it: the visible x range is kept where possible (see
+        :meth:`~pygridplot.View.set_log`) and becomes part of the new home
+        view.
+        """
+        return self._view.log_x
+
+    @log_x.setter
+    def log_x(self, log: bool) -> None:
+        self._set_log("x", log)
+
+    @property
+    def log_y(self) -> bool:
+        """Whether the y axis is logarithmic (assign to switch it, as for x)."""
+        return self._view.log_y
+
+    @log_y.setter
+    def log_y(self, log: bool) -> None:
+        self._set_log("y", log)
 
     @property
     def theme(self) -> GridTheme:
@@ -306,6 +367,107 @@ class Plane:
             self._colors.resolve(line.color),
             domain=domain,
             sampling=sampling if sampling is not None else self._sampling,
+        )
+        self._draw(surface, stroke)
+
+    def parametric(
+        self,
+        surface: pygame.Surface,
+        x: CurveComponent,
+        y: CurveComponent,
+        t_range: tuple[float, float],
+        *,
+        color: ColorLike | None = None,
+        width: float | None = None,
+        opacity: float | None = None,
+        style: LineStyle | None = None,
+        sampling: CurveSampling | None = None,
+    ) -> None:
+        """Plot the parametric curve ``(x(t), y(t))`` for ``t`` in ``t_range``.
+
+        ``x`` and ``y`` are functions of ``t``, written like the functions
+        given to :meth:`plot` (vectorised or scalar-only, and allowed to fail
+        for some ``t``), or plain numbers. The curve is sampled adaptively on
+        screen, so tight turns, loops and spirals stay smooth at any zoom,
+        and jumps and poles are not joined up.
+
+        Args:
+            surface: The surface to draw on.
+            x: The x coordinate as a function of ``t`` (or a number).
+            y: The y coordinate as a function of ``t`` (or a number).
+            t_range: ``(t_min, t_max)``, for example ``(0, 2 * np.pi)``.
+            color: Line colour (default: the next palette colour).
+            width: Line width in pixels (default 2.5).
+            opacity: Line opacity in ``[0, 1]``.
+            style: A reusable :class:`~pygridplot.LineStyle`. The other
+                keyword arguments override its fields.
+            sampling: How the curve is sampled (see
+                :class:`~pygridplot.CurveSampling`; the defaults suit almost
+                every curve).
+
+        Raises:
+            ValueError: If ``t_range`` is not an increasing pair of numbers.
+        """
+        self._sync_rect(surface)
+        line = with_overrides(
+            style or _DEFAULT_LINE, color=color, width=width, opacity=opacity
+        )
+        stroke = parametric_stroke(
+            self._view,
+            x,
+            y,
+            t_range,
+            line,
+            self._colors.resolve(line.color),
+            sampling=sampling if sampling is not None else DEFAULT_CURVE_SAMPLING,
+        )
+        self._draw(surface, stroke)
+
+    def polar(
+        self,
+        surface: pygame.Surface,
+        r: CurveComponent,
+        theta_range: tuple[float, float] = (0.0, 2 * math.pi),
+        *,
+        color: ColorLike | None = None,
+        width: float | None = None,
+        opacity: float | None = None,
+        style: LineStyle | None = None,
+        sampling: CurveSampling | None = None,
+    ) -> None:
+        """Plot the polar curve ``r = r(θ)``.
+
+        The point at angle ``θ`` (radians, anticlockwise from the positive x
+        axis) is ``(r cos θ, r sin θ)``; a negative ``r`` lies on the opposite
+        side of the origin. Angles where ``r`` is undefined are left out.
+
+        Args:
+            surface: The surface to draw on.
+            r: The radius as a function of ``θ`` (or a number, for a circle).
+            theta_range: ``(θ_min, θ_max)``. The default is one full turn;
+                spirals and curves such as ``r = cos(θ / 3)`` need more.
+            color: Line colour (default: the next palette colour).
+            width: Line width in pixels (default 2.5).
+            opacity: Line opacity in ``[0, 1]``.
+            style: A reusable :class:`~pygridplot.LineStyle`. The other
+                keyword arguments override its fields.
+            sampling: How the curve is sampled (see
+                :class:`~pygridplot.CurveSampling`).
+
+        Raises:
+            ValueError: If ``theta_range`` is not an increasing pair of numbers.
+        """
+        self._sync_rect(surface)
+        line = with_overrides(
+            style or _DEFAULT_LINE, color=color, width=width, opacity=opacity
+        )
+        stroke = polar_stroke(
+            self._view,
+            r,
+            theta_range,
+            line,
+            self._colors.resolve(line.color),
+            sampling=sampling if sampling is not None else DEFAULT_CURVE_SAMPLING,
         )
         self._draw(surface, stroke)
 
@@ -483,17 +645,26 @@ class Plane:
     ) -> None:
         """Fit the view to show the given world ranges.
 
+        With equal aspect on, the tighter range decides the scale and the
+        other axis shows extra space. On a log axis the range must be
+        positive. An automatic plane that has not been drawn yet fits again
+        once it knows its real size (unless the view is changed before).
+
         Args:
             x_range: ``(x_min, x_max)`` to show across the plane's width.
             y_range: ``(y_min, y_max)`` to show across the plane's height.
+
+        Raises:
+            ValueError: If a range is empty, reversed, not finite, or not
+                positive on a log axis.
         """
         self._controller.cancel()
-        self._view.fit(x_range, y_range)
+        self._framing.fit((x_range, y_range), home=False)
 
     def reset_view(self) -> None:
         """Return to the home view (initially the view the plane was created with)."""
         self._controller.cancel()
-        self._view.restore(self._home)
+        self._framing.reset()
 
     def set_home(self, state: ViewState | None = None) -> None:
         """Change the view that :meth:`reset_view` (and the Home key) returns to.
@@ -501,7 +672,7 @@ class Plane:
         Args:
             state: The new home view, or ``None`` to use the current view.
         """
-        self._home = state if state is not None else self._view.state()
+        self._framing.home = state if state is not None else self._view.state()
 
     def __repr__(self) -> str:
         return f"Plane(view={self._view!r})"
@@ -512,7 +683,7 @@ class Plane:
         """Draw primitives in order, clipped to the plane.
 
         Every plotting method ends here, so a new kind of plot only needs to
-        build primitives (see :mod:`pygridplot.core.plotting`) and pass them on.
+        build primitives (see :mod:`pygridplot.core.plot.builders`) and pass them on.
 
         Args:
             surface: The surface to draw on.
@@ -541,6 +712,18 @@ class Plane:
         """
         if self._auto_rect:
             self._view.rect = surface.get_rect()
+            self._framing.settle()
+
+    def _set_log(self, axis: Literal["x", "y"], log: bool) -> None:
+        """Switch one axis between linear and logarithmic.
+
+        Args:
+            axis: ``"x"`` or ``"y"``.
+            log: Whether the axis should be logarithmic.
+        """
+        self._controller.cancel()
+        if self._framing.set_log(axis, log):
+            self._grid_state.reset()
 
 
 def _display_rect() -> ScreenRect:

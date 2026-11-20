@@ -31,7 +31,9 @@ def imported_modules(path: Path) -> set[str]:
     return names
 
 
-@pytest.mark.parametrize("path", sorted(CORE.glob("*.py")), ids=lambda p: p.name)
+@pytest.mark.parametrize(
+    "path", sorted(CORE.rglob("*.py")), ids=lambda p: str(p.relative_to(CORE))
+)
 def test_core_modules_only_import_stdlib_numpy_and_core(path: Path) -> None:
     for name in imported_modules(path):
         top = name.split(".")[0]
@@ -40,6 +42,31 @@ def test_core_modules_only_import_stdlib_numpy_and_core(path: Path) -> None:
         else:
             allowed = top in sys.stdlib_module_names or top in ALLOWED_THIRD_PARTY
             assert allowed, f"{path.name} imports {name}"
+
+
+SUBPACKAGES = ("grid", "plot")
+"""The subpackages of ``core``, which build on its foundation modules."""
+
+
+@pytest.mark.parametrize(
+    "path", sorted(CORE.rglob("*.py")), ids=lambda p: str(p.relative_to(CORE))
+)
+def test_core_layers_stay_apart(path: Path) -> None:
+    """Foundations never import the subpackages, which never import each other.
+
+    The foundation modules (``core/*.py``) are shared by the grid and by
+    plotting, so they must not depend on either; and the grid and plotting
+    are independent, so either can change or grow without touching the
+    other.
+    """
+    relative = path.relative_to(CORE)
+    own = relative.parts[0] if len(relative.parts) > 1 else None
+    for name in imported_modules(path):
+        for sub in SUBPACKAGES:
+            if name == f"pygridplot.core.{sub}" or name.startswith(
+                f"pygridplot.core.{sub}."
+            ):
+                assert own == sub, f"{relative} imports {name}"
 
 
 def test_examples_have_a_main_function() -> None:

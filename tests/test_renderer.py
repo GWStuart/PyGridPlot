@@ -9,16 +9,17 @@ import pygame
 import pytest
 
 from pygridplot.core.coords import ScreenRect
-from pygridplot.core.grid import build_grid
-from pygridplot.core.labels import LabelText, TextRun
+from pygridplot.core.grid.scene import build_grid
+from pygridplot.core.grid.theme import LIGHT
 from pygridplot.core.primitives import (
     FontSpec,
+    LabelText,
     LineBatch,
     Orientation,
     PaintLayer,
     TextItem,
+    TextRun,
 )
-from pygridplot.core.theme import LIGHT
 from pygridplot.core.view import View
 from pygridplot.render.colors import ColorResolver
 from pygridplot.render.pygame_renderer import PygameRenderer

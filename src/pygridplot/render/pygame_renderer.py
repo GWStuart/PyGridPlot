@@ -28,12 +28,12 @@ from contextlib import contextmanager
 import pygame
 
 from pygridplot.core.coords import ColorLike, ScreenRect
-from pygridplot.core.grid import GridScene
-from pygridplot.core.labels import LabelText
+from pygridplot.core.grid.scene import GridScene
 from pygridplot.core.pixels import line_starts
 from pygridplot.core.primitives import (
     Fill,
     FontSpec,
+    LabelText,
     LineBatch,
     Markers,
     Orientation,
@@ -91,7 +91,7 @@ class PygameRenderer:
 
         Args:
             surface: The surface to draw on.
-            scene: The grid built by :func:`pygridplot.core.grid.build_grid`.
+            scene: The grid built by :func:`pygridplot.core.grid.scene.build_grid`.
         """
         with self.clipped(surface, scene.rect) as visible:
             if visible is None:

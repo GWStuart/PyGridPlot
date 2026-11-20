@@ -17,7 +17,7 @@ import numpy as np
 import pygame
 
 import pygridplot as pgp
-from pygridplot.core.style import MarkerShape
+from pygridplot.core.primitives import MarkerShape
 
 MARKERS: tuple[MarkerShape, ...] = (
     "circle",

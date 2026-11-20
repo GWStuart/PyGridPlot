@@ -16,8 +16,7 @@ from collections.abc import Iterator
 
 import pytest
 
-from pygridplot.core.labels import LabelText
-from pygridplot.core.primitives import FontSpec, TextSize
+from pygridplot.core.primitives import FontSpec, LabelText, TextSize
 
 CHAR_WIDTH = 7
 SUPERSCRIPT_CHAR_WIDTH = 5

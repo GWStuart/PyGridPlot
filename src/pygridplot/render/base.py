@@ -13,9 +13,15 @@ from __future__ import annotations
 
 from typing import Any, Protocol
 
-from pygridplot.core.grid import GridScene
-from pygridplot.core.labels import LabelText
-from pygridplot.core.primitives import Fill, FontSpec, Markers, Stroke, TextSize
+from pygridplot.core.grid.scene import GridScene
+from pygridplot.core.primitives import (
+    Fill,
+    FontSpec,
+    LabelText,
+    Markers,
+    Stroke,
+    TextSize,
+)
 
 
 class Renderer(Protocol):

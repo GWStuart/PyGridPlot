@@ -211,3 +211,24 @@ def test_dragging_during_an_eased_zoom_keeps_the_grabbed_point() -> None:
         controller.update()
         assert view.to_world(*map(float, pos)) == pytest.approx(grabbed, rel=1e-9)
     assert view.scale == pytest.approx(50.0 * 1.15**4)
+
+
+def test_dragging_a_log_view_keeps_the_grabbed_value_under_the_cursor() -> None:
+    view = View(RECT, (10.0, 0.01), 120.0, log_x=True, log_y=True)
+    controller = InteractionController(view, INSTANT, clock=FakeClock())
+    grabbed = view.to_world(200.0, 100.0)
+    assert controller.handle_event(mouse(pygame.MOUSEBUTTONDOWN, (200, 100)))
+    for pos in [(260, 140), (420, 330), (150, 60)]:
+        controller.handle_event(mouse(pygame.MOUSEMOTION, pos))
+        assert view.to_world(*map(float, pos)) == pytest.approx(grabbed, rel=1e-12)
+
+
+def test_wheel_zoom_keeps_the_value_under_the_cursor_on_log_axes() -> None:
+    view = View(RECT, (10.0, 0.01), 120.0, log_x=True, log_y=True)
+    controller = InteractionController(view, INSTANT, clock=FakeClock())
+    controller.handle_event(mouse(pygame.MOUSEMOTION, (380, 120)))
+    under = view.to_world(380.0, 120.0)
+    controller.handle_event(wheel(3.0))
+    controller.update()
+    assert view.to_world(380.0, 120.0) == pytest.approx(under, rel=1e-12)
+    assert view.scale == pytest.approx(120.0 * 1.15**3)

@@ -1,6 +1,6 @@
 """Typesetting tick labels for the pygame backend.
 
-A :class:`~pygridplot.core.labels.LabelText` is typeset run by run. Normal
+A :class:`~pygridplot.core.primitives.LabelText` is typeset run by run. Normal
 runs sit on a shared baseline, and superscript runs are drawn at a smaller
 size and raised. Every measurement is relative to the label's **digit box**
 (top of the digits to the baseline), which is what layout aligns. This means
@@ -21,8 +21,8 @@ from typing import Final
 import pygame
 
 from pygridplot.core.coords import ColorLike
-from pygridplot.core.labels import MINUS_SIGN, TIMES_SIGN, LabelText
-from pygridplot.core.primitives import FontSpec, TextSize
+from pygridplot.core.grid.formatting import MINUS_SIGN, TIMES_SIGN
+from pygridplot.core.primitives import FontSpec, LabelText, TextSize
 from pygridplot.render.colors import ColorResolver
 from pygridplot.render.fonts import FontLibrary
 

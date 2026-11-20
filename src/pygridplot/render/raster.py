@@ -25,12 +25,12 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
-from typing import Final, TypeAlias
+from typing import Any, Final, TypeAlias
 
 import numpy as np
 from numpy.typing import NDArray
 
-from pygridplot.core.style import FillRule, MarkerShape
+from pygridplot.core.primitives import FillRule, MarkerShape
 
 PixelBox: TypeAlias = tuple[int, int, int, int]
 """A box of whole pixels ``(x0, y0, x1, y1)``; ``x1`` and ``y1`` are exclusive."""
@@ -39,6 +39,18 @@ FILL_SUBSAMPLES: Final = 5
 """Sub-scanlines per pixel row when filling (vertical antialiasing levels)."""
 
 _SQRT_PI: Final = math.sqrt(math.pi)
+
+_SNAP: Final = 1e-5
+"""Fill coverage this close to 0 or 1 is round-off, and is snapped."""
+
+_BUFFER_FACTOR: Final = 32
+"""Merge duplicates in a buffer while its area is at most this many times the
+number of candidates (see :func:`_unique_max`).
+
+Clearing and scanning the buffer costs about a nanosecond per pixel of its
+area, and sorting about 50 to 70 nanoseconds per candidate, so the buffer
+wins until the area is a few dozen times the candidate count.
+"""
 
 
 @dataclass(frozen=True, slots=True, eq=False)
@@ -71,7 +83,7 @@ class DenseCoverage:
 
     left: int
     top: int
-    alpha: NDArray[np.float64]
+    alpha: NDArray[np.floating[Any]]
 
 
 # ----------------------------------------------------------------------
@@ -100,13 +112,17 @@ def stroke_coverage(
     radius = width / 2 + 0.5 if width >= 1.0 else 1.0
     strength = 1.0 if width >= 1.0 else width
     a, b = _split_long(a, b, radius)
-    qx, qy, owner = _candidate_pixels(a, b, radius, clip)
-    if qx.shape[0] == 0:
+    candidates = _segment_distances(a, b, radius, clip)
+    if candidates is None:
         return None
-    alpha = radius - _distance_to_segments(qx, qy, owner, a, b)
-    covered = alpha > 0.0
-    alpha = np.minimum(alpha[covered], 1.0) * strength
-    return _unique_max(qx[covered], qy[covered], alpha.astype(np.float64))
+    qx, qy, distance, box = candidates
+    coverage = _unique_max(qx, qy, radius - distance, box)
+    if coverage is None:
+        return None
+    value = np.minimum(coverage.alpha, 1.0)
+    if strength != 1.0:
+        value *= strength
+    return SparseCoverage(coverage.x, coverage.y, value)
 
 
 def _segments(
@@ -173,13 +189,26 @@ def _split_long(
     return a[seg] + d[seg] * t0, a[seg] + d[seg] * t1
 
 
-def _candidate_pixels(
+def _segment_distances(
     a: NDArray[np.float64],
     b: NDArray[np.float64],
     radius: float,
     clip: PixelBox,
-) -> tuple[NDArray[np.intp], NDArray[np.intp], NDArray[np.intp]]:
-    """List every pixel within ``radius`` of each segment's bounding box.
+) -> tuple[NDArray[np.intp], NDArray[np.intp], NDArray[np.float32], PixelBox] | None:
+    """Measure the distance to each segment from every pixel near it.
+
+    The candidates are the pixels of each segment's bounding box grown by
+    ``radius``. They are generated in two levels, which avoids integer
+    division and per-pixel lookups of segment data:
+
+    1. one entry per (segment, pixel row), holding everything that is
+       constant along the row;
+    2. one entry per pixel, where the projection parameter ``t`` onto the
+       segment changes by a constant step from pixel to pixel along a row.
+
+    The arithmetic is done in ``float32``: coordinates are already clipped
+    to the screen, so single precision is accurate to about 1/10000 of a
+    pixel and halves the memory traffic.
 
     Args:
         a: Segment starts.
@@ -188,9 +217,10 @@ def _candidate_pixels(
         clip: Pixel box to stay within.
 
     Returns:
-        ``(x, y, owner)``: candidate pixel centres and the segment each one
-        was generated for. A pixel near several segments appears several
-        times.
+        ``(x, y, distance, box)``: candidate pixel centres, the distance
+        from each to its segment, and the pixel box enclosing all of them. A
+        pixel near several segments appears several times. ``None`` if there
+        are no candidates.
     """
     cx0, cy0, cx1, cy1 = clip
     x0 = np.maximum(np.ceil(np.minimum(a[:, 0], b[:, 0]) - radius), cx0).astype(np.intp)
@@ -202,45 +232,16 @@ def _candidate_pixels(
         np.intp
     )
     nx = np.maximum(x1 - x0 + 1, 0)
-    ny = np.maximum(y1 - y0 + 1, 0)
-    counts = nx * ny
-    total = int(counts.sum())
-    if total == 0:
-        empty = np.zeros(0, dtype=np.intp)
-        return empty, empty, empty
-    owner = np.repeat(np.arange(a.shape[0], dtype=np.intp), counts)
-    local = np.arange(total, dtype=np.intp) - np.repeat(
-        np.cumsum(counts) - counts, counts
+    ny = np.where(nx > 0, np.maximum(y1 - y0 + 1, 0), 0)
+    used = ny > 0
+    if not used.any():
+        return None
+    box = (
+        int(np.min(x0[used])),
+        int(np.min(y0[used])),
+        int(np.max(x1[used])) + 1,
+        int(np.max(y1[used])) + 1,
     )
-    width = nx[owner]
-    row = local // width
-    return x0[owner] + (local - row * width), y0[owner] + row, owner
-
-
-def _distance_to_segments(
-    qx: NDArray[np.intp],
-    qy: NDArray[np.intp],
-    owner: NDArray[np.intp],
-    a: NDArray[np.float64],
-    b: NDArray[np.float64],
-) -> NDArray[np.float32]:
-    """Return the distance from each pixel centre to the segment it belongs to.
-
-    Per-segment quantities are computed once and gathered, and the arithmetic
-    is done in ``float32``. Coordinates have already been clipped to the
-    screen, so single precision is accurate to about 1/10000 of a pixel and
-    halves the memory traffic.
-
-    Args:
-        qx: Pixel columns.
-        qy: Pixel rows.
-        owner: Index of each pixel's segment.
-        a: Segment starts, shape ``(M, 2)``.
-        b: Segment ends, shape ``(M, 2)``.
-
-    Returns:
-        Euclidean distances in pixels.
-    """
     f32 = np.float32
     ax, ay = a[:, 0].astype(f32), a[:, 1].astype(f32)
     vx, vy = (b[:, 0] - a[:, 0]).astype(f32), (b[:, 1] - a[:, 1]).astype(f32)
@@ -248,43 +249,97 @@ def _distance_to_segments(
     inverse = np.divide(
         f32(1.0), length2, out=np.zeros_like(length2), where=length2 > 0
     )
-    wx = qx.astype(f32) - ax[owner]
-    wy = qy.astype(f32) - ay[owner]
-    ux, uy = vx[owner], vy[owner]
-    t = (wx * ux + wy * uy) * inverse[owner]
+
+    # Level 1: one entry per (segment, row).
+    segment = np.repeat(np.arange(a.shape[0], dtype=np.intp), ny)
+    row_y = y0[segment] + _ranks(ny)
+    row_x = x0[segment]
+    wx_row = row_x.astype(f32) - ax[segment]  # from the start to the row's first pixel
+    wy_row = row_y.astype(f32) - ay[segment]
+    ux, uy, inv = vx[segment], vy[segment], inverse[segment]
+    t_row = (wx_row * ux + wy_row * uy) * inv
+    dt = ux * inv  # change of t per pixel along the row
+
+    # Level 2: one entry per pixel.
+    width = nx[segment]
+    col = _ranks(width)
+    colf = col.astype(f32)
+    t = np.repeat(t_row, width) + colf * np.repeat(dt, width)
     np.clip(t, f32(0.0), f32(1.0), out=t)
-    wx -= t * ux
-    wy -= t * uy
-    return np.sqrt(wx * wx + wy * wy)
+    wx = np.repeat(wx_row, width) + colf - t * np.repeat(ux, width)
+    wy = np.repeat(wy_row, width) - t * np.repeat(uy, width)
+    distance = np.sqrt(wx * wx + wy * wy)
+    return np.repeat(row_x, width) + col, np.repeat(row_y, width), distance, box
+
+
+def _ranks(counts: NDArray[np.intp]) -> NDArray[np.intp]:
+    """Return ``0, 1, ..., n - 1`` for each count ``n``, concatenated.
+
+    Args:
+        counts: How many entries each group has.
+
+    Returns:
+        Each entry's position within its group.
+    """
+    total = int(counts.sum())
+    starts = np.cumsum(counts) - counts
+    return np.arange(total, dtype=np.intp) - np.repeat(starts, counts)
 
 
 def _unique_max(
-    qx: NDArray[np.intp], qy: NDArray[np.intp], alpha: NDArray[np.float64]
+    qx: NDArray[np.intp],
+    qy: NDArray[np.intp],
+    alpha: NDArray[np.float32],
+    box: PixelBox,
 ) -> SparseCoverage | None:
     """Merge duplicate pixels, keeping the largest coverage of each.
 
-    Sorting only the covered pixels costs far less than a buffer spanning
-    the whole stroke's bounding box, which can be the full screen.
+    Neighbouring segments of a stroke share many candidate pixels (dense
+    tangles of curve can list each pixel dozens of times), so this step
+    sees most of the work. Two strategies are used:
+
+    * **Buffer** (usual): accumulate with ``np.maximum.at`` into a buffer
+      covering the candidates' bounding box, then read out the covered
+      pixels. Linear in the number of candidates, so it is fast however
+      many duplicates there are.
+    * **Sort**: when the bounding box is much larger than the number of
+      candidates (a long, thin stroke across the screen), sorting the
+      covered pixels is cheaper than clearing and scanning the buffer.
 
     Args:
         qx: Pixel columns (may repeat).
         qy: Pixel rows (may repeat).
-        alpha: Coverage of each entry.
+        alpha: Raw coverage of each entry; zero or less means not covered.
+        box: Pixel box enclosing all candidates.
 
     Returns:
-        Each covered pixel once, or ``None`` if there are none.
+        Each covered pixel once with its largest raw coverage, or ``None`` if
+        there are none.
     """
-    if qx.shape[0] == 0:
-        return None
-    left, top = int(np.min(qx)), int(np.min(qy))
-    width = int(np.max(qx)) - left + 1
+    left, top, right, bottom = box
+    width = right - left
+    area = width * (bottom - top)
     flat = (qy - top) * width + (qx - left)
-    order = np.argsort(flat, kind="stable")
-    flat = flat[order]
-    starts = np.flatnonzero(np.concatenate(([True], flat[1:] != flat[:-1])))
-    best = np.maximum.reduceat(alpha[order], starts)
-    unique = flat[starts]
-    return SparseCoverage(unique % width + left, unique // width + top, best)
+    if area <= _BUFFER_FACTOR * qx.shape[0]:
+        best = np.zeros(area, dtype=np.float32)
+        np.maximum.at(best, flat, alpha)
+        unique = np.flatnonzero(best > 0.0)
+        values = best[unique]
+    else:
+        covered = alpha > 0.0
+        flat, alpha = flat[covered], alpha[covered]
+        if flat.shape[0] == 0:
+            return None
+        order = np.argsort(flat, kind="stable")
+        flat = flat[order]
+        starts = np.flatnonzero(np.concatenate(([True], flat[1:] != flat[:-1])))
+        values = np.maximum.reduceat(alpha[order], starts)
+        unique = flat[starts]
+    if unique.shape[0] == 0:
+        return None
+    return SparseCoverage(
+        unique % width + left, unique // width + top, values.astype(np.float64)
+    )
 
 
 # ----------------------------------------------------------------------
@@ -440,7 +495,7 @@ def _accumulate_spans(
     height: int,
     width: int,
     subsamples: int,
-) -> NDArray[np.float64]:
+) -> NDArray[np.float32]:
     """Turn spans into per-pixel coverage with a cumulative-sum trick.
 
     For a span ``[s, e)`` the coverage of pixel ``i`` (covering ``[i, i+1)``
@@ -459,18 +514,27 @@ def _accumulate_spans(
         subsamples: Sub-scanlines per row (each contributes ``1/subsamples``).
 
     Returns:
-        Coverage of shape ``(height, width)``.
+        Coverage of shape ``(height, width)`` (``float32``).
     """
-    weights = np.zeros((height, width + 2))
+    # float32 is ample for coverage and halves the memory traffic of the
+    # block-sized arrays, which dominate the cost of large fills.
+    weights = np.zeros((height, width + 2), dtype=np.float32)
     u0 = np.clip(start + 0.5, 0.0, float(width))  # to pixel-edge coordinates
     u1 = np.clip(end + 0.5, 0.0, float(width))
     share = 1.0 / subsamples
     for u, sign in ((u0, share), (u1, -share)):
         i = np.floor(u).astype(np.intp)
         f = u - i
-        np.add.at(weights, (rows, i), sign * (1.0 - f))
-        np.add.at(weights, (rows, i + 1), sign * f)
-    return np.clip(np.cumsum(weights, axis=1)[:, :width], 0.0, 1.0)
+        np.add.at(weights, (rows, i), (sign * (1.0 - f)).astype(np.float32))
+        np.add.at(weights, (rows, i + 1), (sign * f).astype(np.float32))
+    np.cumsum(weights, axis=1, out=weights)
+    coverage = weights[:, :width]
+    # Round-off in the running sums leaves tiny errors: snap them, so empty
+    # pixels (such as a hole) are exactly 0 and solid ones exactly 1.
+    np.clip(coverage, 0.0, 1.0, out=coverage)
+    coverage[coverage < _SNAP] = 0.0
+    coverage[coverage > 1.0 - _SNAP] = 1.0
+    return coverage
 
 
 # ----------------------------------------------------------------------

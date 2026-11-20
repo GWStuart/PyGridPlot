@@ -215,7 +215,7 @@ class InteractionController:
         self._mouse = (int(event.pos[0]), int(event.pos[1]))
         if self._drag_anchor is None:
             return False
-        self._view.pin(self._drag_anchor, self._mouse)
+        self._view.pin_transformed(self._drag_anchor, self._mouse)
         return True
 
     def _on_button_down(self, event: pygame.event.Event) -> bool:
@@ -233,7 +233,11 @@ class InteractionController:
         if event.button == self.config.pan_button:
             self._pan_x.stop()  # a drag takes over from keyboard panning
             self._pan_y.stop()
-            self._drag_anchor = self._view.to_world(*map(float, self._mouse))
+            # Kept in transformed coordinates, which stay finite on a log
+            # axis even when the world value would overflow.
+            self._drag_anchor = self._view.screen_to_transformed(
+                *map(float, self._mouse)
+            )
             return True
         # Buttons 4/5 are the legacy duplicates of wheel events; the wheel
         # itself is handled through MOUSEWHEEL.

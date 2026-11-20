@@ -1,32 +1,31 @@
 """The pure maths layer of PyGridPlot.
 
 Everything in this package depends only on the standard library and NumPy.
-It must **never** import pygame (a test enforces this), so it stays fast to
-test, easy to reason about and reusable with other rendering backends.
+It must **never** import pygame (``tests/test_architecture.py`` enforces
+this), so it stays fast to test, easy to reason about and reusable with
+other rendering backends. Code here describes *what* to draw, as
+backend-neutral primitives in screen space; renderers decide *how*.
 
-Modules, roughly in dependency order:
+Foundations, used by everything else:
 
-* :mod:`~pygridplot.core.coords`: screen rectangles, world bounds, type
+* :mod:`~pygridplot.core.coords`: screen rectangles, world bounds and type
   aliases.
-* :mod:`~pygridplot.core.pixels`: pixel-snapping conventions.
-* :mod:`~pygridplot.core.view`: the camera with world/screen transforms and
+* :mod:`~pygridplot.core.pixels`: the pixel-snapping conventions.
+* :mod:`~pygridplot.core.transforms`: linear and logarithmic axes.
+* :mod:`~pygridplot.core.view`: the camera, with world/screen transforms and
   pan/zoom maths.
-* :mod:`~pygridplot.core.nice`: the exact 1-2-5 spacing ladder.
-* :mod:`~pygridplot.core.spacing`: choosing a spacing for the zoom level
-  (fade or snap).
-* :mod:`~pygridplot.core.labels`: exact tick label formatting.
-* :mod:`~pygridplot.core.primitives`: drawing primitives handed to renderers.
-* :mod:`~pygridplot.core.theme`: grid appearance and presets.
-* :mod:`~pygridplot.core.ticks`: grid line generation and classification.
-* :mod:`~pygridplot.core.gridlines`: painting grid lines and axes.
-* :mod:`~pygridplot.core.ticklabels`: which labels to show (thinning, fades).
-* :mod:`~pygridplot.core.layout`: tick label placement.
-* :mod:`~pygridplot.core.grid`: assembling the full grid for a frame.
+* :mod:`~pygridplot.core.framing`: initial ranges, the home view and
+  switching axis kinds.
 * :mod:`~pygridplot.core.easing`: the spring behind eased pan and zoom.
-* :mod:`~pygridplot.core.style`: line, point and polygon styles; the palette.
-* :mod:`~pygridplot.core.evaluation`: calling user functions without ever
-  raising.
-* :mod:`~pygridplot.core.sampling`: adaptive sampling of ``y = f(x)``.
-* :mod:`~pygridplot.core.geometry`: point input and clipping to the screen.
-* :mod:`~pygridplot.core.plotting`: plotted objects to screen primitives.
+* :mod:`~pygridplot.core.primitives`: the drawing primitives handed to
+  renderers, and the text-measuring protocol.
+* :mod:`~pygridplot.core.grid.theme`: the plane's appearance and presets.
+
+Subpackages:
+
+* :mod:`pygridplot.core.grid`: the adaptive grid, its tick labels and their
+  layout (entry point :func:`pygridplot.core.grid.scene.build_grid`).
+* :mod:`pygridplot.core.plot`: plotted objects (functions, curves, points,
+  polylines, polygons) to primitives (entry point
+  :mod:`pygridplot.core.plot.builders`).
 """
