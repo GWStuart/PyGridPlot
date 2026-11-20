@@ -50,6 +50,7 @@ from pygridplot.core.plotting import (
     polygon_shapes,
     polyline_stroke,
 )
+from pygridplot.core.primitives import Fill, Markers, Stroke
 from pygridplot.core.sampling import DEFAULT_SAMPLING, SamplingConfig
 from pygridplot.core.style import (
     ColorCycle,
@@ -306,10 +307,7 @@ class Plane:
             domain=domain,
             sampling=sampling if sampling is not None else self._sampling,
         )
-        if stroke is not None:
-            with self._renderer.clipped(surface, self.rect) as visible:
-                if visible is not None:
-                    self._renderer.draw_stroke(surface, stroke)
+        self._draw(surface, stroke)
 
     def points(
         self,
@@ -353,10 +351,7 @@ class Plane:
         markers = point_markers(
             self._view, points, point, self._colors.resolve(point.color)
         )
-        if markers is not None:
-            with self._renderer.clipped(surface, self.rect) as visible:
-                if visible is not None:
-                    self._renderer.draw_markers(surface, markers)
+        self._draw(surface, markers)
 
     def polyline(
         self,
@@ -390,10 +385,7 @@ class Plane:
         stroke = polyline_stroke(
             self._view, points, line, self._colors.resolve(line.color), closed=closed
         )
-        if stroke is not None:
-            with self._renderer.clipped(surface, self.rect) as visible:
-                if visible is not None:
-                    self._renderer.draw_stroke(surface, stroke)
+        self._draw(surface, stroke)
 
     def polygon(
         self,
@@ -443,15 +435,7 @@ class Plane:
         area, outline = polygon_shapes(
             self._view, points, shape, self._colors.resolve(shape.color)
         )
-        if area is None and outline is None:
-            return
-        with self._renderer.clipped(surface, self.rect) as visible:
-            if visible is None:
-                return
-            if area is not None:
-                self._renderer.draw_fill(surface, area)
-            if outline is not None:
-                self._renderer.draw_stroke(surface, outline)
+        self._draw(surface, area, outline)
 
     # ------------------------------------------------------------------
     # Coordinates and view control
@@ -521,6 +505,33 @@ class Plane:
 
     def __repr__(self) -> str:
         return f"Plane(view={self._view!r})"
+
+    def _draw(
+        self, surface: pygame.Surface, *primitives: Stroke | Fill | Markers | None
+    ) -> None:
+        """Draw primitives in order, clipped to the plane.
+
+        Every plotting method ends here, so a new kind of plot only needs to
+        build primitives (see :mod:`pygridplot.core.plotting`) and pass them on.
+
+        Args:
+            surface: The surface to draw on.
+            *primitives: What to draw, in painter's order; ``None`` entries
+                (nothing visible) are skipped.
+        """
+        shapes = [shape for shape in primitives if shape is not None]
+        if not shapes:
+            return
+        with self._renderer.clipped(surface, self.rect) as visible:
+            if visible is None:
+                return
+            for shape in shapes:
+                if isinstance(shape, Stroke):
+                    self._renderer.draw_stroke(surface, shape)
+                elif isinstance(shape, Fill):
+                    self._renderer.draw_fill(surface, shape)
+                else:
+                    self._renderer.draw_markers(surface, shape)
 
     def _sync_rect(self, surface: pygame.Surface) -> None:
         """Make an automatic plane fill ``surface`` (no-op for explicit rects).

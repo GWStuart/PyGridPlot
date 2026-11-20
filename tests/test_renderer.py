@@ -201,3 +201,16 @@ def test_grid_lines_use_only_theme_colours() -> None:
     }
     found = {tuple(int(c) for c in p) for p in np.unique(pixels, axis=0)}
     assert found <= allowed
+
+
+def test_clear_caches_drops_everything_and_drawing_still_works() -> None:
+    renderer = PygameRenderer()
+    surface = blank((80, 60))
+    font = FontSpec(None, 12)
+    text = LabelText((TextRun("12"),))
+    renderer.draw_text(surface, TextItem(text, 10, 10, font, BLACK))
+    renderer.clear_caches()
+    assert not renderer._text._rendered
+    renderer.draw_text(surface, TextItem(text, 10, 30, font, BLACK))  # re-renders
+    label_area = pygame.surfarray.array3d(surface)[10:30, 30:40]
+    assert label_area.min() < 128  # the label was drawn again
