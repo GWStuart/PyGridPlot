@@ -6,6 +6,7 @@ visible), a :class:`~pygridplot.core.theme.GridTheme` (how it looks), an
 renderer (drawing). It is a *library* object: your program owns the main
 loop and calls the plane each frame::
 
+    import numpy as np
     import pygame
     import pygridplot as pgp
 
@@ -21,8 +22,15 @@ loop and calls the plane each frame::
                 running = False
             plane.handle_event(event)
         plane.draw_grid(screen)
+        plane.plot(screen, np.sin)
+        plane.points(screen, [(0, 0), (np.pi, 0)])
+        plane.polygon(screen, [(1, 1), (3, 1), (2, 2.5)])
         pygame.display.flip()
         clock.tick(60)
+
+Drawing is *immediate mode*: everything is recomputed from the current view
+every frame, so plots follow panning and zooming automatically and animating
+them needs no extra work.
 """
 
 from __future__ import annotations
@@ -33,12 +41,33 @@ import numpy as np
 import pygame
 from numpy.typing import ArrayLike, NDArray
 
-from pygridplot.core.coords import ScreenRect
+from pygridplot.core.coords import ColorLike, ScreenRect
+from pygridplot.core.evaluation import Function
 from pygridplot.core.grid import GridScene, GridState, build_grid
+from pygridplot.core.plotting import (
+    function_stroke,
+    point_markers,
+    polygon_shapes,
+    polyline_stroke,
+)
+from pygridplot.core.sampling import DEFAULT_SAMPLING, SamplingConfig
+from pygridplot.core.style import (
+    ColorCycle,
+    FillRule,
+    LineStyle,
+    MarkerShape,
+    PointStyle,
+    PolygonStyle,
+    with_overrides,
+)
 from pygridplot.core.theme import LIGHT, GridTheme
 from pygridplot.core.view import View, ViewLimits, ViewState
 from pygridplot.interaction import InteractionConfig, InteractionController
 from pygridplot.render.pygame_renderer import PygameRenderer
+
+_DEFAULT_LINE = LineStyle()
+_DEFAULT_POINT = PointStyle()
+_DEFAULT_POLYGON = PolygonStyle()
 
 
 class Plane:
@@ -58,6 +87,8 @@ class Plane:
         limits: Zoom and pan limits (see :class:`~pygridplot.ViewLimits`).
         renderer: Renderer to draw with. Planes can share one renderer, and
             with it their font and label caches.
+        sampling: How functions are sampled by :meth:`plot` (the defaults suit
+            almost every function).
     """
 
     def __init__(
@@ -72,6 +103,7 @@ class Plane:
         interaction: InteractionConfig | None = None,
         limits: ViewLimits | None = None,
         renderer: PygameRenderer | None = None,
+        sampling: SamplingConfig | None = None,
     ) -> None:
         self._auto_rect = rect is None
         initial = _display_rect() if rect is None else ScreenRect.from_any(rect)
@@ -87,6 +119,8 @@ class Plane:
         self._controller = InteractionController(
             self._view, interaction, on_reset=self.reset_view
         )
+        self._colors = ColorCycle(self._theme.palette)
+        self._sampling = sampling if sampling is not None else DEFAULT_SAMPLING
         self._last_grid: GridScene | None = None
 
     # ------------------------------------------------------------------
@@ -127,6 +161,16 @@ class Plane:
     def theme(self, theme: GridTheme) -> None:
         self._theme = theme
         self._grid_state.reset()
+        self._colors.palette = theme.palette
+
+    @property
+    def sampling(self) -> SamplingConfig:
+        """How :meth:`plot` samples functions (assign to change it)."""
+        return self._sampling
+
+    @sampling.setter
+    def sampling(self, config: SamplingConfig) -> None:
+        self._sampling = config
 
     @property
     def interaction(self) -> InteractionConfig:
@@ -183,22 +227,231 @@ class Plane:
             return False
         return self._controller.update()
 
+    def begin_frame(self) -> None:
+        """Start a new frame for the colour palette.
+
+        The next object drawn without a colour gets the first palette colour
+        again. :meth:`draw_grid` calls this automatically. Call it yourself only if
+        you draw plots without drawing the grid, so that every object keeps
+        the same palette colour from frame to frame.
+        """
+        self._colors.reset()
+
     def draw_grid(self, surface: pygame.Surface) -> None:
         """Draw the background, grid lines, axes and tick labels.
 
         Drawing is clipped to :attr:`rect`, so the plane can share a window
         with other content. Call it once per frame, before drawing anything
-        that should appear on top of the grid.
+        that should appear on top of the grid. It also starts a new frame
+        for the colour palette (see :meth:`begin_frame`).
 
         Args:
             surface: The surface to draw on (usually the display surface).
         """
-        if self._auto_rect:
-            self._view.rect = surface.get_rect()
+        self._sync_rect(surface)
         self.update()
+        self.begin_frame()
         scene = build_grid(self._view, self._theme, self._renderer, self._grid_state)
         self._renderer.draw_grid(surface, scene)
         self._last_grid = scene
+
+    # ------------------------------------------------------------------
+    # Plotting
+    # ------------------------------------------------------------------
+    def plot(
+        self,
+        surface: pygame.Surface,
+        func: Function,
+        *,
+        color: ColorLike | None = None,
+        width: float | None = None,
+        opacity: float | None = None,
+        domain: tuple[float, float] | None = None,
+        style: LineStyle | None = None,
+        sampling: SamplingConfig | None = None,
+    ) -> None:
+        """Plot the graph of an explicit function ``y = func(x)``.
+
+        ``func`` can be vectorised (written with NumPy, the fastest) or work
+        on single numbers only (for example written with :mod:`math`). Points
+        where it raises an error or returns NaN or a complex number are left
+        out, and jumps such as the asymptotes of ``tan`` are not joined up.
+
+        Args:
+            surface: The surface to draw on.
+            func: The function to plot.
+            color: Line colour (default: the next palette colour).
+            width: Line width in pixels (default 2.5).
+            opacity: Line opacity in ``[0, 1]``.
+            domain: Only plot where ``domain[0] <= x <= domain[1]``.
+            style: A reusable :class:`~pygridplot.LineStyle`. The other
+                keyword arguments override its fields.
+            sampling: Override the plane's sampling settings for this call.
+
+        Note:
+            When creating functions in a loop, bind the loop variable as a
+            default argument: ``[lambda x, k=k: x**k for k in range(3)]``.
+            Plain ``lambda x: x**k`` would make every function use the last
+            ``k``.
+        """
+        self._sync_rect(surface)
+        line = with_overrides(
+            style or _DEFAULT_LINE, color=color, width=width, opacity=opacity
+        )
+        stroke = function_stroke(
+            self._view,
+            func,
+            line,
+            self._colors.resolve(line.color),
+            domain=domain,
+            sampling=sampling if sampling is not None else self._sampling,
+        )
+        if stroke is not None:
+            with self._renderer.clipped(surface, self.rect) as visible:
+                if visible is not None:
+                    self._renderer.draw_stroke(surface, stroke)
+
+    def points(
+        self,
+        surface: pygame.Surface,
+        points: ArrayLike,
+        *,
+        color: ColorLike | None = None,
+        radius: float | None = None,
+        marker: MarkerShape | None = None,
+        edge_color: ColorLike | None = None,
+        edge_width: float | None = None,
+        opacity: float | None = None,
+        style: PointStyle | None = None,
+    ) -> None:
+        """Draw points as markers that keep the same size in pixels at every zoom.
+
+        Args:
+            surface: The surface to draw on.
+            points: A single point ``(x, y)``, a sequence of points, or an
+                ``(N, 2)`` array. Points with a NaN coordinate are skipped.
+            color: Marker colour (default: the next palette colour).
+            radius: Marker size in pixels (default 4.5).
+            marker: ``"circle"`` (default), ``"square"``, ``"diamond"``,
+                ``"cross"`` or ``"plus"``.
+            edge_color: Colour of an outline around each marker.
+            edge_width: Outline thickness in pixels (default 1.5).
+            opacity: Opacity in ``[0, 1]``.
+            style: A reusable :class:`~pygridplot.PointStyle`. The other
+                keyword arguments override its fields.
+        """
+        self._sync_rect(surface)
+        point = with_overrides(
+            style or _DEFAULT_POINT,
+            color=color,
+            radius=radius,
+            marker=marker,
+            edge_color=edge_color,
+            edge_width=edge_width,
+            opacity=opacity,
+        )
+        markers = point_markers(
+            self._view, points, point, self._colors.resolve(point.color)
+        )
+        if markers is not None:
+            with self._renderer.clipped(surface, self.rect) as visible:
+                if visible is not None:
+                    self._renderer.draw_markers(surface, markers)
+
+    def polyline(
+        self,
+        surface: pygame.Surface,
+        points: ArrayLike,
+        *,
+        color: ColorLike | None = None,
+        width: float | None = None,
+        opacity: float | None = None,
+        closed: bool = False,
+        style: LineStyle | None = None,
+    ) -> None:
+        """Draw straight lines through a sequence of world-space vertices.
+
+        Args:
+            surface: The surface to draw on.
+            points: The vertices, in order: a sequence of points or an
+                ``(N, 2)`` array. A vertex with a NaN coordinate breaks the
+                line.
+            color: Line colour (default: the next palette colour).
+            width: Line width in pixels (default 2.5).
+            opacity: Line opacity in ``[0, 1]``.
+            closed: Connect the last vertex back to the first.
+            style: A reusable :class:`~pygridplot.LineStyle`. The other
+                keyword arguments override its fields.
+        """
+        self._sync_rect(surface)
+        line = with_overrides(
+            style or _DEFAULT_LINE, color=color, width=width, opacity=opacity
+        )
+        stroke = polyline_stroke(
+            self._view, points, line, self._colors.resolve(line.color), closed=closed
+        )
+        if stroke is not None:
+            with self._renderer.clipped(surface, self.rect) as visible:
+                if visible is not None:
+                    self._renderer.draw_stroke(surface, stroke)
+
+    def polygon(
+        self,
+        surface: pygame.Surface,
+        points: ArrayLike,
+        *,
+        color: ColorLike | None = None,
+        width: float | None = None,
+        opacity: float | None = None,
+        fill: bool | None = None,
+        fill_color: ColorLike | None = None,
+        fill_opacity: float | None = None,
+        fill_rule: FillRule | None = None,
+        style: PolygonStyle | None = None,
+    ) -> None:
+        """Draw a polygon: a translucent fill with an outline.
+
+        The polygon's vertices are in world units, so it grows and shrinks
+        with the zoom. Its outline width is in pixels.
+
+        Args:
+            surface: The surface to draw on.
+            points: The vertices of the ring, in order (it closes itself).
+            color: Outline colour, also used for the fill unless
+                ``fill_color`` is given (default: the next palette colour).
+            width: Outline width in pixels (default 2.5; ``0`` for none).
+            opacity: Outline opacity in ``[0, 1]``.
+            fill: Whether to fill the polygon (default ``True``).
+            fill_color: Fill colour (default: the outline colour).
+            fill_opacity: Fill opacity in ``[0, 1]`` (default 0.25).
+            fill_rule: ``"nonzero"`` (default) or ``"evenodd"``, for polygons
+                whose edges cross.
+            style: A reusable :class:`~pygridplot.PolygonStyle`. The other
+                keyword arguments override its fields.
+        """
+        self._sync_rect(surface)
+        shape = with_overrides(
+            style or _DEFAULT_POLYGON,
+            color=color,
+            width=width,
+            opacity=opacity,
+            fill=fill,
+            fill_color=fill_color,
+            fill_opacity=fill_opacity,
+            fill_rule=fill_rule,
+        )
+        area, outline = polygon_shapes(
+            self._view, points, shape, self._colors.resolve(shape.color)
+        )
+        if area is None and outline is None:
+            return
+        with self._renderer.clipped(surface, self.rect) as visible:
+            if visible is None:
+                return
+            if area is not None:
+                self._renderer.draw_fill(surface, area)
+            if outline is not None:
+                self._renderer.draw_stroke(surface, outline)
 
     # ------------------------------------------------------------------
     # Coordinates and view control
@@ -268,6 +521,15 @@ class Plane:
 
     def __repr__(self) -> str:
         return f"Plane(view={self._view!r})"
+
+    def _sync_rect(self, surface: pygame.Surface) -> None:
+        """Make an automatic plane fill ``surface`` (no-op for explicit rects).
+
+        Args:
+            surface: The surface being drawn on.
+        """
+        if self._auto_rect:
+            self._view.rect = surface.get_rect()
 
 
 def _display_rect() -> ScreenRect:

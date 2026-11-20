@@ -1,4 +1,4 @@
-"""Render a gallery of tricky grid views to PNG files for visual review.
+"""Render a gallery of tricky grid and plot views to PNG files for visual review.
 
 This is a development tool. It runs headless (no window), renders each view
 in :data:`VIEWS` to ``<out>/<name>.png``, and also writes a contact sheet
@@ -17,15 +17,82 @@ from __future__ import annotations
 import argparse
 import math
 import os
+from collections.abc import Callable
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
 os.environ.setdefault("PYGAME_HIDE_SUPPORT_PROMPT", "1")
 
+import numpy as np
 import pygame
 
 import pygridplot as pgp
+
+Scene = Callable[[pgp.Plane, pygame.Surface], None]
+"""Draws plots on top of a view's grid."""
+
+
+def scene_test_set(plane: pgp.Plane, surface: pygame.Surface) -> None:
+    """Plot the shared function test set from the project plan.
+
+    Args:
+        plane: The plane.
+        surface: The surface to draw on.
+    """
+    for func in (lambda x: 1 / x, np.tan, np.sqrt, np.log, np.floor, lambda x: x**2):
+        plane.plot(surface, func)
+
+
+def scene_hard(plane: pgp.Plane, surface: pygame.Surface) -> None:
+    """Plot functions that are hard to sample well.
+
+    Args:
+        plane: The plane.
+        surface: The surface to draw on.
+    """
+    plane.plot(surface, math.gamma)
+    plane.plot(surface, lambda x: np.sin(x) / x)
+    plane.plot(surface, lambda x: np.sin(1 / x))
+    plane.plot(surface, lambda x: np.sqrt(np.sin(x)))
+
+
+def scene_shapes(plane: pgp.Plane, surface: pygame.Surface) -> None:
+    """Draw every marker shape, polylines and polygons (both fill rules).
+
+    Args:
+        plane: The plane.
+        surface: The surface to draw on.
+    """
+    for i, marker in enumerate(("circle", "square", "diamond", "cross", "plus")):
+        x = -6 + 1.3 * i
+        plane.points(surface, (x, 4.0), marker=marker, radius=6)  # type: ignore[arg-type]
+        plane.points(
+            surface,
+            (x, 3.0),
+            marker=marker,
+            radius=6,
+            edge_color="white",  # type: ignore[arg-type]
+        )
+    angles = np.pi / 2 + np.arange(5) * 4 * np.pi / 5
+    star = np.column_stack((2 * np.cos(angles), 2 * np.sin(angles)))
+    plane.polygon(surface, star + np.array([3.5, 2.5]), fill_rule="nonzero")
+    plane.polygon(surface, star + np.array([7.0, 2.5]), fill_rule="evenodd")
+    plane.polygon(surface, [(-6, -1), (-3, -1), (-4.5, 1.5)])
+    theta = np.linspace(0, 6 * np.pi, 300)
+    spiral = np.column_stack(
+        (0.12 * theta * np.cos(theta), 0.12 * theta * np.sin(theta))
+    )
+    plane.polyline(surface, spiral + np.array([2.0, -2.5]), width=2)
+    xs = np.linspace(-7, 7, 50)
+    plane.points(surface, np.column_stack((xs, -4.5 + 0.4 * np.sin(xs))), radius=3)
+
+
+SCENES: dict[str, Scene] = {
+    "test_set": scene_test_set,
+    "hard": scene_hard,
+    "shapes": scene_shapes,
+}
 
 
 @dataclass(frozen=True)
@@ -39,6 +106,7 @@ class GalleryView:
         theme: Theme name: ``"light"`` or ``"dark"``.
         overrides: Theme fields to override.
         embedded: Draw the plane in a sub-rectangle of the surface.
+        scene: Name of the plots to draw on top (see :data:`SCENES`), if any.
     """
 
     name: str
@@ -47,6 +115,7 @@ class GalleryView:
     theme: str = "light"
     overrides: dict[str, object] = field(default_factory=dict)
     embedded: bool = False
+    scene: str | None = None
 
 
 VIEWS: tuple[GalleryView, ...] = (
@@ -68,6 +137,12 @@ VIEWS: tuple[GalleryView, ...] = (
     GalleryView("16_snap_mode", overrides={"transition": "snap"}),
     GalleryView("17_big_negative", center=(-2.5e6, -1.5e6), scale=2e-4),
     GalleryView("18_axis_near_top_right", center=(-8.8, -5.9)),
+    GalleryView("19_functions", scale=60.0, scene="test_set"),
+    GalleryView("20_functions_dark", scale=60.0, theme="dark", scene="test_set"),
+    GalleryView("21_hard_functions", scale=60.0, scene="hard"),
+    GalleryView("22_zoomed_function", center=(1.0, 0.8415), scale=4e5, scene="hard"),
+    GalleryView("23_shapes", scale=55.0, scene="shapes"),
+    GalleryView("24_shapes_embedded", scale=40.0, embedded=True, scene="shapes"),
 )
 
 
@@ -107,6 +182,8 @@ def render_view(view: GalleryView, size: tuple[int, int]) -> pygame.Surface:
         theme=theme_for(view),
     )
     plane.draw_grid(surface)
+    if view.scene is not None:
+        SCENES[view.scene](plane, surface)
     return surface
 
 

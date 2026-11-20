@@ -31,8 +31,32 @@ For a quick look: `python -c "import pygridplot; pygridplot.show()"`.
 
 ## Status
 
-Milestones 0–2 of `PROJECT_PLAN.md` are done: the view, interaction and the
-adaptive grid. Function, point and polygon plotting come next.
+Milestones 0–4 of `PROJECT_PLAN.md`: the view, interaction, the adaptive grid,
+and plotting of functions, points, polylines and polygons.
+
+```python
+plane.plot(screen, np.tan)                              # asymptotes are not joined
+plane.plot(screen, math.sqrt, domain=(0, 4), width=4)   # scalar-only functions work too
+plane.points(screen, [(0, 0), (1, 2)], marker="diamond", edge_color="white")
+plane.polyline(screen, [(0, 0), (1, 1), (2, 0)], closed=True)
+plane.polygon(screen, [(0, 0), (3, 0), (1, 2)], fill_opacity=0.3)
+```
+
+Objects drawn without a colour take the theme's palette colours in order (the
+cycle restarts in `draw_grid`). Functions are sampled adaptively every frame,
+anchored to the world so curves move rigidly when panning:
+
+* errors, NaNs and complex values leave gaps instead of crashing the frame;
+* domain edges are found exactly (`sqrt(x)` starts at the origin);
+* jumps (`floor`, `1/x`, `tan`) are broken instead of joined by vertical
+  lines, while the branches of a pole run all the way to the edge;
+* scalar-only functions (written with `math`) work too, more slowly.
+
+Curves are drawn with an antialiased round pen (`render/raster.py`), so they
+look uniformly smooth at any width, and joints never darken.
+
+When building functions in a loop, bind loop variables as defaults:
+`[lambda x, k=k: x**k for k in range(3)]`.
 
 ## Controls
 
@@ -94,10 +118,15 @@ ruff check . && ruff format --check .
 mypy                                 # strict
 ```
 
-Visual tools:
+Examples:
 
 ```bash
-python examples/grid_playground.py   # interactive, with a debug overlay and hotkeys
+python examples/basic_grid.py        # the smallest program
+python examples/functions.py         # the function test set and hard cases (Space)
+python examples/shapes.py            # points, polylines, polygons, fill rules
+python examples/animation.py         # everything moving, every frame
+python examples/many_functions.py    # a family of curves (and lambda late binding)
+python examples/grid_playground.py   # tuning, debug overlay, P cycles plots
 python examples/zoom_sweep.py        # automated zoom/pan stress test
 python scripts/render_gallery.py --out renders/gallery   # PNGs of tricky views
 ```
@@ -119,9 +148,18 @@ src/pygridplot/
 │   ├── ticklabels.py  # which labels to show: thinning, fades, notation
 │   ├── layout.py      # label placement, pinning, collisions
 │   ├── primitives.py  # backend-neutral drawing primitives
-│   ├── theme.py       # GridTheme, LIGHT, DARK
-│   └── grid.py        # build_grid(): one frame of grid primitives
-├── render/            # pygame backend (fonts, text, colours, drawing)
+│   ├── theme.py       # GridTheme, LIGHT, DARK (including the plot palette)
+│   ├── grid.py        # build_grid(): one frame of grid primitives
+│   ├── style.py       # LineStyle, PointStyle, PolygonStyle, colour cycle
+│   ├── evaluation.py  # calling user functions robustly (errors -> NaN)
+│   ├── sampling.py    # adaptive sampling of y = f(x): edges, jumps, poles
+│   ├── geometry.py    # point input, polyline and polygon clipping
+│   └── plotting.py    # plotted objects -> clipped screen primitives
+├── render/            # pygame backend
+│   ├── raster.py      # antialiased coverage: strokes, fills, markers (NumPy)
+│   ├── composite.py   # blending coverage onto pygame surfaces
+│   ├── markers.py     # cached, sub-pixel marker stamps
+│   └── ...            # renderer, text, fonts, colours
 ├── interaction.py     # events -> pan/zoom
 ├── plane.py           # public Plane class
 └── quick.py           # show()

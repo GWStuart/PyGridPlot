@@ -25,7 +25,10 @@ from pygridplot.core.spacing import MAX_FADE_BAND, TransitionMode
 
 @dataclass(frozen=True, slots=True)
 class GridTheme:
-    """Everything that controls how the grid, axes and tick labels look.
+    """Everything that controls how the plane looks.
+
+    This covers the grid, the axes and the tick labels, plus the palette that
+    plotted objects take their default colours from.
 
     Attributes:
         background: Colour the plane is filled with before the grid is drawn,
@@ -69,6 +72,8 @@ class GridTheme:
         hang_minus: If ``True``, x-axis labels centre their digits on the tick
             and let a minus sign hang to the left, as in typeset maths.
         number_format: How tick values are written.
+        palette: Colours given, in order, to plotted objects drawn without an
+            explicit colour (see :class:`pygridplot.core.style.ColorCycle`).
     """
 
     background: ColorLike | None = (255, 255, 255)
@@ -101,6 +106,14 @@ class GridTheme:
     label_min_separation: int = 14
     hang_minus: bool = True
     number_format: NumberFormat = field(default_factory=NumberFormat)
+    palette: tuple[ColorLike, ...] = (
+        (204, 59, 52),
+        (41, 111, 189),
+        (46, 143, 72),
+        (122, 75, 182),
+        (232, 134, 28),
+        (36, 36, 36),
+    )
 
     def __post_init__(self) -> None:
         """Validate numeric settings so mistakes fail early and clearly."""
@@ -119,6 +132,9 @@ class GridTheme:
             raise ValueError(msg)
         if self.label_size < 1 or self.label_halo_width < 0:
             msg = "label_size must be positive and label_halo_width non-negative"
+            raise ValueError(msg)
+        if not self.palette:
+            msg = "palette needs at least one colour"
             raise ValueError(msg)
 
     @property
@@ -146,5 +162,13 @@ DARK = replace(
     major_color=(62, 66, 75),
     axis_color=(214, 217, 224),
     label_color=(204, 208, 216),
+    palette=(
+        (255, 107, 94),
+        (90, 166, 255),
+        (95, 211, 111),
+        (181, 140, 255),
+        (255, 173, 74),
+        (230, 230, 230),
+    ),
 )
 """A dark theme with the same layout as :data:`LIGHT`."""

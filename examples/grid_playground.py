@@ -1,4 +1,4 @@
-"""An interactive playground for tuning the grid, with a debug overlay.
+"""An interactive playground for tuning the grid and plots, with a debug overlay.
 
 Pan and zoom as usual, and use these keys to change settings live:
 
@@ -14,20 +14,24 @@ A       toggle axes
 L       toggle labels
 H       toggle label halos
 S       toggle eased (smooth) zooming
+P       cycle plots: none / functions / shapes
 [ / ]   decrease / increase the target major spacing
 F1      show or hide this overlay
 Esc     quit
 ======  ==============================================
 
 The overlay shows the current scale, centre, chosen spacings (including
-cross-fade weights), frame time and the time spent drawing the grid.
+cross-fade weights), frame time and the time spent drawing the grid and the
+plots.
 """
 
 from __future__ import annotations
 
+import math
 import time
 from dataclasses import replace
 
+import numpy as np
 import pygame
 
 import pygridplot as pgp
@@ -36,8 +40,33 @@ from pygridplot.render.fonts import bundled_font_path
 
 HELP = (
     "T theme  F fade/snap  R rule  N minor  J major  A axes  L labels  "
-    "H halo  S smooth  [ ] spacing  F1 overlay"
+    "H halo  S smooth  P plots  [ ] spacing  F1 overlay"
 )
+
+OVERLAYS = ("none", "functions", "shapes")
+"""What the P key cycles through."""
+
+
+def draw_plots(plane: pgp.Plane, screen: pygame.Surface, overlay: str) -> None:
+    """Draw the chosen set of plots on top of the grid.
+
+    Args:
+        plane: The plane.
+        screen: The display surface.
+        overlay: One of :data:`OVERLAYS`.
+    """
+    if overlay == "functions":
+        for func in (lambda x: 1 / x, np.tan, np.sqrt, np.log, np.floor, math.gamma):
+            plane.plot(screen, func)
+    elif overlay == "shapes":
+        angles = np.pi / 2 + np.arange(5) * 4 * np.pi / 5
+        star = np.column_stack((2 * np.cos(angles), 2 * np.sin(angles)))
+        plane.polygon(screen, star)
+        plane.polygon(screen, star + np.array([5.0, 0.0]), fill_rule="evenodd")
+        xs = np.linspace(-8, 8, 81)
+        plane.polyline(screen, np.column_stack((xs, np.sin(xs) - 3)), width=1.5)
+        plane.points(screen, np.column_stack((xs, np.sin(xs) - 3)), radius=3)
+        plane.points(screen, [(-4, 3), (-3, 3), (-2, 3)], marker="diamond", radius=7)
 
 
 def describe_spacing(choice: SpacingChoice) -> str:
@@ -107,6 +136,7 @@ def draw_overlay(
     plane: pgp.Plane,
     frame_ms: float,
     grid_ms: float,
+    plot_ms: float,
 ) -> None:
     """Draw the debug overlay in the top-left corner.
 
@@ -116,6 +146,7 @@ def draw_overlay(
         plane: The plane being inspected.
         frame_ms: Smoothed total frame time in milliseconds.
         grid_ms: Smoothed time spent in ``draw_grid`` in milliseconds.
+        plot_ms: Smoothed time spent drawing plots in milliseconds.
     """
     view = plane.view
     grid = plane.last_grid
@@ -131,7 +162,7 @@ def draw_overlay(
         f"mode   {theme.transition} / {theme.spacing_rule}"
         f" / target {theme.target_major_px:.0f}px"
         f" / smooth {'on' if plane.interaction.smoothing else 'off'}",
-        f"frame  {frame_ms:5.2f} ms   grid {grid_ms:5.2f} ms",
+        f"frame  {frame_ms:5.2f} ms   grid {grid_ms:5.2f} ms   plots {plot_ms:5.2f} ms",
         HELP,
     ]
     rendered = [font.render(text, True, (240, 240, 240)) for text in lines]
@@ -155,7 +186,8 @@ def main() -> None:
     font = pygame.font.Font(bundled_font_path(), 13)
     clock = pygame.time.Clock()
     show_overlay = True
-    frame_ms = grid_ms = 0.0
+    overlay = 0
+    frame_ms = grid_ms = plot_ms = 0.0
     last = time.perf_counter()
 
     running = True
@@ -169,17 +201,24 @@ def main() -> None:
                 elif event.key == pygame.K_F1:
                     show_overlay = not show_overlay
                 elif event.key == pygame.K_s:
-                    smoothing = 0.0 if plane.interaction.smoothing else 0.06
+                    default = pgp.InteractionConfig().smoothing
+                    smoothing = 0.0 if plane.interaction.smoothing else default
                     plane.interaction = replace(plane.interaction, smoothing=smoothing)
+                elif event.key == pygame.K_p:
+                    overlay = (overlay + 1) % len(OVERLAYS)
                 elif toggle_theme_setting(plane, event.key):
                     pass
             plane.handle_event(event)
 
         start = time.perf_counter()
         plane.draw_grid(screen)
-        grid_ms = 0.9 * grid_ms + 0.1 * (time.perf_counter() - start) * 1000
+        middle = time.perf_counter()
+        draw_plots(plane, screen, OVERLAYS[overlay])
+        end = time.perf_counter()
+        grid_ms = 0.9 * grid_ms + 0.1 * (middle - start) * 1000
+        plot_ms = 0.9 * plot_ms + 0.1 * (end - middle) * 1000
         if show_overlay:
-            draw_overlay(screen, font, plane, frame_ms, grid_ms)
+            draw_overlay(screen, font, plane, frame_ms, grid_ms, plot_ms)
         pygame.display.flip()
         clock.tick(120)
         now = time.perf_counter()

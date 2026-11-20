@@ -18,12 +18,15 @@ Typical use::
                 raise SystemExit
             plane.handle_event(event)
         plane.draw_grid(screen)
+        plane.plot(screen, lambda x: x**2)
         pygame.display.flip()
 
-Or, for a quick look: ``pgp.show()``.
+Or, for a quick look: ``pgp.show(np.sin, np.cos)``.
 """
 
 from pygridplot.core.labels import NumberFormat
+from pygridplot.core.sampling import SamplingConfig
+from pygridplot.core.style import LineStyle, PointStyle, PolygonStyle
 from pygridplot.core.theme import DARK, LIGHT, GridTheme
 from pygridplot.core.view import View, ViewLimits, ViewState
 from pygridplot.interaction import InteractionConfig, KeyBindings
@@ -38,8 +41,12 @@ __all__ = [
     "GridTheme",
     "InteractionConfig",
     "KeyBindings",
+    "LineStyle",
     "NumberFormat",
     "Plane",
+    "PointStyle",
+    "PolygonStyle",
+    "SamplingConfig",
     "View",
     "ViewLimits",
     "ViewState",

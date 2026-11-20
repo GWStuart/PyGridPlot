@@ -23,4 +23,10 @@ Modules, roughly in dependency order:
 * :mod:`~pygridplot.core.layout`: tick label placement.
 * :mod:`~pygridplot.core.grid`: assembling the full grid for a frame.
 * :mod:`~pygridplot.core.easing`: the spring behind eased pan and zoom.
+* :mod:`~pygridplot.core.style`: line, point and polygon styles; the palette.
+* :mod:`~pygridplot.core.evaluation`: calling user functions without ever
+  raising.
+* :mod:`~pygridplot.core.sampling`: adaptive sampling of ``y = f(x)``.
+* :mod:`~pygridplot.core.geometry`: point input and clipping to the screen.
+* :mod:`~pygridplot.core.plotting`: plotted objects to screen primitives.
 """

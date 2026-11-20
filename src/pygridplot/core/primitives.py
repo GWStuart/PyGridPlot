@@ -11,8 +11,13 @@ Current primitives:
 * :class:`LineBatch`: many parallel, axis-aligned lines that share a paint
   (grid lines and axes).
 * :class:`TextItem`: a positioned label.
+* :class:`Stroke`: polylines drawn with a round pen (function curves,
+  polylines and polygon outlines).
+* :class:`Fill`: filled polygons (closed rings).
+* :class:`Markers`: points drawn as fixed-size markers.
 
-Later milestones will add polylines, circles and polygons here.
+All coordinates are continuous screen pixels (integer values are pixel
+centres; see :mod:`pygridplot.core.pixels`).
 
 This module also defines :class:`TextMeasurer`, the one thing the core needs
 *from* a renderer: label layout has to know how big each label will be.
@@ -29,6 +34,7 @@ from numpy.typing import NDArray
 
 from pygridplot.core.coords import ColorLike
 from pygridplot.core.labels import LabelText
+from pygridplot.core.style import FillRule, MarkerShape
 
 FULL_OPACITY: Final = 0.999
 """Opacities above this are treated as exactly 1 (absorbs float round-off)."""
@@ -94,6 +100,72 @@ class LineBatch:
 
     def __len__(self) -> int:
         return int(self.positions.shape[0])
+
+
+@dataclass(frozen=True, slots=True, eq=False)
+class Stroke:
+    """Polylines drawn with a round pen of a fixed pixel width.
+
+    Joins and ends are round, so a polyline looks the same however finely it
+    is divided into segments.
+
+    Attributes:
+        paths: The polylines, each an array of shape ``(N, 2)``. A path with a
+            single point is drawn as a dot.
+        color: Pen colour.
+        width: Pen width in pixels.
+        opacity: Opacity in ``[0, 1]``. Overlapping parts of one stroke do not
+            darken each other.
+    """
+
+    paths: tuple[NDArray[np.float64], ...]
+    color: ColorLike
+    width: float
+    opacity: float = 1.0
+
+
+@dataclass(frozen=True, slots=True, eq=False)
+class Fill:
+    """Filled polygons, with antialiased edges.
+
+    Attributes:
+        rings: Closed rings, each an array of vertices of shape ``(N, 2)``.
+            Several rings are filled together, so later rings can cut holes
+            (with ``"evenodd"``, or with opposite orientation and
+            ``"nonzero"``).
+        color: Fill colour.
+        opacity: Opacity in ``[0, 1]``.
+        rule: Which overlapping parts count as inside.
+    """
+
+    rings: tuple[NDArray[np.float64], ...]
+    color: ColorLike
+    opacity: float = 1.0
+    rule: FillRule = "nonzero"
+
+
+@dataclass(frozen=True, slots=True, eq=False)
+class Markers:
+    """Points drawn as identical fixed-size markers.
+
+    Attributes:
+        positions: Marker centres, shape ``(N, 2)``.
+        shape: The marker shape.
+        radius: Marker size in pixels (see
+            :attr:`pygridplot.core.style.PointStyle.radius`).
+        color: Fill colour.
+        edge_color: Outline colour, or ``None`` for no outline.
+        edge_width: Outline thickness in pixels.
+        opacity: Opacity in ``[0, 1]``.
+    """
+
+    positions: NDArray[np.float64]
+    shape: MarkerShape
+    radius: float
+    color: ColorLike
+    edge_color: ColorLike | None = None
+    edge_width: float = 0.0
+    opacity: float = 1.0
 
 
 @dataclass(frozen=True, slots=True)

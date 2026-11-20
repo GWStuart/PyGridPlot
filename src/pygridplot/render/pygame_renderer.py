@@ -9,6 +9,11 @@
   it is alpha-blended using a cached strip surface instead.
 * Labels are blitted from cached, pre-rendered surfaces (see
   :mod:`pygridplot.render.text`).
+* Strokes (curves, polylines, outlines) and fills are rasterised with
+  antialiasing by :mod:`pygridplot.render.raster` and blended by
+  :mod:`pygridplot.render.composite`.
+* Point markers are blitted from cached stamps (see
+  :mod:`pygridplot.render.markers`).
 * All drawing is clipped to the plane's rectangle, and any clip area the
   caller had already set is respected and restored.
 """
@@ -27,14 +32,20 @@ from pygridplot.core.grid import GridScene
 from pygridplot.core.labels import LabelText
 from pygridplot.core.pixels import line_starts
 from pygridplot.core.primitives import (
+    Fill,
     FontSpec,
     LineBatch,
+    Markers,
     Orientation,
+    Stroke,
     TextItem,
     TextSize,
 )
 from pygridplot.render.colors import RGBA, ColorResolver
+from pygridplot.render.composite import blend_dense, blend_sparse
 from pygridplot.render.fonts import FontLibrary
+from pygridplot.render.markers import MarkerPainter
+from pygridplot.render.raster import PixelBox, fill_coverage, stroke_coverage
 from pygridplot.render.text import TextRenderer
 
 _STRIP_CACHE_SIZE = 64
@@ -54,6 +65,7 @@ class PygameRenderer:
         self._colors = ColorResolver()
         self._fonts = FontLibrary()
         self._text = TextRenderer(self._fonts, self._colors, text_cache_size)
+        self._markers = MarkerPainter(self._colors)
         self._strips: OrderedDict[tuple[object, ...], pygame.Surface] = OrderedDict()
 
     # ------------------------------------------------------------------
@@ -149,6 +161,44 @@ class PygameRenderer:
         ox, oy = rendered.offset
         surface.blit(image, (item.left - ox, item.top - oy))
 
+    def draw_stroke(self, surface: pygame.Surface, stroke: Stroke) -> None:
+        """Draw polylines with an antialiased round pen.
+
+        Args:
+            surface: The surface to draw on (its clip area is respected).
+            stroke: The polylines and pen.
+        """
+        if stroke.opacity <= 0.0:
+            return
+        coverage = stroke_coverage(stroke.paths, stroke.width, _clip_box(surface))
+        if coverage is not None:
+            blend_sparse(
+                surface, coverage, self._colors.rgba(stroke.color), stroke.opacity
+            )
+
+    def draw_fill(self, surface: pygame.Surface, fill: Fill) -> None:
+        """Fill polygons with antialiased edges.
+
+        Args:
+            surface: The surface to draw on (its clip area is respected).
+            fill: The rings and paint.
+        """
+        if fill.opacity <= 0.0:
+            return
+        coverage = fill_coverage(fill.rings, fill.rule, _clip_box(surface))
+        if coverage is not None:
+            blend_dense(surface, coverage, self._colors.rgba(fill.color), fill.opacity)
+
+    def draw_markers(self, surface: pygame.Surface, markers: Markers) -> None:
+        """Draw point markers.
+
+        Args:
+            surface: The surface to draw on (its clip area is respected).
+            markers: The markers.
+        """
+        if markers.opacity > 0.0:
+            self._markers.draw(surface, markers)
+
     @contextmanager
     def clipped(
         self, surface: pygame.Surface, rect: ScreenRect
@@ -178,8 +228,9 @@ class PygameRenderer:
             surface.set_clip(previous)
 
     def clear_caches(self) -> None:
-        """Drop all cached fonts layouts, labels and line strips."""
+        """Drop all cached text layouts, labels, marker stamps and line strips."""
         self._text.clear()
+        self._markers.clear()
         self._strips.clear()
 
     # ------------------------------------------------------------------
@@ -211,3 +262,16 @@ class PygameRenderer:
         else:
             self._strips.move_to_end(key)
         return strip
+
+
+def _clip_box(surface: pygame.Surface) -> PixelBox:
+    """Return the surface's current clip area as a pixel box.
+
+    Args:
+        surface: The surface.
+
+    Returns:
+        ``(x0, y0, x1, y1)`` with exclusive ends.
+    """
+    clip = surface.get_clip()
+    return (clip.left, clip.top, clip.right, clip.bottom)

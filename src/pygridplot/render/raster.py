@@ -1,0 +1,564 @@
+"""Software rasterisation into antialiased coverage masks (pure NumPy).
+
+The pygame backend uses these rasterisers instead of pygame's own drawing
+functions, because those cannot draw thick antialiased curves with clean
+joins or antialiased filled polygons. Everything here works on continuous
+screen coordinates where integer values are pixel centres, and returns
+*coverage*: how much of each pixel the shape covers, from 0 to 1. Blending
+coverage onto a surface is done by :mod:`pygridplot.render.composite`.
+
+* :func:`stroke_coverage`: polylines drawn with a round pen. Each segment
+  is a capsule (a rectangle with round ends) given by a distance field, and
+  overlapping capsules are combined with ``max``. Joins and caps are round,
+  and a curve split into many short segments looks exactly like a single
+  smooth stroke, with no dark spots where segments meet.
+* :func:`fill_coverage`: polygons, by scanlines. Each pixel row is sampled
+  by several sub-scanlines with exact horizontal coverage on each, using
+  either the nonzero or the even-odd fill rule.
+* :func:`marker_coverage`: point markers (circles, squares, ...) as small
+  distance-field stamps, with an optional outline ring.
+
+None of this imports pygame, so it is tested directly.
+"""
+
+from __future__ import annotations
+
+import math
+from dataclasses import dataclass
+from typing import Final, TypeAlias
+
+import numpy as np
+from numpy.typing import NDArray
+
+from pygridplot.core.style import FillRule, MarkerShape
+
+PixelBox: TypeAlias = tuple[int, int, int, int]
+"""A box of whole pixels ``(x0, y0, x1, y1)``; ``x1`` and ``y1`` are exclusive."""
+
+FILL_SUBSAMPLES: Final = 5
+"""Sub-scanlines per pixel row when filling (vertical antialiasing levels)."""
+
+_SQRT_PI: Final = math.sqrt(math.pi)
+
+
+@dataclass(frozen=True, slots=True, eq=False)
+class SparseCoverage:
+    """Coverage of individual pixels (each pixel appears once).
+
+    Attributes:
+        x: Pixel columns.
+        y: Pixel rows.
+        alpha: Coverage of each pixel in ``(0, 1]``.
+    """
+
+    x: NDArray[np.intp]
+    y: NDArray[np.intp]
+    alpha: NDArray[np.float64]
+
+    def __len__(self) -> int:
+        return int(self.x.shape[0])
+
+
+@dataclass(frozen=True, slots=True, eq=False)
+class DenseCoverage:
+    """Coverage of a rectangular block of pixels.
+
+    Attributes:
+        left: Column of the block's first pixel.
+        top: Row of the block's first pixel.
+        alpha: Coverage in ``[0, 1]``, shape ``(height, width)``.
+    """
+
+    left: int
+    top: int
+    alpha: NDArray[np.float64]
+
+
+# ----------------------------------------------------------------------
+# Strokes
+# ----------------------------------------------------------------------
+def stroke_coverage(
+    paths: tuple[NDArray[np.float64], ...] | list[NDArray[np.float64]],
+    width: float,
+    clip: PixelBox,
+) -> SparseCoverage | None:
+    """Rasterise polylines drawn with a round pen of ``width`` pixels.
+
+    Args:
+        paths: Polylines, each of shape ``(N, 2)``. One-point paths are dots.
+        width: Pen width in pixels. Widths below 1 are drawn 1 pixel wide
+            with proportionally lower coverage, so hairlines stay visible
+            without looking jagged.
+        clip: Only pixels inside this box are produced.
+
+    Returns:
+        The covered pixels, or ``None`` if none are covered.
+    """
+    a, b = _segments(paths)
+    if a.shape[0] == 0:
+        return None
+    radius = width / 2 + 0.5 if width >= 1.0 else 1.0
+    strength = 1.0 if width >= 1.0 else width
+    a, b = _split_long(a, b, radius)
+    qx, qy, owner = _candidate_pixels(a, b, radius, clip)
+    if qx.shape[0] == 0:
+        return None
+    alpha = radius - _distance_to_segments(qx, qy, owner, a, b)
+    covered = alpha > 0.0
+    alpha = np.minimum(alpha[covered], 1.0) * strength
+    return _unique_max(qx[covered], qy[covered], alpha.astype(np.float64))
+
+
+def _segments(
+    paths: tuple[NDArray[np.float64], ...] | list[NDArray[np.float64]],
+) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
+    """Collect the segments of all paths (a one-point path is a zero-length segment).
+
+    Args:
+        paths: Polylines of shape ``(N, 2)``.
+
+    Returns:
+        ``(starts, ends)``, both of shape ``(M, 2)``.
+    """
+    starts, ends = [], []
+    for path in paths:
+        if path.shape[0] == 1:
+            starts.append(path)
+            ends.append(path)
+        elif path.shape[0] > 1:
+            starts.append(path[:-1])
+            ends.append(path[1:])
+    if not starts:
+        empty = np.zeros((0, 2))
+        return empty, empty
+    a, b = np.concatenate(starts), np.concatenate(ends)
+    finite = np.isfinite(a).all(axis=1) & np.isfinite(b).all(axis=1)
+    return a[finite], b[finite]
+
+
+def _split_long(
+    a: NDArray[np.float64], b: NDArray[np.float64], radius: float
+) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
+    """Split long segments into pieces with tight bounding boxes.
+
+    Every pixel in a piece's bounding box is tested, so pieces must not have
+    much more box than line. A diagonal piece's box grows with the square of
+    its length, so diagonal segments are cut into pieces about ``2 * radius``
+    long. A piece that is nearly horizontal or vertical has a thin box at any
+    length, so those are cut much less finely (up to 64 pixels). That matters
+    for steep curves near asymptotes and for fast oscillations.
+
+    Args:
+        a: Segment starts.
+        b: Segment ends.
+        radius: Distance at which coverage drops to zero.
+
+    Returns:
+        ``(starts, ends)`` of the pieces.
+    """
+    d = b - a
+    length = np.hypot(d[:, 0], d[:, 1])
+    short_side = np.minimum(np.abs(d[:, 0]), np.abs(d[:, 1]))
+    reach = 2.0 * radius + 1.0
+    with np.errstate(divide="ignore", invalid="ignore"):
+        best = np.where(short_side > 0, reach * length / short_side, np.inf)
+    piece = np.clip(best, max(2.0, 2.0 * radius), 64.0)
+    pieces = np.maximum(1, np.ceil(length / piece)).astype(np.intp)
+    if int(np.max(pieces)) == 1:
+        return a, b
+    seg = np.repeat(np.arange(a.shape[0]), pieces)
+    k = np.arange(seg.shape[0]) - np.repeat(np.cumsum(pieces) - pieces, pieces)
+    t0 = (k / pieces[seg])[:, None]
+    t1 = ((k + 1) / pieces[seg])[:, None]
+    return a[seg] + d[seg] * t0, a[seg] + d[seg] * t1
+
+
+def _candidate_pixels(
+    a: NDArray[np.float64],
+    b: NDArray[np.float64],
+    radius: float,
+    clip: PixelBox,
+) -> tuple[NDArray[np.intp], NDArray[np.intp], NDArray[np.intp]]:
+    """List every pixel within ``radius`` of each segment's bounding box.
+
+    Args:
+        a: Segment starts.
+        b: Segment ends.
+        radius: Distance at which coverage drops to zero.
+        clip: Pixel box to stay within.
+
+    Returns:
+        ``(x, y, owner)``: candidate pixel centres and the segment each one
+        was generated for. A pixel near several segments appears several
+        times.
+    """
+    cx0, cy0, cx1, cy1 = clip
+    x0 = np.maximum(np.ceil(np.minimum(a[:, 0], b[:, 0]) - radius), cx0).astype(np.intp)
+    x1 = np.minimum(np.floor(np.maximum(a[:, 0], b[:, 0]) + radius), cx1 - 1).astype(
+        np.intp
+    )
+    y0 = np.maximum(np.ceil(np.minimum(a[:, 1], b[:, 1]) - radius), cy0).astype(np.intp)
+    y1 = np.minimum(np.floor(np.maximum(a[:, 1], b[:, 1]) + radius), cy1 - 1).astype(
+        np.intp
+    )
+    nx = np.maximum(x1 - x0 + 1, 0)
+    ny = np.maximum(y1 - y0 + 1, 0)
+    counts = nx * ny
+    total = int(counts.sum())
+    if total == 0:
+        empty = np.zeros(0, dtype=np.intp)
+        return empty, empty, empty
+    owner = np.repeat(np.arange(a.shape[0], dtype=np.intp), counts)
+    local = np.arange(total, dtype=np.intp) - np.repeat(
+        np.cumsum(counts) - counts, counts
+    )
+    width = nx[owner]
+    row = local // width
+    return x0[owner] + (local - row * width), y0[owner] + row, owner
+
+
+def _distance_to_segments(
+    qx: NDArray[np.intp],
+    qy: NDArray[np.intp],
+    owner: NDArray[np.intp],
+    a: NDArray[np.float64],
+    b: NDArray[np.float64],
+) -> NDArray[np.float32]:
+    """Return the distance from each pixel centre to the segment it belongs to.
+
+    Per-segment quantities are computed once and gathered, and the arithmetic
+    is done in ``float32``. Coordinates have already been clipped to the
+    screen, so single precision is accurate to about 1/10000 of a pixel and
+    halves the memory traffic.
+
+    Args:
+        qx: Pixel columns.
+        qy: Pixel rows.
+        owner: Index of each pixel's segment.
+        a: Segment starts, shape ``(M, 2)``.
+        b: Segment ends, shape ``(M, 2)``.
+
+    Returns:
+        Euclidean distances in pixels.
+    """
+    f32 = np.float32
+    ax, ay = a[:, 0].astype(f32), a[:, 1].astype(f32)
+    vx, vy = (b[:, 0] - a[:, 0]).astype(f32), (b[:, 1] - a[:, 1]).astype(f32)
+    length2 = vx * vx + vy * vy
+    inverse = np.divide(
+        f32(1.0), length2, out=np.zeros_like(length2), where=length2 > 0
+    )
+    wx = qx.astype(f32) - ax[owner]
+    wy = qy.astype(f32) - ay[owner]
+    ux, uy = vx[owner], vy[owner]
+    t = (wx * ux + wy * uy) * inverse[owner]
+    np.clip(t, f32(0.0), f32(1.0), out=t)
+    wx -= t * ux
+    wy -= t * uy
+    return np.sqrt(wx * wx + wy * wy)
+
+
+def _unique_max(
+    qx: NDArray[np.intp], qy: NDArray[np.intp], alpha: NDArray[np.float64]
+) -> SparseCoverage | None:
+    """Merge duplicate pixels, keeping the largest coverage of each.
+
+    Sorting only the covered pixels costs far less than a buffer spanning
+    the whole stroke's bounding box, which can be the full screen.
+
+    Args:
+        qx: Pixel columns (may repeat).
+        qy: Pixel rows (may repeat).
+        alpha: Coverage of each entry.
+
+    Returns:
+        Each covered pixel once, or ``None`` if there are none.
+    """
+    if qx.shape[0] == 0:
+        return None
+    left, top = int(np.min(qx)), int(np.min(qy))
+    width = int(np.max(qx)) - left + 1
+    flat = (qy - top) * width + (qx - left)
+    order = np.argsort(flat, kind="stable")
+    flat = flat[order]
+    starts = np.flatnonzero(np.concatenate(([True], flat[1:] != flat[:-1])))
+    best = np.maximum.reduceat(alpha[order], starts)
+    unique = flat[starts]
+    return SparseCoverage(unique % width + left, unique // width + top, best)
+
+
+# ----------------------------------------------------------------------
+# Fills
+# ----------------------------------------------------------------------
+def fill_coverage(
+    rings: tuple[NDArray[np.float64], ...] | list[NDArray[np.float64]],
+    rule: FillRule,
+    clip: PixelBox,
+    subsamples: int = FILL_SUBSAMPLES,
+) -> DenseCoverage | None:
+    """Rasterise filled polygons with antialiased edges.
+
+    Each pixel row is sampled at ``subsamples`` evenly spaced heights. On each
+    of those sub-scanlines the covered spans are computed exactly, and each
+    pixel gets the fraction of its width they cover.
+
+    Args:
+        rings: Closed rings, each of shape ``(N, 2)`` (``N >= 3``).
+        rule: ``"nonzero"`` or ``"evenodd"``.
+        clip: Only pixels inside this box are produced.
+        subsamples: Sub-scanlines per pixel row.
+
+    Returns:
+        The coverage of the polygons' bounding box (within ``clip``), or
+        ``None`` if nothing is covered.
+    """
+    edges = _ring_edges(rings)
+    if edges is None:
+        return None
+    ex0, ey0, ex1, ey1 = edges
+    cx0, cy0, cx1, cy1 = clip
+    row0 = max(cy0, math.floor(float(min(np.min(ey0), np.min(ey1))) + 0.5))
+    row1 = min(cy1, math.floor(float(max(np.max(ey0), np.max(ey1))) + 0.5) + 1)
+    col0 = max(cx0, math.floor(float(min(np.min(ex0), np.min(ex1))) + 0.5) - 1)
+    col1 = min(cx1, math.floor(float(max(np.max(ex0), np.max(ex1))) + 0.5) + 2)
+    if row1 <= row0 or col1 <= col0:
+        return None
+    spans = _spans(ex0, ey0, ex1, ey1, rule, row0, row1, subsamples)
+    if spans is None:
+        return None
+    sub, start, end = spans
+    alpha = _accumulate_spans(
+        sub // subsamples,
+        start - col0,
+        end - col0,
+        row1 - row0,
+        col1 - col0,
+        subsamples,
+    )
+    if not alpha.any():
+        return None
+    return DenseCoverage(col0, row0, alpha)
+
+
+def _ring_edges(
+    rings: tuple[NDArray[np.float64], ...] | list[NDArray[np.float64]],
+) -> tuple[NDArray[np.float64], ...] | None:
+    """Collect the non-horizontal edges of closed rings.
+
+    Args:
+        rings: Ring vertices.
+
+    Returns:
+        ``(x0, y0, x1, y1)`` arrays of edge endpoints, or ``None`` if there are
+        no usable edges.
+    """
+    starts, ends = [], []
+    for ring in rings:
+        pts = ring[np.isfinite(ring).all(axis=1)]
+        if pts.shape[0] >= 3:
+            starts.append(pts)
+            ends.append(np.roll(pts, -1, axis=0))
+    if not starts:
+        return None
+    a, b = np.concatenate(starts), np.concatenate(ends)
+    sloped = a[:, 1] != b[:, 1]
+    if not sloped.any():
+        return None
+    a, b = a[sloped], b[sloped]
+    return a[:, 0], a[:, 1], b[:, 0], b[:, 1]
+
+
+def _spans(
+    x0: NDArray[np.float64],
+    y0: NDArray[np.float64],
+    x1: NDArray[np.float64],
+    y1: NDArray[np.float64],
+    rule: FillRule,
+    row0: int,
+    row1: int,
+    subsamples: int,
+) -> tuple[NDArray[np.intp], NDArray[np.float64], NDArray[np.float64]] | None:
+    """Find the covered spans on every sub-scanline.
+
+    Args:
+        x0: Edge start x.
+        y0: Edge start y.
+        x1: Edge end x.
+        y1: Edge end y.
+        rule: The fill rule.
+        row0: First pixel row.
+        row1: One past the last pixel row.
+        subsamples: Sub-scanlines per row.
+
+    Returns:
+        ``(sub, start, end)``: sub-scanline index (from the top of ``row0``)
+        and the x extent of each inside span, or ``None`` if there are none.
+    """
+    base = row0 - 0.5  # top edge of the first row
+    count = (row1 - row0) * subsamples
+    direction = np.where(y1 > y0, 1, -1)
+    lo, hi = np.minimum(y0, y1), np.maximum(y0, y1)
+    # Sub-scanline k sits at y = base + (k + 0.5) / subsamples. An edge
+    # crosses the sub-scanlines with lo <= y < hi (half-open, so a shared
+    # vertex is counted exactly once).
+    first = np.maximum(np.ceil((lo - base) * subsamples - 0.5), 0).astype(np.intp)
+    last = np.minimum(np.ceil((hi - base) * subsamples - 0.5) - 1, count - 1).astype(
+        np.intp
+    )
+    crossings = np.maximum(last - first + 1, 0)
+    total = int(crossings.sum())
+    if total == 0:
+        return None
+    edge = np.repeat(np.arange(x0.shape[0]), crossings)
+    k = first[edge] + (
+        np.arange(total) - np.repeat(np.cumsum(crossings) - crossings, crossings)
+    )
+    y = base + (k + 0.5) / subsamples
+    slope = (x1 - x0) / (y1 - y0)
+    x = x0[edge] + (y - y0[edge]) * slope[edge]
+    order = np.lexsort((x, k))
+    k, x, wind = k[order], x[order], direction[edge][order]
+    if rule == "evenodd":
+        wind = np.ones_like(wind)
+    running = np.cumsum(wind)
+    new_line = np.concatenate(([True], k[1:] != k[:-1]))
+    line_start = np.flatnonzero(new_line)
+    before = (running - wind)[line_start]
+    winding = running - np.repeat(before, np.diff(np.append(line_start, k.shape[0])))
+    inside = winding % 2 == 1 if rule == "evenodd" else winding != 0
+    inside[-1] = False
+    spans = np.flatnonzero(inside[:-1] & (k[1:] == k[:-1]))
+    if spans.shape[0] == 0:
+        return None
+    return k[spans], x[spans], x[spans + 1]
+
+
+def _accumulate_spans(
+    rows: NDArray[np.intp],
+    start: NDArray[np.float64],
+    end: NDArray[np.float64],
+    height: int,
+    width: int,
+    subsamples: int,
+) -> NDArray[np.float64]:
+    """Turn spans into per-pixel coverage with a cumulative-sum trick.
+
+    For a span ``[s, e)`` the coverage of pixel ``i`` (covering ``[i, i+1)``
+    once shifted to pixel edges) is ``clamp(min(e, i+1) - max(s, i), 0, 1)``.
+    That is the running sum of four point weights at ``floor(s)``,
+    ``floor(s) + 1``, ``floor(e)`` and ``floor(e) + 1``. Scattering those
+    weights for every span and taking one cumulative sum per row gives every
+    pixel's coverage at once.
+
+    Args:
+        rows: Pixel row (relative to the block) of each span.
+        start: Span start, in pixel-centre coordinates relative to the block.
+        end: Span end, likewise.
+        height: Rows in the block.
+        width: Columns in the block.
+        subsamples: Sub-scanlines per row (each contributes ``1/subsamples``).
+
+    Returns:
+        Coverage of shape ``(height, width)``.
+    """
+    weights = np.zeros((height, width + 2))
+    u0 = np.clip(start + 0.5, 0.0, float(width))  # to pixel-edge coordinates
+    u1 = np.clip(end + 0.5, 0.0, float(width))
+    share = 1.0 / subsamples
+    for u, sign in ((u0, share), (u1, -share)):
+        i = np.floor(u).astype(np.intp)
+        f = u - i
+        np.add.at(weights, (rows, i), sign * (1.0 - f))
+        np.add.at(weights, (rows, i + 1), sign * f)
+    return np.clip(np.cumsum(weights, axis=1)[:, :width], 0.0, 1.0)
+
+
+# ----------------------------------------------------------------------
+# Markers
+# ----------------------------------------------------------------------
+def marker_coverage(
+    shape: MarkerShape,
+    radius: float,
+    edge_width: float,
+    phase: tuple[float, float] = (0.0, 0.0),
+) -> tuple[NDArray[np.float64], NDArray[np.float64], int]:
+    """Rasterise one marker into a small square stamp.
+
+    Args:
+        shape: The marker shape.
+        radius: Marker size in pixels. Squares and diamonds get the same area
+            as a circle of this radius, so markers look equally heavy.
+        edge_width: Width of the outline ring drawn just outside the marker,
+            so the marker body keeps its size (``0`` for none).
+        phase: Sub-pixel offset of the marker centre from the stamp's
+            centre pixel, each in ``[0, 1)``.
+
+    Returns:
+        ``(fill, edge, half)``: coverage of the marker body and of its outline
+        ring (they do not overlap, so their sum never exceeds 1), both of
+        shape ``(2 * half + 1, 2 * half + 1)``, and ``half``, the offset from
+        the stamp's top-left pixel to its centre pixel.
+    """
+    half = math.ceil(radius * 1.45 + edge_width + 1.5)  # plus/cross arms reach 1.4r
+    coords = np.arange(-half, half + 1, dtype=np.float64)
+    dx = coords[None, :] - phase[0]
+    dy = coords[:, None] - phase[1]
+    sdf = _marker_sdf(shape, radius, dx, dy)
+    fill = np.clip(0.5 - sdf, 0.0, 1.0)
+    edge = np.zeros_like(fill)
+    if edge_width > 0:
+        edge = np.clip(edge_width + 0.5 - sdf, 0.0, 1.0) - fill
+    return fill, edge, half
+
+
+def _marker_sdf(
+    shape: MarkerShape, radius: float, dx: NDArray[np.float64], dy: NDArray[np.float64]
+) -> NDArray[np.float64]:
+    """Return the signed distance (negative inside) to a marker's outline.
+
+    Args:
+        shape: The marker shape.
+        radius: Marker size in pixels.
+        dx: Horizontal offsets of pixel centres from the marker centre.
+        dy: Vertical offsets of pixel centres from the marker centre.
+
+    Returns:
+        Signed distances in pixels.
+    """
+    ax, ay = np.abs(dx), np.abs(dy)
+    if shape == "circle":
+        return np.hypot(dx, dy) - radius
+    if shape == "square":
+        half = radius * _SQRT_PI / 2  # same area as the circle
+        qx, qy = ax - half, ay - half
+        outside = np.hypot(np.maximum(qx, 0), np.maximum(qy, 0))
+        return outside + np.minimum(np.maximum(qx, qy), 0)
+    if shape == "diamond":
+        reach = radius * math.sqrt(math.pi / 2)  # same area as the circle
+        return (ax + ay - reach) / math.sqrt(2)
+    arm = radius * 1.15
+    thickness = max(1.5, radius * 0.5)
+    if shape == "plus":
+        bar_a = _bar_distance(ax, ay, arm)
+        bar_b = _bar_distance(ay, ax, arm)
+    else:  # "cross": the plus rotated by 45 degrees
+        u, v = (dx + dy) / math.sqrt(2), (dx - dy) / math.sqrt(2)
+        bar_a = _bar_distance(np.abs(u), np.abs(v), arm)
+        bar_b = _bar_distance(np.abs(v), np.abs(u), arm)
+    return np.minimum(bar_a, bar_b) - thickness / 2
+
+
+def _bar_distance(
+    along: NDArray[np.float64], across: NDArray[np.float64], arm: float
+) -> NDArray[np.float64]:
+    """Return the distance to a centred segment from ``-arm`` to ``arm``.
+
+    Args:
+        along: Absolute offset along the segment's direction.
+        across: Absolute offset perpendicular to it.
+        arm: Half-length of the segment.
+
+    Returns:
+        Distances in pixels.
+    """
+    return np.hypot(np.maximum(along - arm, 0.0), across)

@@ -2,8 +2,12 @@
 
 * :mod:`~pygridplot.render.base`: the :class:`Renderer` protocol.
 * :mod:`~pygridplot.render.pygame_renderer`: the pygame-ce backend.
+* :mod:`~pygridplot.render.raster`: antialiased coverage for strokes, fills
+  and markers (pure NumPy).
+* :mod:`~pygridplot.render.composite`: blending coverage onto surfaces.
+* :mod:`~pygridplot.render.markers`: cached marker stamps.
 * :mod:`~pygridplot.render.text`, :mod:`~pygridplot.render.fonts` and
-  :mod:`~pygridplot.render.colors`: helpers used by the pygame backend.
+  :mod:`~pygridplot.render.colors`: text, font and colour helpers.
 """
 
 from pygridplot.render.base import Renderer
