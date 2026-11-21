@@ -71,6 +71,7 @@ SECTIONS: list[tuple[str, str, list[str]]] = [
             "CurveSampling",
             "ImplicitSampling",
             "ViewLimits",
+            "CacheStats",
         ],
     ),
     (

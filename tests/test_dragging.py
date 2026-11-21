@@ -13,8 +13,20 @@ import pygame
 import pytest
 
 import pygridplot as pgp
+from pygridplot.dragging import HAND_CURSOR
 
 pytestmark = pytest.mark.usefixtures("pygame_display")
+
+
+@pytest.fixture(autouse=True)
+def fresh_cursor() -> None:
+    """Start every test with no plane asking for the hand cursor.
+
+    Planes of earlier tests may still be waiting to be garbage-collected
+    with a point hovered.
+    """
+    HAND_CURSOR.reset()
+
 
 SIZE = (400, 300)
 
@@ -207,6 +219,37 @@ def test_hovering_sets_and_restores_the_cursor(monkeypatch: pytest.MonkeyPatch) 
     plane.handle_event(mouse(pygame.MOUSEMOTION, (sx + 60, sy)))
     assert not point.hovered
     assert calls == [pygame.SYSTEM_CURSOR_HAND, "arrow"]
+
+
+def test_planes_share_the_hand_cursor(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Two planes in one window agree on the cursor.
+
+    Moving from a point on one plane to a point on another keeps the hand,
+    and leaving both restores the original cursor, whatever the order in
+    which the planes see the events.
+    """
+    calls: list[object] = []
+    current: list[object] = ["arrow"]
+
+    def set_cursor(cursor: object) -> None:
+        calls.append(cursor)
+        current[0] = cursor
+
+    monkeypatch.setattr(pygame.mouse, "get_cursor", lambda: current[0])
+    monkeypatch.setattr(pygame.mouse, "set_cursor", set_cursor)
+    left = pgp.Plane(pygame.Rect(0, 0, 200, 300))
+    right = pgp.Plane(pygame.Rect(200, 0, 200, 300))
+    surface = pygame.Surface(SIZE)
+    left.draw_grid(surface)
+    right.draw_grid(surface)
+    a = left.draggable((0.0, 0.0))
+    b = right.draggable((0.0, 0.0))
+    for pos in (a.screen_position, b.screen_position, (10.0, 10.0)):
+        event = mouse(pygame.MOUSEMOTION, pos)
+        for plane in (right, left):  # the "wrong" order for the move to b
+            plane.handle_event(event)
+    assert calls == [pygame.SYSTEM_CURSOR_HAND, "arrow"]
+    assert current[0] == "arrow"
 
 
 def test_moved_is_stable_through_a_frame() -> None:

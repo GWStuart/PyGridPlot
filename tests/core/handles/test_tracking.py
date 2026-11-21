@@ -156,3 +156,24 @@ def test_the_point_found_on_a_circle_faces_the_target(
     gap = abs(t - angle) % (2 * math.pi)
     # Within the chords' accuracy, magnified towards the centre.
     assert 100 * min(gap, 2 * math.pi - gap) < 0.5 * max(1.0, 100 / distance)
+
+
+def test_a_closed_curve_with_a_gap_wraps_through_its_ends() -> None:
+    """The gap splits the circle into two pieces; the last joins the first."""
+
+    def gappy_circle(t: NDArray[np.float64]) -> Points:
+        x, y = circle(t)
+        return np.where((t > 2.0) & (t < 3.0), np.nan, x), y
+
+    sampled = pieces(gappy_circle, (0.0, 2 * math.pi))
+    assert len(sampled) == 2
+    angles = [6.0, 6.2, 0.1, 0.3, 0.6]  # across the seam at 0 = 2π
+    targets = [(400 + 120 * math.cos(a), 300 - 120 * math.sin(a)) for a in angles]
+    path = follow(sampled, targets, 5.9, closed=True)
+    assert path == pytest.approx(angles, abs=0.005)
+    # From one side of the gap, the other side is reached only once it is
+    # clearly closer to the cursor.
+    near_gap = follow(
+        sampled, [(400 + 120 * math.cos(3.05), 300 - 120 * math.sin(3.05))], 1.95
+    )
+    assert near_gap[0] > 3.0

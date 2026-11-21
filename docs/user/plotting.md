@@ -1,9 +1,11 @@
 # Plotting
 
 Every plotting method draws onto a surface, on top of whatever is already
-there, and is called every frame after `draw_grid`. Everything is redrawn
+there, and is called every frame after `draw_grid`. Everything is drawn
 from the current view each time, so plots follow panning and zooming
 exactly, and changing what you draw from one frame to the next animates it.
+Plots that have not changed are [reused](#reusing-unchanged-plots)
+automatically, so frames where little changes stay cheap.
 
 | Method | Draws |
 |---|---|
@@ -416,6 +418,56 @@ before. Draw fills first and points last so that nothing important is
 covered, and draw your own overlays (captions, a legend) after the plots.
 Opacity blends properly with what is underneath, including on surfaces
 with per-pixel alpha, so translucent layers can be composited later.
+
+## Reusing unchanged plots
+
+Most frames draw the same plots in the same view as the frame before, or
+change only some of them. The plane notices and reuses those plots instead
+of sampling and rasterising them again, which makes such frames several
+times faster (an idle frame with six functions: about 10 ms without, under
+2 ms with). There is nothing to do to get this, and nothing to change in
+your code: plots are still drawn every frame, with new lambdas and all.
+
+Reuse is exact, never a guess. A plotting call is reused when it is the same
+kind of call in the same place among the frame's calls, with the same view,
+style, colour, ranges and data as in the previous frame, and its functions
+still give exactly the same values at every point where they were evaluated
+last time. Sampling is deterministic, so it would then retrace its steps and
+draw exactly the same thing. This is checked by calling each function once
+on all those points, which costs a small fraction of drawing it.
+
+So a function that reads a changing variable is drawn again as soon as the
+variable changes, and only then:
+
+```python
+a = plane.draggable((1, 1))                                   # before the loop
+
+plane.plot(screen, np.sin)                        # reused every frame
+plane.plot(screen, lambda x: a.y * np.sin(x - a.x))   # drawn again while a moves
+```
+
+Animated plots (whose values change every frame) are simply drawn again;
+telling them apart costs a quick check of a few dozen points.
+
+`plane.cache_stats` counts the reused calls (`hits`) and the rest (`misses`),
+which helps to see what a frame costs. `Plane(cache=False)` (or
+`plane.cache = False`) turns reuse off; the drawing is the same, only
+slower. That is useful to measure how long drawing takes, and needed only
+for functions that are not *pointwise*, whose value at `x` depends on the
+other points they are evaluated with (normalising by the largest value of
+their input, say), which are not well-defined plots anyway.
+
+What is reused:
+
+- function plots, parametric, polar and implicit curves, derivatives, and
+  points, polylines and polygons (their data is compared, and may be
+  changed in place);
+- the rasterised pixels of each reused stroke and fill, so only blending
+  remains;
+- the grid, while the view and the theme stay the same.
+
+Panning and zooming change the view, so during them everything is drawn
+again (and as fast as before).
 
 ## Log axes
 

@@ -40,7 +40,7 @@ user drags them to.
 from __future__ import annotations
 
 import math
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from typing import Any, Literal, overload
 
 import numpy as np
@@ -66,7 +66,9 @@ from pygridplot.core.plot.builders import (
 )
 from pygridplot.core.plot.curves import DEFAULT_CURVE_SAMPLING, CurveSampling
 from pygridplot.core.plot.evaluation import Function, PlaneFunction
+from pygridplot.core.plot.geometry import as_points
 from pygridplot.core.plot.implicit import DEFAULT_IMPLICIT_SAMPLING, ImplicitSampling
+from pygridplot.core.plot.memo import CacheStats, PlotCache, same_inputs
 from pygridplot.core.plot.sampling import DEFAULT_SAMPLING, SamplingConfig
 from pygridplot.core.plot.style import (
     ColorCycle,
@@ -122,6 +124,8 @@ class Plane:
             with it their font and label caches.
         sampling: How functions are sampled by :meth:`plot` (the defaults suit
             almost every function).
+        cache: Reuse plots that have not changed since the previous frame
+            (see :attr:`cache`). It only saves time; the drawing is the same.
     """
 
     def __init__(
@@ -141,6 +145,7 @@ class Plane:
         limits: ViewLimits | None = None,
         renderer: PygameRenderer | None = None,
         sampling: SamplingConfig | None = None,
+        cache: bool = True,
     ) -> None:
         self._auto_rect = rect is None
         initial = _display_rect() if rect is None else ScreenRect.from_any(rect)
@@ -182,6 +187,8 @@ class Plane:
         self._colors = ColorCycle(self._theme.palette)
         self._sampling = sampling if sampling is not None else DEFAULT_SAMPLING
         self._last_grid: GridScene | None = None
+        self._grid_key: tuple[object, ...] | None = None
+        self._plots = PlotCache(enabled=cache)
 
     # ------------------------------------------------------------------
     # Properties
@@ -257,6 +264,38 @@ class Plane:
         self._sampling = config
 
     @property
+    def cache(self) -> bool:
+        """Whether plots that have not changed since the previous frame are reused.
+
+        On by default. A plotting call is reused when it is the same kind of
+        call, in the same place among the frame's calls, with the same view,
+        style and inputs as in the previous frame, and its functions still
+        give exactly the values they gave then (they are checked at every
+        point where they were evaluated). The drawing is then exactly what
+        drawing again would give, so turning the cache off changes only the
+        speed; do so to measure how long drawing takes, or if your functions
+        are not *pointwise* (their value at ``x`` depends on the other points
+        they are called with).
+        """
+        return self._plots.enabled
+
+    @cache.setter
+    def cache(self, enabled: bool) -> None:
+        self._plots.enabled = bool(enabled)
+        if not enabled:
+            self.clear_cache()
+
+    @property
+    def cache_stats(self) -> CacheStats:
+        """How many plotting calls were reused (hits) and built again (misses)."""
+        return self._plots.stats
+
+    def clear_cache(self) -> None:
+        """Forget every reused plot and grid, and the counts in :attr:`cache_stats`."""
+        self._plots.clear()
+        self._grid_key = None
+
+    @property
     def interaction(self) -> InteractionConfig:
         """Settings of the built-in pan/zoom controls and of dragging points."""
         return self._controller.config
@@ -306,10 +345,11 @@ class Plane:
         return self._controller.handle_event(event)
 
     def update(self) -> bool:
-        """Advance eased pan/zoom movement.
+        """Advance eased pan/zoom movement, and keep a dragged point under the cursor.
 
         :meth:`draw_grid` calls this automatically, so you only need it if you
-        stop drawing the grid but still want eased movement to continue.
+        stop drawing the grid but still want eased movement (and dragging
+        while the view eases) to continue.
 
         Returns:
             ``True`` if the view changed.
@@ -329,6 +369,7 @@ class Plane:
         from frame to frame.
         """
         self._colors.reset()
+        self._plots.begin_frame()
         for point in self._draggables:
             point.begin_frame()
 
@@ -346,7 +387,7 @@ class Plane:
         self._sync_rect(surface)
         self.update()
         self.begin_frame()
-        scene = build_grid(self._view, self._theme, self._renderer, self._grid_state)
+        scene = self._grid_scene()
         self._renderer.draw_grid(surface, scene)
         self._last_grid = scene
 
@@ -393,13 +434,16 @@ class Plane:
         line = with_overrides(
             style or _DEFAULT_LINE, color=color, width=width, opacity=opacity
         )
-        stroke = function_stroke(
-            self._view,
-            func,
-            line,
-            self._colors.resolve(line.color),
-            domain=domain,
-            sampling=sampling if sampling is not None else self._sampling,
+        color_ = self._colors.resolve(line.color)
+        config = sampling if sampling is not None else self._sampling
+        bounds = None if domain is None else (float(domain[0]), float(domain[1]))
+        stroke = self._cached(
+            "plot",
+            (line, color_, bounds, config),
+            [func],
+            lambda fs: function_stroke(
+                self._view, fs[0], line, color_, domain=domain, sampling=config
+            ),
         )
         self._draw(surface, stroke)
 
@@ -445,14 +489,15 @@ class Plane:
         line = with_overrides(
             style or _DEFAULT_LINE, color=color, width=width, opacity=opacity
         )
-        stroke = parametric_stroke(
-            self._view,
-            x,
-            y,
-            t_range,
-            line,
-            self._colors.resolve(line.color),
-            sampling=sampling if sampling is not None else DEFAULT_CURVE_SAMPLING,
+        color_ = self._colors.resolve(line.color)
+        config = sampling if sampling is not None else DEFAULT_CURVE_SAMPLING
+        stroke = self._cached(
+            "parametric",
+            (line, color_, _pair(t_range), config),
+            [x, y],
+            lambda fs: parametric_stroke(
+                self._view, fs[0], fs[1], t_range, line, color_, sampling=config
+            ),
         )
         self._draw(surface, stroke)
 
@@ -494,13 +539,15 @@ class Plane:
         line = with_overrides(
             style or _DEFAULT_LINE, color=color, width=width, opacity=opacity
         )
-        stroke = polar_stroke(
-            self._view,
-            r,
-            theta_range,
-            line,
-            self._colors.resolve(line.color),
-            sampling=sampling if sampling is not None else DEFAULT_CURVE_SAMPLING,
+        color_ = self._colors.resolve(line.color)
+        config = sampling if sampling is not None else DEFAULT_CURVE_SAMPLING
+        stroke = self._cached(
+            "polar",
+            (line, color_, _pair(theta_range), config),
+            [r],
+            lambda fs: polar_stroke(
+                self._view, fs[0], theta_range, line, color_, sampling=config
+            ),
         )
         self._draw(surface, stroke)
 
@@ -556,13 +603,16 @@ class Plane:
         line = with_overrides(
             style or _DEFAULT_LINE, color=color, width=width, opacity=opacity
         )
-        stroke = implicit_stroke(
-            self._view,
-            func,
-            line,
-            self._colors.resolve(line.color),
-            level=level,
-            sampling=sampling if sampling is not None else DEFAULT_IMPLICIT_SAMPLING,
+        color_ = self._colors.resolve(line.color)
+        config = sampling if sampling is not None else DEFAULT_IMPLICIT_SAMPLING
+        stroke = self._cached(
+            "implicit",
+            (line, color_, _numbers(level), config),
+            [func],
+            lambda fs: implicit_stroke(
+                self._view, fs[0], line, color_, level=level, sampling=config
+            ),
+            arity=2,
         )
         self._draw(surface, stroke)
 
@@ -605,8 +655,13 @@ class Plane:
             edge_width=edge_width,
             opacity=opacity,
         )
-        markers = point_markers(
-            self._view, points, point, self._colors.resolve(point.color)
+        color_ = self._colors.resolve(point.color)
+        data = as_points(points).copy()  # the caller may change it in place
+        markers = self._cached(
+            "points",
+            (point, color_, data),
+            [],
+            lambda _: point_markers(self._view, data, point, color_),
         )
         self._draw(surface, markers)
 
@@ -639,8 +694,13 @@ class Plane:
         line = with_overrides(
             style or _DEFAULT_LINE, color=color, width=width, opacity=opacity
         )
-        stroke = polyline_stroke(
-            self._view, points, line, self._colors.resolve(line.color), closed=closed
+        color_ = self._colors.resolve(line.color)
+        data = as_points(points).copy()  # the caller may change it in place
+        stroke = self._cached(
+            "polyline",
+            (line, color_, data, closed),
+            [],
+            lambda _: polyline_stroke(self._view, data, line, color_, closed=closed),
         )
         self._draw(surface, stroke)
 
@@ -689,8 +749,13 @@ class Plane:
             fill_opacity=fill_opacity,
             fill_rule=fill_rule,
         )
-        area, outline = polygon_shapes(
-            self._view, points, shape, self._colors.resolve(shape.color)
+        color_ = self._colors.resolve(shape.color)
+        data = as_points(points).copy()  # the caller may change it in place
+        area, outline = self._cached(
+            "polygon",
+            (shape, color_, data),
+            [],
+            lambda _: polygon_shapes(self._view, data, shape, color_),
         )
         self._draw(surface, area, outline)
 
@@ -914,6 +979,56 @@ class Plane:
     def __repr__(self) -> str:
         return f"Plane(view={self._view!r})"
 
+    def _cached(
+        self,
+        kind: str,
+        key: tuple[object, ...],
+        functions: list[Any],
+        make: Callable[[list[Any]], Any],
+        *,
+        arity: int = 1,
+    ) -> Any:
+        """Build a plotting call's primitives, or reuse the previous frame's.
+
+        Args:
+            kind: The kind of plot.
+            key: Everything besides the view and the functions that the
+                result depends on.
+            functions: The call's functions (or constants in their place).
+            make: Builds the primitives from the functions.
+            arity: The functions' number of arguments.
+
+        Returns:
+            The primitives (see :class:`~pygridplot.core.plot.memo.PlotCache`).
+        """
+        return self._plots.build(
+            kind, (self._view.fingerprint, key), functions, make, arity=arity
+        )
+
+    def _grid_scene(self) -> GridScene:
+        """Build the grid, or reuse the last one if nothing it depends on changed.
+
+        The grid is a pure function of the view and the theme, except in the
+        ``"snap"`` transition, whose hysteresis remembers earlier frames; that
+        one is always built.
+
+        Returns:
+            The grid scene.
+        """
+        key = (self._view.fingerprint, self._theme)
+        reusable = (
+            self._plots.enabled
+            and self._theme.transition == "fade"
+            and self._last_grid is not None
+            and self._grid_key is not None
+            and same_inputs(self._grid_key, key)
+        )
+        if reusable and self._last_grid is not None:
+            return self._last_grid
+        scene = build_grid(self._view, self._theme, self._renderer, self._grid_state)
+        self._grid_key = key
+        return scene
+
     def _draw(
         self, surface: pygame.Surface, *primitives: Stroke | Fill | Markers | None
     ) -> None:
@@ -974,3 +1089,19 @@ def _display_rect() -> ScreenRect:
         if display is not None:
             return ScreenRect.from_any(display.get_rect())
     return ScreenRect(0, 0, 0, 0)
+
+
+def _pair(span: Any) -> tuple[float, float] | Any:
+    """Return a range as two floats for a cache key (or as given, if it is not one)."""
+    try:
+        return (float(span[0]), float(span[1]))
+    except (TypeError, ValueError, IndexError):
+        return span
+
+
+def _numbers(value: Any) -> Any:
+    """Return a number or sequence of numbers as a float array for a cache key."""
+    try:
+        return np.atleast_1d(np.array(value, dtype=np.float64))
+    except (TypeError, ValueError):
+        return value

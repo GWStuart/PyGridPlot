@@ -452,6 +452,24 @@ class View:
         return Bounds(x0, x1, y0, y1)
 
     @property
+    def fingerprint(self) -> tuple[object, ...]:
+        """Everything that decides where world points land on screen.
+
+        Two views with equal fingerprints map every point to the same pixel,
+        so whatever was drawn for one is exactly right for the other. Used to
+        reuse drawings between frames while nothing moves.
+        """
+        return (
+            self._cx,
+            self._cy,
+            self._sx,
+            self._sy,
+            self._rect,
+            self._tx.kind,
+            self._ty.kind,
+        )
+
+    @property
     def transformed_bounds(self) -> Bounds:
         """The region covered by :attr:`rect`, in transformed coordinates.
 
@@ -1056,7 +1074,8 @@ class View:
         lo_x, hi_x = self._scale_range(self._tx, self._cx, extra_magnitude[0])
         lo_y, hi_y = self._scale_range(self._ty, self._cy, extra_magnitude[1])
         if self._equal_aspect:
-            low, high = max(lo_x, lo_y), max(max(lo_x, lo_y), min(hi_x, hi_y))
+            low = max(lo_x, lo_y)
+            high = max(low, min(hi_x, hi_y))  # never below the lower limit
             self._sx = self._sy = min(max(sx, low), high)
         else:
             self._sx = min(max(sx, lo_x), hi_x)

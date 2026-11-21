@@ -386,39 +386,74 @@ def _fine_tier(context: LogContext, gate: float) -> list[FineTier]:
     """
     parts = []
     budget = MAX_LINES_PER_AXIS
+    # Every whole decade on screen has the same pattern of subdivisions (only
+    # the partly visible ones at the edges differ), so each pattern is worked
+    # out once per frame and shifted to each decade.
+    patterns: dict[tuple[float, float], _Pattern | None] = {}
     for n in context.decades:
         low = max(1.0, 10.0 ** (context.low - n))
         high = min(10.0, 10.0 ** (context.high - n))
-        if low < high:
-            part = _decade_subdivisions(context, n, (low, high), gate, budget)
-            if part is not None:
-                budget -= part.indices.size
-                parts.append(part)
+        if low >= high:
+            continue
+        key = (low, high)
+        if key not in patterns:
+            patterns[key] = _decade_pattern(context, key)
+        pattern = patterns[key]
+        if pattern is None or pattern.candidates > budget:
+            continue
+        part = _decade_subdivisions(context, n, pattern, gate)
+        if part is not None:
+            budget -= part.indices.size
+            parts.append(part)
     return parts
 
 
-def _decade_subdivisions(
-    context: LogContext,
-    n: int,
-    mantissas: tuple[float, float],
-    gate: float,
-    budget: int,
-) -> FineTier | None:
-    """Build the subdivisions of one decade ``[10ⁿ, 10ⁿ⁺¹)`` on screen.
+@dataclass(frozen=True, slots=True, eq=False)
+class _Pattern:
+    """The subdivisions of a visible range of mantissas, in any decade.
+
+    Attributes:
+        candidates: How many multiples of :attr:`base` were considered.
+        base: The step that :attr:`indices` count, in units of the mantissa.
+        indices: Each line's mantissa as a multiple of ``base``.
+        values: Each line's mantissa.
+        fine: Each line's finer ladder level.
+        weight: The weight of the coarser level of each line.
+        major_fine: Whether each line is major at its finer level.
+        major_coarse: Whether each line is major at its coarser level.
+        total: Each line's opacity before the tier's gate.
+        major: Each line's major weight before the gate.
+    """
+
+    candidates: int
+    base: NiceStep
+    indices: NDArray[np.int64]
+    values: NDArray[np.float64]
+    fine: NDArray[np.int64]
+    weight: NDArray[np.float64]
+    major_fine: NDArray[np.bool_]
+    major_coarse: NDArray[np.bool_]
+    total: NDArray[np.float64]
+    major: NDArray[np.float64]
+
+
+def _decade_pattern(
+    context: LogContext, mantissas: tuple[float, float]
+) -> _Pattern | None:
+    """Work out the subdivisions of a range of mantissas within a decade.
 
     The candidate lines are multiples of the finest step needed in the
     visible part of the decade, so the work stays proportional to what is on
-    screen.
+    screen. Nothing here depends on which decade it is: a line's level
+    depends only on its mantissa and the zoom.
 
     Args:
         context: The axis being drawn.
-        n: The decade.
-        mantissas: The visible range of the mantissa within the decade.
-        gate: How far the tier has faded in.
-        budget: Most candidate lines allowed (a safety cap).
+        mantissas: The visible range of the mantissa, within ``[1, 10]``.
 
     Returns:
-        The decade's subdivisions, or ``None`` if there are none.
+        The pattern (only lines with some opacity), or ``None`` if there are
+        no subdivisions, or more candidates than any axis may draw.
     """
     theme = context.theme
     # log10 of the raw spacing (in mantissa units) a line at mantissa m
@@ -434,7 +469,8 @@ def _decade_subdivisions(
     per_unit = NiceStep(0).multiple_of(base)
     start = math.ceil(mantissas[0] * per_unit)
     stop = math.floor(mantissas[1] * per_unit)
-    if not 0 < stop - start + 1 <= budget:
+    candidates = stop - start + 1
+    if not 0 < candidates <= MAX_LINES_PER_AXIS:
         return None
     indices = np.arange(start, stop + 1, dtype=np.int64)
     indices = indices[indices % per_unit != 0]  # the integers are tier 2
@@ -455,24 +491,52 @@ def _decade_subdivisions(
     total = (1.0 - weight) * any_fine + weight * any_coarse
     major = (1.0 - weight) * major_fine + weight * major_coarse
     keep = total > 0
-    if not keep.any():
-        return None
-    u = n + np.log10(values[keep])
-    lines = AxisLines(
-        context.axis,
-        context.view.axis_to_screen(context.axis, u),
-        _quantise(total[keep] * gate),
-        _quantise(major[keep] * gate),
-    )
-    return FineTier(
-        lines,
+    return _Pattern(
+        candidates,
         base,
         indices[keep],
-        n,
+        values[keep],
         fine[keep],
         weight[keep],
         major_fine[keep],
         major_coarse[keep],
+        total[keep],
+        major[keep],
+    )
+
+
+def _decade_subdivisions(
+    context: LogContext, n: int, pattern: _Pattern, gate: float
+) -> FineTier | None:
+    """Place a pattern of subdivisions in the decade ``[10ⁿ, 10ⁿ⁺¹)``.
+
+    Args:
+        context: The axis being drawn.
+        n: The decade.
+        pattern: Its subdivisions (see :func:`_decade_pattern`).
+        gate: How far the tier has faded in.
+
+    Returns:
+        The decade's subdivisions, or ``None`` if there are none.
+    """
+    if pattern.indices.size == 0:
+        return None
+    u = n + np.log10(pattern.values)
+    lines = AxisLines(
+        context.axis,
+        context.view.axis_to_screen(context.axis, u),
+        _quantise(pattern.total * gate),
+        _quantise(pattern.major * gate),
+    )
+    return FineTier(
+        lines,
+        pattern.base,
+        pattern.indices,
+        n,
+        pattern.fine,
+        pattern.weight,
+        pattern.major_fine,
+        pattern.major_coarse,
         gate,
     )
 

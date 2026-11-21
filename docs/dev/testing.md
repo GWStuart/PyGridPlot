@@ -46,6 +46,8 @@ on. The important ones:
   opaque than one), on linear and log axes;
 - panning by whole pixels moves every grid line and every plotted pixel
   rigidly;
+- reusing plots between frames never changes a single pixel, through any
+  sequence of changes;
 - a tiny zoom step changes every line's and label's opacity only a little
   (no pops), on linear and log axes;
 - clipping keeps shapes in their box, splitting a stroke never changes it,

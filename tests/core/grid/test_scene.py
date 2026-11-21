@@ -433,3 +433,21 @@ def test_partly_major_lines_blend_to_the_requested_opacity() -> None:
     assert flatten(0.6, 0.6) == pytest.approx((0.4, 0.0, 0.6))
     assert flatten(1.0, 0.3) == pytest.approx((0.0, 0.7, 0.3))
     assert flatten(0.8, 0.2) == pytest.approx((0.2, 0.6, 0.2))
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("minor_width", 0),
+        ("axis_width", 0),
+        ("target_major_px", 4),
+        ("fade_band", -0.1),
+        ("hysteresis", -1.0),
+        ("label_size", 0),
+        ("label_halo_width", -1),
+        ("palette", ()),
+    ],
+)
+def test_themes_reject_invalid_settings(field: str, value: object) -> None:
+    with pytest.raises(ValueError, match=field.split("_")[0]):
+        replace(LIGHT, **{field: value})

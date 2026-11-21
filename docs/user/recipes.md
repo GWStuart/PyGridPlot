@@ -199,8 +199,10 @@ so there is no dark fringe when the layer is composited.
 
 ## Performance
 
-A typical frame (the grid and a few functions) takes a few milliseconds. To
-keep it that way:
+A typical frame (the grid and a few functions) takes a few milliseconds,
+and much less while nothing changes: plots that have not changed are
+[reused](plotting.md#reusing-unchanged-plots) automatically. To keep it
+that way:
 
 - **Write functions with NumPy.** Vectorised functions are called once per
   batch of points; scalar-only ones once per point, which is much slower.

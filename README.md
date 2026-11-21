@@ -78,6 +78,10 @@ pgp.show(np.exp, log_y=True, x_range=(0, 10))               # semi-log, quick mo
   user can drag; read `a.x` and `a.y` every frame to drive your plots.
   Points can be free, locked to one axis (sliders) or kept on a parametric
   curve, which they follow through crossings without jumping.
+- **Fast when little changes.** Plots that have not changed since the
+  previous frame are reused automatically and exactly (their functions are
+  checked at every sampled point), so idle frames cost a fraction of a
+  full redraw, with no change to your code.
 - **Smooth rendering.** Curves use an antialiased round pen, so joints never
   darken. Lines are crisp, and points keep their pixel size at every zoom.
 - **Themeable.** Light and dark themes are built in, and every colour, width,
@@ -130,5 +134,5 @@ python scripts/build_api_docs.py        # regenerate the API reference
 ```
 
 See the [developer guide](docs/dev/index.md) for the architecture and
-conventions. The bundled label font is DejaVu Sans; see
+conventions, and the [roadmap](ROADMAP.md) for ideas for the future. The bundled label font is DejaVu Sans; see
 `src/pygridplot/assets/fonts/LICENSE-DejaVu.txt`.

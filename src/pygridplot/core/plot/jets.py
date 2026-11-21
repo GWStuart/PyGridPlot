@@ -401,15 +401,9 @@ def _series(c0: NDArray[np.float64], like: Coefficients) -> Coefficients:
     return c
 
 
-def _sum_products(
-    a: Coefficients, b: Coefficients, k: int, start: int = 0
-) -> NDArray[np.float64]:
-    """Return ``Σ a[j] b[k - j]`` for ``j = start ... k``."""
-    if start > k:
-        return np.zeros(a.shape[1:])
-    return np.asarray(
-        np.sum(a[start : k + 1] * b[k - start :: -1][: k + 1 - start], axis=0)
-    )
+def _sum_products(a: Coefficients, b: Coefficients, k: int) -> NDArray[np.float64]:
+    """Return ``Σ a[j] b[k - j]`` for ``j = 0 ... k`` (one Cauchy coefficient)."""
+    return np.asarray(np.sum(a[: k + 1] * b[k::-1], axis=0))
 
 
 def _weighted(a: Coefficients, b: Coefficients, k: int) -> NDArray[np.float64]:
@@ -429,7 +423,7 @@ def _mul(a: Coefficients, b: Coefficients) -> Coefficients:
     return c
 
 
-def _div_clean(a: Coefficients, b: Coefficients) -> Coefficients:
+def _div(a: Coefficients, b: Coefficients) -> Coefficients:
     """Quotient: ``c[k] = (a[k] - Σ_{j<k} c[j] b[k-j]) / b[0]``."""
     c = np.zeros(a.shape)
     for k in range(a.shape[0]):
@@ -489,7 +483,7 @@ def _power_whole(a: Coefficients, p: int) -> Coefficients:
         if k:
             base = _mul(base, base)
     if p < 0:
-        return _div_clean(_series(np.ones(a.shape[1:]), a), result)
+        return _div(_series(np.ones(a.shape[1:]), a), result)
     return result
 
 
@@ -639,7 +633,7 @@ def _arctan2(a: Coefficients, b: Coefficients) -> Coefficients:
     low_a, low_b = np.ascontiguousarray(a[:n]), np.ascontiguousarray(b[:n])
     numerator = _mul(low_b, du) - _mul(low_a, dv)
     denominator = _mul(low_a, low_a) + _mul(low_b, low_b)
-    c[1:] = _div_clean(numerator, denominator) / k
+    c[1:] = _div(numerator, denominator) / k
     return c
 
 
@@ -668,8 +662,8 @@ _RAW_RULES: dict[np.ufunc, Callable[..., Coefficients]] = {
     np.negative: lambda a: -a,
     np.positive: lambda a: a.copy(),
     np.multiply: _mul,
-    np.true_divide: _div_clean,
-    np.reciprocal: lambda a: _div_clean(_constant_like(1.0, a), a),
+    np.true_divide: _div,
+    np.reciprocal: lambda a: _div(_constant_like(1.0, a), a),
     np.square: lambda a: _mul(a, a),
     np.power: _power,
     np.float_power: _power,
@@ -684,7 +678,7 @@ _RAW_RULES: dict[np.ufunc, Callable[..., Coefficients]] = {
     np.log1p: lambda a: _from_derivative(
         a,
         np.log1p(a[0]),
-        lambda u: _div_clean(_constant_like(1.0, u), u + _constant_like(1.0, u)),
+        lambda u: _div(_constant_like(1.0, u), u + _constant_like(1.0, u)),
     ),
     np.sin: lambda a: _sin_cos(a)[0],
     np.cos: lambda a: _sin_cos(a)[1],
@@ -701,7 +695,7 @@ _RAW_RULES: dict[np.ufunc, Callable[..., Coefficients]] = {
     np.arctan: lambda a: _from_derivative(
         a,
         np.arctan(a[0]),
-        lambda u: _div_clean(_constant_like(1.0, u), _one_plus_square(u)),
+        lambda u: _div(_constant_like(1.0, u), _one_plus_square(u)),
     ),
     np.arcsinh: lambda a: _from_derivative(
         a, np.arcsinh(a[0]), lambda u: _inverse_sqrt(u, _one_plus_square)
@@ -712,7 +706,7 @@ _RAW_RULES: dict[np.ufunc, Callable[..., Coefficients]] = {
     np.arctanh: lambda a: _from_derivative(
         a,
         np.arctanh(a[0]),
-        lambda u: _div_clean(_constant_like(1.0, u), _one_minus_square(u)),
+        lambda u: _div(_constant_like(1.0, u), _one_minus_square(u)),
     ),
     np.arctan2: _arctan2,
     np.hypot: lambda a, b: _power_constant(

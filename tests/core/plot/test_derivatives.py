@@ -157,3 +157,11 @@ def test_derivatives_plot_like_functions() -> None:
     for x in (-1.0, 0.5, 1.5):
         px, py = (round(v) for v in plane.to_screen(x, x))
         assert ink[py, px] > 0.9
+
+
+def test_results_that_are_not_derivatives_fall_back() -> None:
+    """A function returning the wrong shape or kind is evaluated another way."""
+    lengths = pgp.derivative(lambda x: np.zeros(3) if np.ndim(x) else x * 2.0)
+    np.testing.assert_allclose(lengths(X), 2.0)  # point by point instead
+    as_list = pgp.derivative(lambda x: [x])  # type: ignore[arg-type, return-value]
+    assert np.isnan(as_list(X)).all()

@@ -43,6 +43,7 @@ from pygridplot.core.primitives import (
 )
 from pygridplot.render.colors import RGBA, ColorResolver
 from pygridplot.render.composite import blend_dense, blend_sparse
+from pygridplot.render.coverage_cache import CoverageCache
 from pygridplot.render.fonts import FontLibrary
 from pygridplot.render.markers import MarkerPainter
 from pygridplot.render.raster import PixelBox, fill_coverage, stroke_coverage
@@ -67,6 +68,7 @@ class PygameRenderer:
         self._text = TextRenderer(self._fonts, self._colors, text_cache_size)
         self._markers = MarkerPainter(self._colors)
         self._strips: OrderedDict[tuple[object, ...], pygame.Surface] = OrderedDict()
+        self._coverage = CoverageCache()
 
     # ------------------------------------------------------------------
     # TextMeasurer protocol
@@ -170,7 +172,10 @@ class PygameRenderer:
         """
         if stroke.opacity <= 0.0:
             return
-        coverage = stroke_coverage(stroke.paths, stroke.width, _clip_box(surface))
+        clip = _clip_box(surface)
+        coverage = self._coverage.get(
+            stroke, clip, lambda: stroke_coverage(stroke.paths, stroke.width, clip)
+        )
         if coverage is not None:
             blend_sparse(
                 surface, coverage, self._colors.rgba(stroke.color), stroke.opacity
@@ -185,7 +190,10 @@ class PygameRenderer:
         """
         if fill.opacity <= 0.0:
             return
-        coverage = fill_coverage(fill.rings, fill.rule, _clip_box(surface))
+        clip = _clip_box(surface)
+        coverage = self._coverage.get(
+            fill, clip, lambda: fill_coverage(fill.rings, fill.rule, clip)
+        )
         if coverage is not None:
             blend_dense(surface, coverage, self._colors.rgba(fill.color), fill.opacity)
 
@@ -228,10 +236,11 @@ class PygameRenderer:
             surface.set_clip(previous)
 
     def clear_caches(self) -> None:
-        """Drop all cached text layouts, labels, marker stamps and line strips."""
+        """Drop all cached text, marker stamps, line strips and coverage."""
         self._text.clear()
         self._markers.clear()
         self._strips.clear()
+        self._coverage.clear()
 
     # ------------------------------------------------------------------
     # Internal helpers

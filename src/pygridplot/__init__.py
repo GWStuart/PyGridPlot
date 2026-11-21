@@ -45,6 +45,7 @@ from pygridplot.core.handles.point import DraggablePoint
 from pygridplot.core.plot.curves import CurveSampling
 from pygridplot.core.plot.derivatives import derivative, derivatives
 from pygridplot.core.plot.implicit import ImplicitSampling
+from pygridplot.core.plot.memo import CacheStats
 from pygridplot.core.plot.sampling import SamplingConfig
 from pygridplot.core.plot.style import LineStyle, PointStyle, PolygonStyle
 from pygridplot.core.view import View, ViewLimits, ViewState
@@ -57,6 +58,7 @@ __version__ = "0.1.0.dev0"
 __all__ = [
     "DARK",
     "LIGHT",
+    "CacheStats",
     "CurveSampling",
     "DraggablePoint",
     "GridTheme",

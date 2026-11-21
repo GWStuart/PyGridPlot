@@ -387,9 +387,9 @@ def fade_collisions(
                 factor = min(factor, 1.0 - other.opacity * closeness)
         if factor <= 1e-3:
             continue
-        if factor < 1.0:
-            label = replace(label, opacity=label.opacity * factor)
-        kept.append(label)
+        kept.append(
+            label if factor >= 1.0 else replace(label, opacity=label.opacity * factor)
+        )
     return kept
 
 

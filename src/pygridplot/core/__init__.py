@@ -20,13 +20,14 @@ Foundations, used by everything else:
 * :mod:`~pygridplot.core.easing`: the spring behind eased pan and zoom.
 * :mod:`~pygridplot.core.primitives`: the drawing primitives handed to
   renderers, and the text-measuring protocol.
-* :mod:`~pygridplot.core.grid.theme`: the plane's appearance and presets.
 
 Subpackages:
 
 * :mod:`pygridplot.core.grid`: the adaptive grid, its tick labels and their
-  layout (entry point :func:`pygridplot.core.grid.scene.build_grid`).
-* :mod:`pygridplot.core.plot`: plotted objects (functions, parametric,
-  polar and implicit curves, points, polylines, polygons) to primitives (entry point
-  :mod:`pygridplot.core.plot.builders`).
+  layout (entry point :func:`pygridplot.core.grid.scene.build_grid`), and
+  the theme (:mod:`pygridplot.core.grid.theme`).
+* :mod:`pygridplot.core.plot`: plotted objects (functions and their
+  derivatives, parametric, polar and implicit curves, points, polylines,
+  polygons) to primitives (entry point :mod:`pygridplot.core.plot.builders`).
+* :mod:`pygridplot.core.handles`: draggable points, built on the other two.
 """

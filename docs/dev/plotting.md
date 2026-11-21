@@ -15,6 +15,7 @@ are its building blocks.
 | `curves.py` | Adaptive sampling of parametric curves (and so polar ones) on screen. |
 | `jets.py` | Taylor arithmetic: the `Jet` number type that carries derivatives through NumPy code. |
 | `derivatives.py` | `derivative` and `derivatives`: exact via jets, point by point, or numerical. |
+| `memo.py` | `PlotCache`: reusing a plotting call's result between frames, exactly. |
 | `implicit.py` | Finding implicit curves `F(x, y) = c` on a grid: marching squares (contourpy), checked and refined. |
 | `geometry.py` | Normalising point input; clipping polylines (Liang–Barsky) and polygons (Sutherland–Hodgman). |
 | `style.py` | `LineStyle`, `PointStyle`, `PolygonStyle`, `with_overrides`, and `ColorCycle` (the palette). |
@@ -290,6 +291,62 @@ changes; `derivative(derivative(f, a), b)` collapses to
 `derivative(f, a + b)`. A derivative called with a jet (a derivative inside
 a function being differentiated) raises `TypeError`, which sends that case
 to the numerical path.
+
+## Reusing plots between frames: `memo.py`
+
+Immediate mode redraws everything every frame, but most frames change
+nothing, or only the plots that depend on a dragged point. `PlotCache`
+(one per plane) reuses the result of each plotting call that has not
+changed, and the renderer then reuses its rasterised coverage (see
+[Rendering](rendering.md#reusing-coverage-coverage_cachepy)).
+
+**Telling that a plot has not changed** is the whole problem. Function
+identity says nothing: lambdas are created anew every frame, and the same
+function can return new values because it reads a changed variable
+(`lambda x: a.y * np.sin(x)`). Code or closure inspection is fragile. So
+the cache relies on a property the samplers already have: they are
+**deterministic**. Given the same view and settings, a sampler queries the
+function at the same points in the same order *as long as it receives the
+same values*, and so produces the same primitives. Hence:
+
+1. While a call is built, its functions are wrapped in `Recorder`s, which
+   evaluate robustly (like `evaluate_quietly`, so the builders' own
+   evaluation passes the results through untouched) and record every input
+   and result.
+2. In the next frame, the call in the same position (calls are matched by
+   order, like palette colours) is reused only if its kind is the same, its
+   key is equal (`same_inputs`: the view's `fingerprint`, the style, the
+   resolved colour, ranges, levels, sampling settings, copies of data
+   arrays, constants standing in for curve components) and every recorder
+   is `unchanged()`: the *current* function, called once on all the
+   recorded inputs, returns exactly the recorded values, bit for bit (NaN
+   equal to NaN, the sign of zero compared too).
+3. If so, re-running the sampler would retrace the same steps, so the
+   previous primitives *are* the result: the very same objects are returned.
+
+`unchanged()` first checks `PROBE_POINTS` (32) recorded points spread over
+the record, so a function that changes everywhere (an animation) is
+rejected for almost nothing; only a function that passes the probe is
+checked in full. A full check is one vectorised call over the recorded
+points (a few thousand for a function, up to the evaluation budget for an
+implicit curve), far cheaper than sampling and rasterising.
+
+The one assumption is that functions are **pointwise**: their value at `x`
+does not depend on the other points in the same call. NumPy itself is
+reproducible here: the same input gives bit-identical results whatever the
+size and alignment of the array it sits in (checked for the common ufuncs).
+Were it not on some platform, the check would fail and the plot would be
+drawn again: a lost speed-up, never a stale plot. A property test drives a
+cached and an uncached plane through random sequences of changes (new
+lambdas, changed closures, a narrow spike moving by less than a pixel, data
+changed in place, plots appearing and disappearing, pans and zooms) and
+compares every frame pixel for pixel.
+
+`MAX_ENTRIES` (512) bounds the calls remembered per frame, which also bounds
+memory for a program that never starts a frame. The grid scene is reused
+the same way in `Plane._grid_scene`, keyed by the view's fingerprint and the
+theme, except in the `"snap"` transition, whose hysteresis depends on
+earlier frames.
 
 ## Building primitives: `builders.py`
 

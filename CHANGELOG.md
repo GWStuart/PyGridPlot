@@ -8,6 +8,14 @@ follow [semantic versioning](https://semver.org/) once 1.0 is released.
 
 ### Added
 
+- **Reusing unchanged plots**: plotting calls whose view, style, inputs and
+  function values are unchanged since the previous frame reuse their
+  primitives and rasterised coverage, and the grid is reused while the view
+  and theme stay the same. Exact (functions are re-checked at every point
+  where they were sampled), automatic, and several times faster for idle
+  frames and for frames where only some plots change. `Plane(cache=...)`,
+  `plane.cache`, `plane.cache_stats`, `plane.clear_cache()`, `CacheStats`.
+- `ROADMAP.md`: ideas for future features and limitations to lift.
 - **Derivatives**: `pgp.derivative(f, n)` returns the `n`-th derivative of a
   function of one variable (up to order 40), to plot or evaluate;
   `pgp.derivatives(f, x, n)` returns every order at once. Exact for NumPy
@@ -53,6 +61,9 @@ follow [semantic versioning](https://semver.org/) once 1.0 is released.
 
 ### Changed
 
+- Log-axis grids are drawn about a third faster: the subdivisions of every
+  whole decade on screen are worked out once per frame.
+
 - `Plane(interactive=False)` now switches off only panning and zooming;
   draggable points still work.
 - PyGridPlot now depends on contourpy (small, compiled, NumPy only).
@@ -65,6 +76,9 @@ follow [semantic versioning](https://semver.org/) once 1.0 is released.
   `core.plot` subpackages, with the layering enforced by tests.
 
 ### Fixed
+
+- With several planes in one window, moving between their draggable points
+  could leave the hand cursor stuck; the planes now share one cursor.
 
 - Labels fading near each other (on log axes, and pinned labels in the
   corners) no longer change opacity in steps of 1/8 as they cross pixel

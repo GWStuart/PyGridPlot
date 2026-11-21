@@ -14,6 +14,7 @@ A       toggle axes
 L       toggle labels
 H       toggle label halos
 S       toggle eased (smooth) zooming
+C       toggle reusing unchanged plots between frames (the cache)
 X / Y   toggle a logarithmic x / y axis
 P       cycle plots: none / functions / shapes / power laws / curves
 [ / ]   decrease / increase the target major spacing
@@ -41,7 +42,7 @@ from pygridplot.render.fonts import bundled_font_path
 
 HELP = (
     "T theme  F fade/snap  R rule  N minor  J major  A axes  L labels  "
-    "H halo  S smooth  X/Y log  P plots  [ ] spacing  F1 overlay"
+    "H halo  S smooth  C cache  X/Y log  P plots  [ ] spacing  F1 overlay"
 )
 
 OVERLAYS = ("none", "functions", "shapes", "power laws", "curves")
@@ -151,6 +152,7 @@ def draw_overlay(
     frame_ms: float,
     grid_ms: float,
     plot_ms: float,
+    reused: tuple[int, int],
 ) -> None:
     """Draw the debug overlay in the top-left corner.
 
@@ -161,6 +163,8 @@ def draw_overlay(
         frame_ms: Smoothed total frame time in milliseconds.
         grid_ms: Smoothed time spent in ``draw_grid`` in milliseconds.
         plot_ms: Smoothed time spent drawing plots in milliseconds.
+        reused: Plotting calls reused from the previous frame, and all calls,
+            in the last frame.
     """
     view = plane.view
     grid = plane.last_grid
@@ -181,6 +185,8 @@ def draw_overlay(
         f" / target {theme.target_major_px:.0f}px"
         f" / smooth {'on' if plane.interaction.smoothing else 'off'}",
         f"frame  {frame_ms:5.2f} ms   grid {grid_ms:5.2f} ms   plots {plot_ms:5.2f} ms",
+        f"cache  {'on' if plane.cache else 'off'}"
+        f"   {reused[0]} of {reused[1]} plotting calls reused",
         HELP,
     ]
     rendered = [font.render(text, True, (240, 240, 240)) for text in lines]
@@ -222,6 +228,8 @@ def main() -> None:
                     default = pgp.InteractionConfig().smoothing
                     smoothing = 0.0 if plane.interaction.smoothing else default
                     plane.interaction = replace(plane.interaction, smoothing=smoothing)
+                elif event.key == pygame.K_c:
+                    plane.cache = not plane.cache
                 elif event.key == pygame.K_p:
                     overlay = (overlay + 1) % len(OVERLAYS)
                 elif event.key == pygame.K_x:
@@ -235,12 +243,16 @@ def main() -> None:
         start = time.perf_counter()
         plane.draw_grid(screen)
         middle = time.perf_counter()
+        before = plane.cache_stats
         draw_plots(plane, screen, OVERLAYS[overlay])
+        after = plane.cache_stats
         end = time.perf_counter()
+        hits = after.hits - before.hits
+        reused = (hits, hits + after.misses - before.misses)
         grid_ms = 0.9 * grid_ms + 0.1 * (middle - start) * 1000
         plot_ms = 0.9 * plot_ms + 0.1 * (end - middle) * 1000
         if show_overlay:
-            draw_overlay(screen, font, plane, frame_ms, grid_ms, plot_ms)
+            draw_overlay(screen, font, plane, frame_ms, grid_ms, plot_ms, reused)
         pygame.display.flip()
         clock.tick(120)
         now = time.perf_counter()

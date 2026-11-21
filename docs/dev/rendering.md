@@ -115,6 +115,20 @@ Coverage is painted with standard "over" blending:
 
 Every function respects the surface's clip area.
 
+## Reusing coverage: `coverage_cache.py`
+
+Rasterising is most of the cost of drawing a stroke or a fill; blending is
+cheap. When the plane reuses a plot (see
+[Plotting](plotting.md#reusing-plots-between-frames-memopy)), it passes the
+renderer the very same primitive object, so `CoverageCache` keeps the
+coverage of recently drawn primitives, found by the primitive's identity and
+the clip box (an embedded plane's coverage is computed again when its
+rectangle changes). Each entry holds the primitive itself, so its identity
+cannot be taken by another object while the entry exists. The least
+recently used entries go beyond `MAX_ENTRIES` (256) or `MAX_PIXELS`
+(two million covered pixels, about 30 MB). `clear_caches()` empties it with
+the other caches.
+
 ## Performance
 
 `scripts/benchmark.py` times the main cases. Typical numbers on a 1100×720

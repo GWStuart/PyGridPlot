@@ -25,6 +25,7 @@ or while its curve moves.
 from __future__ import annotations
 
 import math
+import weakref
 from collections.abc import Callable, Sequence
 
 import pygame
@@ -62,7 +63,6 @@ class DragController:
         self._dragged: DraggablePoint | None = None
         self._hovered: DraggablePoint | None = None
         self._offset = (0.0, 0.0)
-        self._saved_cursor: pygame.cursors.Cursor | None = None
 
     @property
     def dragged(self) -> DraggablePoint | None:
@@ -229,16 +229,54 @@ class DragController:
         self._update_cursor()
 
     def _update_cursor(self) -> None:
-        """Show the hand cursor over a point, and restore the previous one after."""
+        """Ask for the hand cursor while a point is hovered or dragged."""
         want = self.config.hover_cursor and (
             self._hovered is not None or self._dragged is not None
         )
+        HAND_CURSOR.request(self, want)
+
+
+class HandCursor:
+    """The hand cursor, shared by every plane in the program.
+
+    The mouse cursor belongs to the whole window, so the planes in it must
+    agree on it: with two planes, one may still want the hand when the other
+    stops wanting it. The hand is shown while at least one controller asks
+    for it, and the cursor that was there before is restored when the last
+    one stops. Controllers are held weakly, so one that is thrown away while
+    asking does not keep the hand forever.
+    """
+
+    def __init__(self) -> None:
+        self._wanting: weakref.WeakSet[object] = weakref.WeakSet()
+        self._saved: pygame.cursors.Cursor | None = None
+
+    def request(self, owner: object, want: bool) -> None:
+        """Record whether ``owner`` wants the hand cursor, and update the cursor.
+
+        Args:
+            owner: Who is asking (a :class:`DragController`).
+            want: Whether it wants the hand now.
+        """
+        if want:
+            self._wanting.add(owner)
+        else:
+            self._wanting.discard(owner)
         try:
-            if want and self._saved_cursor is None:
-                self._saved_cursor = pygame.mouse.get_cursor()
+            if self._wanting and self._saved is None:
+                self._saved = pygame.mouse.get_cursor()
                 pygame.mouse.set_cursor(pygame.SYSTEM_CURSOR_HAND)
-            elif not want and self._saved_cursor is not None:
-                saved, self._saved_cursor = self._saved_cursor, None
+            elif not self._wanting and self._saved is not None:
+                saved, self._saved = self._saved, None
                 pygame.mouse.set_cursor(saved)
         except pygame.error:  # no display, or a driver without cursors
-            self._saved_cursor = None
+            self._saved = None
+
+    def reset(self) -> None:
+        """Forget every request, without touching the cursor (for tests)."""
+        self._wanting.clear()
+        self._saved = None
+
+
+HAND_CURSOR = HandCursor()
+"""The program's one :class:`HandCursor`."""

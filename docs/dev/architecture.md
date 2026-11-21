@@ -111,6 +111,7 @@ src/pygridplot/
 │   │   ├── derivatives.py   derivative(), derivatives(): jets, point by point, numerical
 │   │   ├── implicit.py      Implicit curves F(x, y) = 0: marching squares (contourpy), checked
 │   │   ├── geometry.py      Point input; clipping polylines and polygons
+│   │   ├── memo.py          PlotCache: reusing unchanged plots between frames, exactly
 │   │   └── builders.py      One function per kind of plot -> clipped primitives
 │   └── handles/         Draggable points
 │       ├── point.py         DraggablePoint: position, constraint, style, state
@@ -123,6 +124,7 @@ src/pygridplot/
 │   ├── pygame_renderer.py   PygameRenderer: draws every primitive type
 │   ├── raster.py        Antialiased coverage: strokes, fills, markers (pure NumPy)
 │   ├── composite.py     Blending coverage onto pygame surfaces
+│   ├── coverage_cache.py    The coverage of reused primitives, kept between frames
 │   ├── markers.py       Cached, sub-pixel marker stamps
 │   ├── text.py          Label typesetting (runs, superscripts, halos), cached
 │   ├── fonts.py         Font loading; the bundled DejaVu Sans
@@ -212,6 +214,8 @@ the default view puts grid lines exactly on pixels.
 | Home view, pending fits | `ViewFraming` | `reset_view`, and fitting ranges once the size is known. |
 | Snap levels | `GridState` | Hysteresis in `"snap"` mode only (fades are stateless). |
 | Palette position | `ColorCycle` | Colours in drawing order, restarted every frame. |
+| The previous frame's plots and grid | `PlotCache`, `Plane._grid_scene` | Reusing unchanged plots (exactly: checked against the functions' values). |
+| Coverage of reused primitives | `CoverageCache` (renderer) | Blending reused plots without rasterising them again. |
 | Fonts, label surfaces, marker stamps | renderer caches | Speed only; `clear_caches()` frees them. |
 
 Everything else is a pure function of these and the user's calls, which is

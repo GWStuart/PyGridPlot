@@ -10,5 +10,10 @@ are its building blocks:
 * :mod:`~pygridplot.core.plot.sampling`: adaptive sampling of ``y = f(x)``.
 * :mod:`~pygridplot.core.plot.curves`: adaptive sampling of parametric
   (and polar) curves.
+* :mod:`~pygridplot.core.plot.implicit`: finding implicit curves
+  ``F(x, y) = c`` (marching squares with contourpy, checked and refined).
+* :mod:`~pygridplot.core.plot.jets` and
+  :mod:`~pygridplot.core.plot.derivatives`: exact derivatives of any order
+  (Taylor arithmetic), with numerical differentiation as a fallback.
 * :mod:`~pygridplot.core.plot.geometry`: point input and clipping.
 """

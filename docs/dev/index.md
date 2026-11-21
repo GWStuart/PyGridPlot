@@ -36,5 +36,8 @@ mypy                                     # strict type checking of src/
 python scripts/build_api_docs.py         # after changing a public docstring
 ```
 
+Looking for something to work on? The [roadmap](../../ROADMAP.md) lists
+ideas for new features and known limitations, with the top picks first.
+
 All four checks must pass before a change is done; [Testing and
 tools](testing.md#the-checklist) has the full checklist.

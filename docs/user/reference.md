@@ -15,7 +15,7 @@ setting with its parameters and defaults.
 - Draggable points: [`DraggablePoint`](#draggablepoint)
 - Styles: [`LineStyle`](#linestyle), [`PointStyle`](#pointstyle), [`PolygonStyle`](#polygonstyle)
 - Themes: [`GridTheme`](#gridtheme), [`LIGHT`](#light), [`DARK`](#dark), [`NumberFormat`](#numberformat)
-- Configuration: [`InteractionConfig`](#interactionconfig), [`KeyBindings`](#keybindings), [`SamplingConfig`](#samplingconfig), [`CurveSampling`](#curvesampling), [`ImplicitSampling`](#implicitsampling), [`ViewLimits`](#viewlimits)
+- Configuration: [`InteractionConfig`](#interactionconfig), [`KeyBindings`](#keybindings), [`SamplingConfig`](#samplingconfig), [`CurveSampling`](#curvesampling), [`ImplicitSampling`](#implicitsampling), [`ViewLimits`](#viewlimits), [`CacheStats`](#cachestats)
 - The view: [`View`](#view), [`ViewState`](#viewstate)
 
 ## The plane
@@ -41,6 +41,7 @@ pgp.Plane(
     limits: ViewLimits | None = None,
     renderer: PygameRenderer | None = None,
     sampling: SamplingConfig | None = None,
+    cache: bool = True,
 )
 ```
 
@@ -64,6 +65,7 @@ The initial view can be given like a graphing calculator's window settings, `x_r
 - `limits`: Zoom and pan limits (see `ViewLimits`).
 - `renderer`: Renderer to draw with. Planes can share one renderer, and with it their font and label caches.
 - `sampling`: How functions are sampled by `plot` (the defaults suit almost every function).
+- `cache`: Reuse plots that have not changed since the previous frame (see `cache`). It only saves time; the drawing is the same.
 
 #### Members of `Plane`
 
@@ -96,6 +98,24 @@ The initial view can be given like a graphing calculator's window settings, `x_r
 - **`plane.sampling`** (`SamplingConfig`, read and write)
 
   How `plot` samples functions (assign to change it).
+
+- **`plane.cache`** (`bool`, read and write)
+
+  Whether plots that have not changed since the previous frame are reused.
+
+  On by default. A plotting call is reused when it is the same kind of call, in the same place among the frame's calls, with the same view, style and inputs as in the previous frame, and its functions still give exactly the values they gave then (they are checked at every point where they were evaluated). The drawing is then exactly what drawing again would give, so turning the cache off changes only the speed; do so to measure how long drawing takes, or if your functions are not *pointwise* (their value at `x` depends on the other points they are called with).
+
+- **`plane.cache_stats`** (`CacheStats`, read only)
+
+  How many plotting calls were reused (hits) and built again (misses).
+
+- **`plane.clear_cache()`**
+
+  ```py
+  plane.clear_cache()
+  ```
+
+  Forget every reused plot and grid, and the counts in `cache_stats`.
 
 - **`plane.interaction`** (`InteractionConfig`, read and write)
 
@@ -133,9 +153,9 @@ The initial view can be given like a graphing calculator's window settings, `x_r
   plane.update() -> bool
   ```
 
-  Advance eased pan/zoom movement.
+  Advance eased pan/zoom movement, and keep a dragged point under the cursor.
 
-  `draw_grid` calls this automatically, so you only need it if you stop drawing the grid but still want eased movement to continue.
+  `draw_grid` calls this automatically, so you only need it if you stop drawing the grid but still want eased movement (and dragging while the view eases) to continue.
 
   *Returns:* `True` if the view changed.
 
@@ -1191,6 +1211,19 @@ On a logarithmic axis the limits apply to the transformed coordinate (`log10` of
 
   *Returns:* The clamped coordinate.
 
+### CacheStats
+
+```py
+pgp.CacheStats(hits: int = 0, misses: int = 0)
+```
+
+How often plotting calls were reused.
+
+*Attributes:*
+
+- `hits`: Calls whose previous result was reused.
+- `misses`: Calls that were built again.
+
 ## The view
 
 The camera behind every plane (`plane.view`): centre, scale, axes and every coordinate conversion.
@@ -1341,6 +1374,12 @@ A mutable camera that maps the world plane onto a screen rectangle.
   The region of the world covered by `rect`.
 
   Because integer screen coordinates are pixel centres, the rectangle covers continuous coordinates from `left - 0.5` to `right - 0.5`. On a log axis the bounds are always positive (and may underflow to 0 or overflow to infinity when zoomed out extremely far).
+
+- **`view.fingerprint`** (`tuple[object, ...]`, read only)
+
+  Everything that decides where world points land on screen.
+
+  Two views with equal fingerprints map every point to the same pixel, so whatever was drawn for one is exactly right for the other. Used to reuse drawings between frames while nothing moves.
 
 - **`view.transformed_bounds`** (`Bounds`, read only)
 

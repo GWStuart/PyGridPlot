@@ -37,7 +37,12 @@ Case = Callable[[pygame.Surface], None]
 
 
 def plane_for(**kwargs: object) -> pgp.Plane:
-    """Return a plane covering the whole benchmark surface."""
+    """Return a plane covering the whole benchmark surface.
+
+    The cache is off unless asked for, so that the cases measure the work of
+    drawing, not of reusing the previous frame.
+    """
+    kwargs.setdefault("cache", False)
     return pgp.Plane(pygame.Rect(0, 0, *SIZE), **kwargs)  # type: ignore[arg-type]
 
 
@@ -65,6 +70,22 @@ def plot_case(
 
     def run(surface: pygame.Surface) -> None:
         plane.begin_frame()
+        draw(plane, surface)
+
+    return run
+
+
+def cached_case(
+    draw: Callable[[pgp.Plane, pygame.Surface], None], **kwargs: object
+) -> Case:
+    """Draw the grid and plots with the cache on, nothing changing between frames.
+
+    This is an idle frame: what a program costs while the user only looks.
+    """
+    plane = plane_for(cache=True, **kwargs)
+
+    def run(surface: pygame.Surface) -> None:
+        plane.draw_grid(surface)
         draw(plane, surface)
 
     return run
@@ -185,6 +206,15 @@ def cases() -> dict[str, Case]:
         "drag along a spirograph": drag_case(),
         "draw 20 draggable points": plot_case(
             lambda p, s: p.draw_draggables(s), scale=60.0, draggables=20
+        ),
+        "cached: idle test set": cached_case(
+            lambda p, s: [p.plot(s, f) for f in test_set], scale=60.0
+        ),
+        "cached: idle implicit heart": cached_case(
+            lambda p, s: p.implicit(
+                s, lambda x, y: (x**2 + y**2 - 4) ** 3 - 4 * x**2 * y**3
+            ),
+            scale=60.0,
         ),
         "points 2000": plot_case(
             lambda p, s: p.points(s, np.column_stack((xs, np.sin(xs))))

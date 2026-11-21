@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "PyGridPlot"
 version = "0.1.0.dev0"
-description = "An interactive, pannable and zoomable Cartesian plane for pygame: an adaptive grid and smooth, robust plotting of functions, parametric, polar and implicit curves, points and polygons."
+description = "An interactive, pannable and zoomable Cartesian plane for pygame: an adaptive grid; robust plotting of functions and their exact derivatives, parametric, polar and implicit curves, points and polygons; and draggable points."
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [

@@ -219,35 +219,9 @@ def _refine(
     confirmed = rounds_run > 0 and not out_of_budget and xa.shape[0] <= budget
     pending = xa
     if confirmed and xa.shape[0]:
-        defined_a, defined_b = np.isfinite(ya), np.isfinite(yb)
-        both = defined_a & defined_b
-        edge = defined_a ^ defined_b
-        # Jumps and poles between two defined values.
-        xa_b, ya_b, xb_b, yb_b = xa[both], ya[both], xb[both], yb[both]
-        jump, pole = _classify_jumps(func, xa_b, ya_b, xb_b, yb_b)
-        budget -= xa_b.shape[0]
-        chase = pole & (np.sign(ya_b) * np.sign(yb_b) < 0)
-        pole_x, pole_y, pole_starts = _chase(
-            func,
-            (xa_b[chase], ya_b[chase], xb_b[chase], yb_b[chase]),
-            band,
-            scale[0],
-            mode="pole",
-            budget=budget,
-        )
-        budget -= pole_x.shape[0]
-        # Domain edges: follow the curve right up to where it stops (or leaves).
-        edge_x, edge_y, _ = _chase(
-            func,
-            (xa[edge], ya[edge], xb[edge], yb[edge]),
-            band,
-            scale[0],
-            mode="edge",
-            budget=budget,
-        )
-        added_x += [edge_x, pole_x]
-        added_y += [edge_y, pole_y]
-        pending = np.concatenate((xa_b[jump & ~chase], pole_starts))
+        extra_x, extra_y, pending = _settle(func, (xa, ya, xb, yb), scale, band, budget)
+        added_x += extra_x
+        added_y += extra_y
     all_x = np.concatenate(added_x)
     order = np.argsort(all_x, kind="stable")
     all_x = all_x[order]
@@ -257,6 +231,67 @@ def _refine(
         all_x, all_y, pending, stuck_starts, confirmed, scale, band, config
     )
     return all_x, all_y, broken
+
+
+def _settle(
+    func: Function,
+    segments: tuple[
+        NDArray[np.float64],
+        NDArray[np.float64],
+        NDArray[np.float64],
+        NDArray[np.float64],
+    ],
+    scale: tuple[float, float],
+    band: tuple[float, float],
+    budget: int,
+) -> tuple[list[NDArray[np.float64]], list[NDArray[np.float64]], NDArray[np.float64]]:
+    """Decide what the segments still far from straight after refining are.
+
+    Segments with two defined ends are steep pieces, jumps or poles
+    (:func:`_classify_jumps`); the sides of a pole are followed up to it.
+    Segments with one defined end hold a domain edge, which is followed right
+    up to where the curve stops.
+
+    Args:
+        func: The function.
+        segments: ``(xa, ya, xb, yb)``: the segments' ends and values.
+        scale: Pixels per world unit along x and y.
+        band: Visible y interval in world units.
+        budget: Evaluations left.
+
+    Returns:
+        ``(xs, ys, pending)``: the samples added (as lists of arrays) and the
+        starts of the segments the curve must not be drawn across.
+    """
+    xa, ya, xb, yb = segments
+    defined_a, defined_b = np.isfinite(ya), np.isfinite(yb)
+    both = defined_a & defined_b
+    edge = defined_a ^ defined_b
+    # Jumps and poles between two defined values.
+    xa_b, ya_b, xb_b, yb_b = xa[both], ya[both], xb[both], yb[both]
+    jump, pole = _classify_jumps(func, xa_b, ya_b, xb_b, yb_b)
+    budget -= xa_b.shape[0]
+    chase = pole & (np.sign(ya_b) * np.sign(yb_b) < 0)
+    pole_x, pole_y, pole_starts = _chase(
+        func,
+        (xa_b[chase], ya_b[chase], xb_b[chase], yb_b[chase]),
+        band,
+        scale[0],
+        mode="pole",
+        budget=budget,
+    )
+    budget -= pole_x.shape[0]
+    # Domain edges: follow the curve right up to where it stops (or leaves).
+    edge_x, edge_y, _ = _chase(
+        func,
+        (xa[edge], ya[edge], xb[edge], yb[edge]),
+        band,
+        scale[0],
+        mode="edge",
+        budget=budget,
+    )
+    pending = np.concatenate((xa_b[jump & ~chase], pole_starts))
+    return [edge_x, pole_x], [edge_y, pole_y], pending
 
 
 def _classify_jumps(

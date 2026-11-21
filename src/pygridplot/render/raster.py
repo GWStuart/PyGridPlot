@@ -110,7 +110,7 @@ def stroke_coverage(
     if a.shape[0] == 0:
         return None
     radius = width / 2 + 0.5 if width >= 1.0 else 1.0
-    strength = 1.0 if width >= 1.0 else width
+    strength = min(1.0, width)  # lines thinner than a pixel are fainter
     a, b = _split_long(a, b, radius)
     candidates = _segment_distances(a, b, radius, clip)
     if candidates is None:

@@ -225,3 +225,18 @@ def test_array_helpers() -> None:
     with pytest.raises(TypeError):
         x.astype(int)
     assert np.shape(x) == (4,)
+
+
+def test_jets_broadcast_with_arrays_of_constants() -> None:
+    x = np.linspace(-1, 1, 5)
+    weights = np.arange(5.0)
+    got = nth(lambda t: t * weights + np.ones(5) * t**2, x, 1)
+    np.testing.assert_allclose(got, weights + 2 * x)
+    # A jet of one point against an array: the result has the array's shape.
+    single = Jet.variable(np.array(2.0), 1) * np.array([1.0, 3.0])
+    assert single.derivatives()[1].tolist() == [1.0, 3.0]
+    # Boolean arrays count as numbers; strings do not.
+    masked = Jet.variable(x, 1) * (x > 0)
+    assert masked.derivatives()[1].tolist() == [0, 0, 0, 1, 1]
+    with pytest.raises(TypeError):
+        np.add(Jet.variable(x, 1), np.array(["a"] * 5))
