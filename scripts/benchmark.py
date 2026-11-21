@@ -131,6 +131,93 @@ BIG, SMALL, PEN = 2.5, 0.9, 1.6
 """Wheel sizes of the spirograph (a hypotrochoid) case."""
 
 
+GRAPH_LINES = (
+    "a = 1.5",
+    "f(x) = a sin(x) + x / 4",
+    "y = f'(x)",
+    "y = f'(P.x)(x - P.x) + P.y",
+    "(3cos(t) + cos(3t), 2sin(t))",
+    "r = 1 + cos(3θ) / 2",
+    "x^2 / 9 + y^2 / 4 = 1",
+    "Q = (P.x + 1, f(P.x + 1))",
+)
+"""A typical graph: parameters, plots, a derivative, curves and points."""
+
+
+def graph_for(**options: object) -> pgp.Graph:
+    """Return the graph of :data:`GRAPH_LINES`, with a draggable point P."""
+    graph = pgp.Graph()
+    for line in GRAPH_LINES:
+        graph.add(line)
+    graph.draggable(curve="f", t=1.2, name="P", **options)  # type: ignore[arg-type]
+    return graph
+
+
+def by_hand(plane: pgp.Plane, surface: pygame.Surface) -> None:
+    """Draw what :func:`graph_for` holds with plane calls written in NumPy."""
+    point = by_hand.point  # type: ignore[attr-defined]
+    a = 1.5
+
+    def f(x: np.ndarray) -> np.ndarray:
+        return a * np.sin(x) + x / 4
+
+    df = pgp.derivative(f)
+    plane.plot(surface, f)
+    plane.plot(surface, df)
+    px, py = point.position
+    slope = float(df(np.array([px]))[0])
+    plane.plot(surface, lambda x: slope * (x - px) + py)
+    plane.parametric(
+        surface,
+        lambda t: 3 * np.cos(t) + np.cos(3 * t),
+        lambda t: 2 * np.sin(t),
+        (0, 2 * math.pi),
+    )
+    plane.polar(surface, lambda th: 1 + np.cos(3 * th) / 2)
+    plane.implicit(surface, lambda x, y: x**2 / 9 + y**2 / 4, 1.0)
+    plane.points(surface, [(px + 1, float(f(np.array([px + 1]))[0]))])
+    plane.draw_draggables(surface, point)
+
+
+def graph_case(*, cache: bool = False) -> Case:
+    """Draw the grid and the graph of :data:`GRAPH_LINES`."""
+    plane = plane_for(scale=60.0, cache=cache)
+    graph = graph_for()
+
+    def run(surface: pygame.Surface) -> None:
+        plane.draw_grid(surface)
+        graph.draw(plane, surface)
+
+    return run
+
+
+def by_hand_case() -> Case:
+    """Draw the grid and the same as :func:`graph_case`, by hand."""
+    plane = plane_for(scale=60.0)
+    f = pgp.expression("1.5 sin(x) + x / 4")
+    by_hand.point = plane.draggable(  # type: ignore[attr-defined]
+        curve=(lambda t: t, f, (-30.0, 30.0)), t=1.2
+    )
+
+    def run(surface: pygame.Surface) -> None:
+        plane.draw_grid(surface)
+        by_hand(plane, surface)
+
+    return run
+
+
+def compile_case() -> Case:
+    """Compile the graph of :data:`GRAPH_LINES` again, as after any edit."""
+    graph = graph_for()
+    first = graph.items[1]
+
+    def run(surface: pygame.Surface) -> None:
+        first.expression = first.expression  # type: ignore[attr-defined]
+        assert not graph.errors  # compiles
+
+    return run
+
+
 def cases() -> dict[str, Case]:
     """Return every benchmark case by name."""
     test_set = (lambda x: 1 / x, np.tan, np.sqrt, np.log, np.floor, lambda x: x**2)
@@ -216,6 +303,10 @@ def cases() -> dict[str, Case]:
             ),
             scale=60.0,
         ),
+        "graph: 8 lines + point": graph_case(),
+        "graph: same, by hand": by_hand_case(),
+        "graph: compile 8 lines": compile_case(),
+        "cached: idle graph": graph_case(cache=True),
         "points 2000": plot_case(
             lambda p, s: p.points(s, np.column_stack((xs, np.sin(xs))))
         ),

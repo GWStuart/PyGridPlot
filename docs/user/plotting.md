@@ -43,6 +43,16 @@ plane.plot(screen, math.gamma)                         # scalar-only functions w
 - **scalar-only**, written with `math` or with `if` statements. It is
   detected automatically (the first call with an array fails or returns the
   wrong shape) and then called one x at a time.
+- **written as text**, compiled by `pgp.expression` (see
+  [The expression language](expressions.md)): `pgp.expression("x^2 sin(x)")`
+  is a vectorised function like any other.
+
+```python
+plane.plot(screen, pgp.expression("2sin(x) + cos(3x) / 2"))
+```
+
+To keep a whole picture as text (plots, curves, points, parameters), edit
+it while the program runs and save it, use a [graph](graphs.md).
 
 It does not need to be well behaved. Wherever it raises an error, returns
 NaN or infinity, or returns a complex number with a real imaginary part,

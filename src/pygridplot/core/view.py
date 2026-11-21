@@ -888,6 +888,28 @@ class View:
         else:
             self._apply_scale(scales.get("x", self._sx), scales.get("y", self._sy))
 
+    def fitted_ranges(self) -> tuple[tuple[float, float], tuple[float, float]]:
+        """Return the world ranges that :meth:`fit` turns back into this view.
+
+        They are what the view is guaranteed to show, centred on its centre:
+        :attr:`bounds` less up to a pixel at the edges. Fitting them again on
+        a view of the same size gives the same centre and scale (up to
+        rounding), so a view can be saved as ranges and restored exactly,
+        and still shows the same region in a window of another size.
+
+        Returns:
+            ``(x_range, y_range)``.
+        """
+        half_w, half_h = self._half_extents()
+        u, w = self._cx, self._cy
+        du = half_w / self._sx if half_w > 0 else 0.5 / self._sx
+        dw = half_h / self._sy if half_h > 0 else 0.5 / self._sy
+        tx, ty = self._tx, self._ty
+        return (
+            (float(tx.inverse(u - du)), float(tx.inverse(u + du))),
+            (float(ty.inverse(w - dw)), float(ty.inverse(w + dw))),
+        )
+
     def set_log(self, axis: Axis, log: bool) -> None:
         """Switch one axis between linear and logarithmic.
 

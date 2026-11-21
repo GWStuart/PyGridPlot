@@ -8,6 +8,41 @@ follow [semantic versioning](https://semver.org/) once 1.0 is released.
 
 ### Added
 
+- **Graphs**: `pgp.Graph`, a retained list of named items (plots,
+  parametric, polar and implicit curves, points, polylines, polygons,
+  draggable points, parameters and function definitions) built on the
+  plane's immediate-mode API and drawn with `graph.draw(plane, surface)`.
+  Items are added from lines of maths (`graph.add("f(x) = a sin(x)")`,
+  `"x^2 + y^2 = 9"`, `"P = (1, 2)"`, `"a = 2"`) or with one method per
+  kind taking the plane method's arguments, and use each other's names in
+  any order; circular definitions and unknown names are reported per item
+  (`item.error`, `graph.errors`, a `GraphWarning` once per error) while the
+  rest still draws. Draggable points are kept by the graph, in step with
+  their points on every plane, can follow another item's curve by name,
+  and are saved where they are. `graph.evaluate(...)`,
+  `graph.function(name)`, registered Python functions
+  (`Graph(functions=...)`, `graph.register`).
+- **Saving graphs as JSON**: `graph.save(path)` / `Graph.load(path)`,
+  `to_json` / `from_json`, `to_dict` / `from_dict`. A versioned, readable
+  format listing only non-default settings; strict reading with errors
+  that say where a hand-written file is wrong (`GraphError`); views saved
+  with `graph.capture_view(plane)` and restored exactly with
+  `graph.apply_view(plane)` (`pgp.GraphView`).
+- **The expression language**: a small, safe parser and compiler (no
+  `eval`) from text to NumPy functions: implicit multiplication (`2x`,
+  `a sin(x)`), `^`, Unicode operators and superscripts, 38 built-in
+  functions, constants, comparisons and NaN-aware conditions (`if`, `and`,
+  `or`, `not`), exact derivatives with primes (`f'(x)`), points (`P.x`),
+  and error messages with a caret and suggestions (`sinx`: did you mean
+  `sin(x)`?). `pgp.expression(text, ...)` compiles one into a function;
+  `pgp.ExpressionError`.
+- `pgp.show` also draws lines of maths and graphs:
+  `pgp.show("y = x^2", graph)`.
+- `View.fitted_ranges()`: the ranges `View.fit` maps back to exactly the
+  same view.
+- `examples/graph_editor.py`: a small expression list to type into, with
+  saving and loading; gallery views 52 and 53; graph benchmark cases.
+
 - **Reusing unchanged plots**: plotting calls whose view, style, inputs and
   function values are unchanged since the previous frame reuse their
   primitives and rasterised coverage, and the grid is reused while the view
@@ -76,6 +111,14 @@ follow [semantic versioning](https://semver.org/) once 1.0 is released.
   `core.plot` subpackages, with the layering enforced by tests.
 
 ### Fixed
+
+- A draggable point no longer keeps its plane alive: a plane that is no
+  longer used is freed even while its points are still referenced.
+
+- The derivatives of an undefined constant (NaN or infinite) inside a
+  differentiated function are now undefined too, rather than 0, so
+  `derivative(lambda x: np.where(x > 0, x**2, np.nan))` is undefined where
+  the function is.
 
 - With several planes in one window, moving between their draggable points
   could leave the hand cursor stuck; the planes now share one cursor.

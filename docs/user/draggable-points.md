@@ -168,4 +168,7 @@ on_circle.curve = (lambda t: radius * np.cos(t), lambda t: radius * np.sin(t),
   version until that part comes into view.
 
 See `examples/draggable.py` for a sine wave shaped by a free point and two
-sliders, and points running round a circle and a spirograph.
+sliders, and points running round a circle and a spirograph. In a
+[graph](graphs.md#draggable-points), draggable points are kept by the graph
+and used by name in its expressions (`"y = a sin(x - P.x)"`), and their
+positions are saved with it.

@@ -1,7 +1,7 @@
 # Testing and tools
 
 ```bash
-pytest                                   # everything, headless, about 15 s
+pytest                                   # everything, headless, about 25 s
 pytest tests/core/grid                   # one area
 pytest -k log                            # by name
 ruff check . && ruff format --check .    # lint (Google docstrings required) and formatting
@@ -17,7 +17,10 @@ The tests mirror the package:
 |---|---|
 | `tests/core/` | The foundations: view, transforms, framing, easing, coordinates and pixels. |
 | `tests/core/grid/` | Spacing, ticks, formatting, layout, log axes and the whole grid (`test_scene.py`). |
-| `tests/core/plot/` | Evaluation, both samplers, geometry, styles and the builders. |
+| `tests/core/plot/` | Evaluation, the samplers, jets and derivatives, geometry, the plot cache, styles and the builders. |
+| `tests/core/handles/` | Draggable points: constraints, curve tracking, labels. |
+| `tests/core/expr/` | The expression language: lexer, parser, compiler, built-ins, `pgp.expression`. |
+| `tests/graph/` | Graphs: reading lines, names and errors, drawing, draggable points, saving and loading, `show`. |
 | `tests/render/` | Rasterising and compositing (pure NumPy plus small surfaces). |
 | `tests/` | Integration: the renderer, `Plane`, plotting end to end, interaction, the examples, the docs and the architecture rules. |
 
@@ -52,7 +55,12 @@ on. The important ones:
   (no pops), on linear and log axes;
 - clipping keeps shapes in their box, splitting a stroke never changes it,
   and fills preserve polygon areas;
-- curves stay within the sampling tolerance of the true curve.
+- curves stay within the sampling tolerance of the true curve;
+- compiled expressions (random trees of operators and functions) agree
+  with the same computation written in NumPy, and so do their exact
+  derivatives; no text makes the parser raise anything but an
+  `ExpressionError`;
+- any graph saved as JSON reads back exactly the same.
 
 A failing property test prints the smallest example it found; Hypothesis
 remembers it (in `.hypothesis/`) and tries it first next time. When an
@@ -68,9 +76,15 @@ Allow `2 / 255` for antialiased pixels after a pan: float round-off can
 move a value across an 8-bit rounding boundary.
 
 **Architecture tests** (`test_architecture.py`) parse the imports of every
-module under `core/`: core imports only the standard library, NumPy and
-itself; the foundation modules never import `core.grid` or `core.plot`; and
-those two never import each other.
+module under `core/`: core imports only the standard library, NumPy,
+contourpy and itself; the foundation modules never import `core.grid` or
+`core.plot`; those two never import each other; and `core.handles` and
+`core.expr` import only what their entries in `ALLOWED_SUBPACKAGES` list.
+
+**Equivalence tests** check that a layer built on another adds nothing it
+should not: a graph draws pixel for pixel what the same plane calls draw
+(`tests/graph/test_graph.py`), and a graph read back from JSON draws the
+same pixels as the original.
 
 **Example smoke tests** (`test_examples.py`) run every program in
 `examples/` headless for a few frames with a scripted event queue that
@@ -92,7 +106,7 @@ presses some of the keys the examples use, zooms, and closes the window.
 
 Some qualities can only be judged by eye, or are about speed:
 
-- `python scripts/render_gallery.py --out DIR` renders 51 tricky views
+- `python scripts/render_gallery.py --out DIR` renders 53 tricky views
   (deep zooms, far offsets, axes at the edges, cross-fades, themes,
   functions, derivatives, shapes, log axes, ranges, curves, implicit curves
   and draggable points) to PNG files plus a contact sheet `_sheet.png`.

@@ -263,6 +263,7 @@ The `examples/` folder has a runnable program for every topic:
 | `derivatives.py` | Tangent lines, Taylor polynomials and the osculating circle at a draggable point (`Space` switches). |
 | `draggable.py` | Draggable points: a wave shaped by handles and sliders, points on curves (`Space` switches). |
 | `implicit.py` | Implicit curves, contour lines, poles and jumps (`Space` switches, `P` pauses). |
+| `graph_editor.py` | A small expression list: type maths, drag points, save and load JSON (`F1` shows the keys). |
 | `shapes.py` | Points, polylines, polygons and fill rules. |
 | `log_axes.py` | Log-log, semi-log and range-based planes (`X`/`Y` toggle log). |
 | `animation.py` | Everything moving, every frame. |

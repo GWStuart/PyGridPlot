@@ -15,12 +15,17 @@ and default.
    and polygons.
 5. [Draggable points](draggable-points.md): points the user drags, freely,
    along one axis or along a curve.
-6. [Logarithmic axes](log-axes.md): log-log and semi-log planes.
-7. [Styles and themes](styles-and-themes.md): colours, reusable styles, the
+6. [Graphs](graphs.md): lists of plots, curves, points and parameters
+   written as maths (`"y = a sin(x - P.x)"`), kept between frames, edited
+   while the program runs and saved as JSON.
+7. [The expression language](expressions.md): the maths that graphs and
+   `pgp.expression` read: operators, functions, derivatives, conditions.
+8. [Logarithmic axes](log-axes.md): log-log and semi-log planes.
+9. [Styles and themes](styles-and-themes.md): colours, reusable styles, the
    palette, themes and how numbers are written.
-8. [Recipes](recipes.md): worked examples (mouse readouts, animation,
-   legends, screenshots, ...), performance tips and troubleshooting.
-9. [API reference](reference.md): everything `import pygridplot` provides.
+10. [Recipes](recipes.md): worked examples (mouse readouts, animation,
+    legends, screenshots, ...), performance tips and troubleshooting.
+11. [API reference](reference.md): everything `import pygridplot` provides.
 
 The `examples/` folder of the repository has a runnable program for every
 topic; [Recipes](recipes.md#examples) lists them.

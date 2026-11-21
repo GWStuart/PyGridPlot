@@ -40,6 +40,7 @@ user drags them to.
 from __future__ import annotations
 
 import math
+import weakref
 from collections.abc import Callable, Sequence
 from typing import Any, Literal, overload
 
@@ -820,6 +821,16 @@ class Plane:
                 ranges with ``curve``), a free or locked point has no
                 position, or a range or position is invalid.
         """
+        # The plane owns its points, not the other way round: a point only
+        # holds a weak reference to it, so a plane can be freed while
+        # something (a graph, the user's code) still holds its points.
+        forget = weakref.WeakMethod(self._forget_draggable)
+
+        def on_remove(removed: DraggablePoint) -> None:
+            method = forget()
+            if method is not None:
+                method(removed)
+
         point = DraggablePoint(
             self._view,
             position,
@@ -832,7 +843,7 @@ class Plane:
             color=color,
             coordinates=coordinates,
             enabled=enabled,
-            on_remove=self._forget_draggable,
+            on_remove=on_remove,
         )
         self._draggables.append(point)
         self._draggable_colors[point] = self._draggables_created

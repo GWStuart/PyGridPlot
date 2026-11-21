@@ -82,6 +82,9 @@ class Jet:
     def constant(cls, value: ArrayLike, order: int) -> Jet:
         """Return the jet of a constant: all derivatives zero.
 
+        Where the constant is undefined (NaN or infinite), so are its
+        derivatives (NaN), as for every other jet.
+
         Args:
             value: The constant (any shape).
             order: The highest derivative to carry.
@@ -92,6 +95,9 @@ class Jet:
         values = np.asarray(value, dtype=np.float64)
         c = np.zeros((order + 1, *values.shape))
         c[0] = values
+        undefined = ~np.isfinite(values)
+        if undefined.any():
+            c[1:, undefined] = np.nan
         return cls(c)
 
     # ------------------------------------------------------------------

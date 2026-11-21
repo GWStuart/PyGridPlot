@@ -7,6 +7,8 @@ every change follows. Each recipe names the files to touch, in order.
 - [A new kind of axis](#a-new-kind-of-axis)
 - [A new kind of draggable point](#a-new-kind-of-draggable-point)
 - [A new derivative rule](#a-new-derivative-rule)
+- [A new built-in function](#a-new-built-in-function)
+- [A new kind of graph item](#a-new-kind-of-graph-item)
 - [A new marker shape](#a-new-marker-shape)
 - [A new theme option](#a-new-theme-option)
 - [A new primitive](#a-new-primitive)
@@ -100,6 +102,53 @@ helpers cover most cases:
 Test the rule in `tests/core/plot/test_jets.py` against the derivatives
 worked out by hand, at several orders. A NumPy *function* (not a ufunc)
 goes in `_FUNCTIONS`, handled through `__array_function__`.
+
+## A new built-in function
+
+The functions of the [expression language](../user/expressions.md) are the
+`FUNCTIONS` table in `core/expr/builtins.py`: a name, a `Builtin(func,
+min_args, max_args, usage)` (`max_args=None` for any number). The function
+takes and returns arrays and must be made of NumPy ufuncs (or `np.where`)
+so that undefined values give NaN rather than errors and derivatives stay
+exact: a ufunc without a [derivative rule](#a-new-derivative-rule) falls
+back to finite differences. Functions that are not ufuncs (as `gamma`) can
+be vectorised, at a cost in speed. Write `usage` as it appears in error
+messages (`"hypot(x, y)"`).
+
+Adding a name to `FUNCTIONS` also reserves it: no parameter or item can
+take it, so a graph saved with that name for an item stops loading (that
+deserves a line in the changelog). Test the function in
+`tests/core/expr/test_compiler.py` (`BUILTIN_CASES` compares it with
+NumPy; argument counts are checked for every built-in automatically) and
+add it to the table in [The expression language](../user/expressions.md).
+
+## A new kind of graph item
+
+A graph item mirrors a plotting method of the plane. To add one (say, an
+inequality, once the plane can shade one):
+
+1. **The item**, in the matching module of `graph/items/`: a subclass of
+   `LineItem`, `PointLikeItem` or `StyledItem` (or `Item`, if it is not
+   drawn), with a `kind` (its name in saved files), a constructor taking
+   the plane method's arguments (expressions as `Formula.make(...)`), a
+   property per argument (setters of names and expressions call
+   `self._changed()`), and the hooks `_formulas`, `_runtime`, `_binding`
+   and `_describe` (see the docstring of `Item`). Add it to `ITEM_TYPES`
+   and the exports of `graph/items/__init__.py` and `graph/__init__.py`.
+2. **Drawing**: a branch in `_draw_item` in `graph/graph.py` calling the
+   plane method, and a creator method on `Graph` with the same arguments.
+   If a line of maths should make it, teach `graph/lines.py` to recognise
+   it (and update the table in `Graph.add`).
+3. **Saving**: a branch in `_Writer.fields` and in `_make_item` in
+   `graph/serialize.py`. A new kind is a new version of the format: older
+   readers would refuse it, so increment `VERSION` (reading version 1 files
+   is unchanged).
+4. **Test it**: drawing pixel for pixel like the plane call
+   (`SCENES` in `tests/graph/test_graph.py`), saving (`every_kind` and the
+   random graphs of `tests/graph/test_serialize.py`), and reading lines.
+5. **Document it** in [Graphs](../user/graphs.md) and in the
+   [API reference](../user/reference.md) (`SECTIONS` in
+   `scripts/build_api_docs.py`).
 
 ## A new kind of axis
 
@@ -195,7 +244,9 @@ leave it out. Run the script and commit `docs/user/reference.md`.
   and `loglabels` were split).
 - Names starting with `_` are private to their module and never imported
   elsewhere; if another module needs something, make it public and
-  document it.
+  document it. The one exception is the documented interface between graph
+  items and the rest of `graph/` (`_formulas`, `_runtime`, ...: see
+  `graph/items/base.py`), private to that package.
 
 **Documentation.** Every module, class and function has a Google-style
 docstring (`Args:`, `Returns:`, `Raises:`, `Attributes:`), enforced by

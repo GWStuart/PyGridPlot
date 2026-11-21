@@ -6,7 +6,9 @@ through :meth:`Plane.handle_event`; drawing goes to headless surfaces.
 
 from __future__ import annotations
 
+import gc
 import math
+import weakref
 
 import numpy as np
 import pygame
@@ -323,3 +325,13 @@ def test_off_screen_points_show_no_coordinates() -> None:
     plane.draggable((100.0, 0.0), coordinates="always")  # far to the right
     plane.draw_draggables(surface)
     assert ink(surface).max() == 0.0
+
+
+def test_a_point_does_not_keep_its_plane_alive() -> None:
+    plane, _ = make_plane()
+    point = plane.draggable((1.0, 1.0))
+    alive = weakref.ref(plane)
+    del plane
+    gc.collect()
+    assert alive() is None
+    point.remove()  # harmless once the plane is gone

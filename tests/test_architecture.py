@@ -51,6 +51,7 @@ ALLOWED_SUBPACKAGES: dict[str | None, set[str]] = {
     "grid": {"grid"},
     "plot": {"plot"},
     "handles": {"handles", "grid", "plot"},
+    "expr": {"expr", "plot"},
 }
 """Which ``core`` subpackages each part of ``core`` may import."""
 
@@ -64,8 +65,8 @@ def test_core_layers_stay_apart(path: Path) -> None:
     The foundation modules (``core/*.py``) are shared by everything, so they
     must not depend on any subpackage; the grid and plotting are
     independent, so either can change or grow without touching the other;
-    and draggable points (``handles``) build on both, while neither depends
-    on them.
+    draggable points (``handles``) build on both, and the expression language
+    (``expr``) on plotting (for derivatives), while nothing depends on them.
     """
     relative = path.relative_to(CORE)
     own = relative.parts[0] if len(relative.parts) > 1 else None
@@ -76,6 +77,26 @@ def test_core_layers_stay_apart(path: Path) -> None:
             sub = parts[2]
             if (CORE / sub).is_dir():
                 assert sub in ALLOWED_SUBPACKAGES[own], f"{relative} imports {name}"
+
+
+PACKAGE = ROOT / "src" / "pygridplot"
+GRAPH_USERS = {"__init__.py", "quick.py"}
+"""The modules outside ``graph/`` that may import it: the API and ``show``."""
+
+
+@pytest.mark.parametrize(
+    "path",
+    sorted(
+        p for p in PACKAGE.rglob("*.py") if "graph" not in p.relative_to(PACKAGE).parts
+    ),
+    ids=lambda p: str(p.relative_to(PACKAGE)),
+)
+def test_only_the_top_level_uses_graphs(path: Path) -> None:
+    """The graph layer is built on the plane: nothing below it imports it."""
+    if str(path.relative_to(PACKAGE)) in GRAPH_USERS:
+        return
+    for name in imported_modules(path):
+        assert not name.startswith("pygridplot.graph"), f"{path.name} imports {name}"
 
 
 def test_examples_have_a_main_function() -> None:

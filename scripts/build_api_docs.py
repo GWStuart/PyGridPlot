@@ -11,6 +11,12 @@ docstring or signature, run::
 Docstrings are Google style, with the Sphinx-style markup used in the code
 (``:class:`~pygridplot.Plane```, double backticks). Both are converted to
 Markdown here.
+
+Names in :data:`SECTIONS` are attributes of the package (``Plane``) or
+dotted paths below it (``graph.PlotItem`` for ``pygridplot.graph.PlotItem``),
+for classes that programs use without importing them from the top level.
+A class' inherited members are documented with the base class, which its
+entry links to.
 """
 
 from __future__ import annotations
@@ -49,6 +55,42 @@ SECTIONS: list[tuple[str, str, list[str]]] = [
         "Draggable points",
         "Points the user drags, created with `Plane.draggable`.",
         ["DraggablePoint"],
+    ),
+    (
+        "Graphs",
+        "A retained list of plots, curves, points, parameters and definitions, "
+        "drawn with one call each frame and saved as JSON (see the "
+        "[graphs guide](graphs.md)).",
+        ["Graph", "GraphView", "GraphError", "GraphWarning"],
+    ),
+    (
+        "Graph items",
+        "The rows of a graph, made by its methods (`graph.plot(...)` returns a "
+        "`PlotItem`) and changed through their attributes. They are importable "
+        "from `pygridplot.graph`.",
+        [
+            "graph.PlotItem",
+            "graph.ParametricItem",
+            "graph.PolarItem",
+            "graph.ImplicitItem",
+            "graph.PointItem",
+            "graph.PointsItem",
+            "graph.PolylineItem",
+            "graph.PolygonItem",
+            "graph.DraggableItem",
+            "graph.ParameterItem",
+            "graph.DefinitionItem",
+            "graph.Item",
+            "graph.StyledItem",
+            "graph.LineItem",
+            "graph.PointLikeItem",
+        ],
+    ),
+    (
+        "Expressions",
+        "Maths as text, compiled to NumPy functions (see the "
+        "[expression language](expressions.md)).",
+        ["expression", "ExpressionError", "core.expr.CompiledExpression"],
     ),
     (
         "Styles",
@@ -125,8 +167,26 @@ def build() -> str:
     for title, intro, names in SECTIONS:
         parts.append(f"## {title}\n\n{intro}\n\n")
         for name in names:
-            parts.append(document(name, getattr(pgp, name)))
+            parts.append(document(name, resolve(name)))
     return "".join(parts).rstrip() + "\n"
+
+
+def resolve(name: str) -> Any:
+    """Return the object a (possibly dotted) public name stands for."""
+    obj: Any = pgp
+    for part in name.split("."):
+        obj = getattr(obj, part)
+    return obj
+
+
+def documented_classes() -> dict[type, str]:
+    """Return every class the reference documents, with its name there."""
+    return {
+        obj: name
+        for _, _, names in SECTIONS
+        for name in names
+        if inspect.isclass(obj := resolve(name))
+    }
 
 
 def contents() -> str:
@@ -139,8 +199,8 @@ def contents() -> str:
 
 
 def anchor(name: str) -> str:
-    """Return the Markdown anchor of a name's heading."""
-    return name.lower()
+    """Return the Markdown anchor of a name's heading (GitHub's rule)."""
+    return re.sub(r"[^\w\- ]", "", name.lower()).replace(" ", "-")
 
 
 def document(name: str, obj: object) -> str:
@@ -174,20 +234,31 @@ def document_constant(name: str, value: object) -> str:
 
 
 def document_class(name: str, cls: type) -> str:
-    """Document a class: its constructor, then its public members."""
-    parts = [
-        f"### {name}\n\n",
-        signature_block(name, cls),
-        "\n",
-        markdown(cls.__doc__),
-        "\n",
-    ]
+    """Document a class: its constructor, then its public members.
+
+    An exception without a constructor of its own gets no signature; a class
+    deriving from documented classes links to them for its other members.
+    """
+    parts = [f"### {name}\n\n"]
+    if not (issubclass(cls, BaseException) and "__init__" not in vars(cls)):
+        parts += [signature_block(name, cls), "\n"]
+    parts += [markdown(cls.__doc__), "\n"]
+    known = documented_classes()
+    bases = [known[base] for base in cls.__mro__[1:] if base in known]
     members = public_members(cls)
     if members:
-        parts.append(f"#### Members of `{name}`\n\n")
+        parts.append(f"#### Members of `{last_part(name)}`\n\n")
         for member_name, member in members:
             parts.append(document_member(name, member_name, member))
+    if bases:
+        links = ", ".join(f"[`{last_part(base)}`](#{anchor(base)})" for base in bases)
+        parts.append(f"Also has the members of {links}.\n\n")
     return "".join(parts)
+
+
+def last_part(name: str) -> str:
+    """Return a dotted name's last part (``graph.PlotItem`` -> ``PlotItem``)."""
+    return name.rsplit(".", 1)[-1]
 
 
 def public_members(cls: type) -> list[tuple[str, Any]]:
@@ -208,7 +279,8 @@ def public_members(cls: type) -> list[tuple[str, Any]]:
 
 def document_member(owner: str, name: str, member: Any) -> str:
     """Document one method or property."""
-    instance = owner[0].lower() + owner[1:]
+    cls = last_part(owner)
+    instance = cls[0].lower() + cls[1:]
     if isinstance(member, property):
         returns = member.fget.__annotations__.get("return", "") if member.fget else ""
         kind = "read and write" if member.fset is not None else "read only"
@@ -400,12 +472,18 @@ def section(name: str, body: list[str]) -> str:
 
 
 def convert_markup(text: str) -> str:
-    """Convert Sphinx-style roles and double backticks to Markdown."""
-    text = re.sub(
-        r":(?:class|func|meth|attr|mod|data|exc):`~?([^`]+)`",
-        lambda m: f"`{short(m.group(1))}`",
-        text,
-    )
+    """Convert Sphinx-style roles and double backticks to Markdown.
+
+    A role shows its target shortened (``:class:`~pygridplot.Plane``` as
+    `Plane`), or its title when it has one (``:meth:`add <Graph.add>```).
+    """
+
+    def role(match: re.Match[str]) -> str:
+        content = match.group(1)
+        titled = re.fullmatch(r"(.+?)\s*<[^>]+>", content)
+        return f"`{titled.group(1) if titled else short(content)}`"
+
+    text = re.sub(r":(?:class|func|meth|attr|mod|data|exc):`~?([^`]+)`", role, text)
     return re.sub(r"``([^`]+)``", r"`\1`", text)
 
 

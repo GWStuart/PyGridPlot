@@ -14,12 +14,16 @@ code and extend it. For how to *use* the library, see the
    building primitives.
 4. [Draggable points](dragging.md): the one stateful object, how events
    reach it, constraints, and following a curve without jumping branches.
-5. [Rendering](rendering.md): the renderer protocol, rasterising strokes,
+5. [Graphs and the expression language](graphs.md): parsing and compiling
+   maths into NumPy functions, the retained graph layer on top of the
+   plane, keeping draggable points in step, and the JSON format.
+6. [Rendering](rendering.md): the renderer protocol, rasterising strokes,
    fills and markers, compositing, text, and where the time goes.
-6. [Testing and tools](testing.md): the test suite, property tests, the
+7. [Testing and tools](testing.md): the test suite, property tests, the
    documentation checks, and the visual and benchmark tools.
-7. [Extending PyGridPlot](extending.md): recipes for new kinds of plots,
-   axes, markers, theme options and backends, and the coding conventions.
+8. [Extending PyGridPlot](extending.md): recipes for new kinds of plots,
+   axes, markers, built-in functions, graph items, theme options and
+   backends, and the coding conventions.
 
 Every module, class and function also has a docstring explaining what it
 does and why, so the code itself is the detailed reference; these pages
@@ -30,7 +34,7 @@ give the overview and the reasoning that spans modules.
 ```bash
 python -m venv venv && source venv/bin/activate
 pip install -e ".[dev]"
-pytest                                   # ~700 tests, about 20 s, headless
+pytest                                   # ~1000 tests, about 25 s, headless
 ruff check . && ruff format --check .    # lint and formatting
 mypy                                     # strict type checking of src/
 python scripts/build_api_docs.py         # after changing a public docstring
