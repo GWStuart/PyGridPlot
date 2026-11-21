@@ -70,6 +70,16 @@ def plot_case(
     return run
 
 
+def damped(x: np.ndarray) -> np.ndarray:
+    """A damped wave, differentiated exactly in the derivative cases."""
+    return np.sin(x) * np.exp(-x / 5)
+
+
+def damped_math(x: float) -> float:
+    """The same wave with :mod:`math`, differentiated numerically."""
+    return math.sin(x) * math.exp(-x / 5)
+
+
 def drag_case() -> Case:
     """Drag a point along a spirograph: one mouse motion per call."""
     plane = plane_for(scale=60.0)
@@ -162,6 +172,15 @@ def cases() -> dict[str, Case]:
         ),
         "implicit scalar math": plot_case(
             lambda p, s: p.implicit(s, lambda x, y: math.sin(x) - y), scale=60.0
+        ),
+        "plot 1st derivative (NumPy)": plot_case(
+            lambda p, s: p.plot(s, pgp.derivative(damped)), scale=60.0
+        ),
+        "plot 4th derivative (NumPy)": plot_case(
+            lambda p, s: p.plot(s, pgp.derivative(damped, 4)), scale=60.0
+        ),
+        "plot 1st derivative (math)": plot_case(
+            lambda p, s: p.plot(s, pgp.derivative(damped_math)), scale=60.0
         ),
         "drag along a spirograph": drag_case(),
         "draw 20 draggable points": plot_case(

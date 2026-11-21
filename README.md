@@ -7,8 +7,8 @@ of the Desmos graph view but driven entirely from Python code. It gives you:
 - linear or logarithmic axes, set up from a centre and scale or from x and y
   ranges;
 - smooth, eased panning and zooming;
-- robust, antialiased plotting of functions, parametric, polar and implicit
-  curves, points, polylines and polygons;
+- robust, antialiased plotting of functions (and their exact derivatives),
+  parametric, polar and implicit curves, points, polylines and polygons;
 - draggable points: free, locked to an axis, or running along a curve.
 
 PyGridPlot is a *library, not a framework*: your program owns the main loop,
@@ -69,6 +69,11 @@ pgp.show(np.exp, log_y=True, x_range=(0, 10))               # semi-log, quick mo
   draws any curve `F(x, y) = c`: loops, crossings and separate pieces,
   accurate to a fraction of a pixel, with no false lines at poles or jumps.
   Several levels at once make a contour map.
+- **Exact derivatives of any order.** `pgp.derivative(f, n)` is the
+  `n`-th derivative of a NumPy function, exact to rounding (Taylor-mode
+  automatic differentiation, no dependencies), with clean jumps at kinks
+  and steps; plot it or evaluate it, for tangent lines and Taylor
+  polynomials at a draggable point.
 - **Draggable points.** `a = plane.draggable((1, 2))` creates a point the
   user can drag; read `a.x` and `a.y` every frame to drive your plots.
   Points can be free, locked to one axis (sliders) or kept on a parametric
@@ -100,6 +105,7 @@ python examples/functions.py        # the function test set and hard cases (Spac
 python examples/curves.py           # animated parametric and polar curves (Space)
 python examples/implicit.py         # implicit curves and contour lines (Space)
 python examples/draggable.py        # draggable points, sliders, points on curves (Space)
+python examples/derivatives.py      # tangents, Taylor polynomials, osculating circles (Space)
 python examples/shapes.py           # points, polylines, polygons, fill rules
 python examples/log_axes.py         # log-log, semi-log and range-based planes (Space, X, Y)
 python examples/animation.py        # everything moving, every frame

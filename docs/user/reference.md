@@ -11,6 +11,7 @@ setting with its parameters and defaults.
 **Contents:**
 
 - The plane: [`Plane`](#plane), [`show`](#show)
+- Derivatives: [`derivative`](#derivative), [`derivatives`](#derivatives)
 - Draggable points: [`DraggablePoint`](#draggablepoint)
 - Styles: [`LineStyle`](#linestyle), [`PointStyle`](#pointstyle), [`PolygonStyle`](#polygonstyle)
 - Themes: [`GridTheme`](#gridtheme), [`LIGHT`](#light), [`DARK`](#dark), [`NumberFormat`](#numberformat)
@@ -580,6 +581,68 @@ Each function gets the next colour of the theme's palette. The view options are 
 - `scale`: Initial pixels per world unit (per decade on a log axis).
 - `width`: Line width in pixels for the functions (default 2.5).
 - `fps`: Frame-rate cap.
+
+## Derivatives
+
+Derivatives of any order of functions of one variable, exact for functions written with NumPy.
+
+### derivative
+
+```py
+pgp.derivative(func: Function, n: int = 1) -> Derivative
+```
+
+Return the `n`-th derivative of a function of one variable.
+
+The result is a function of `x` like any other: plot it, call it at a point, or differentiate it again:
+
+```py
+df = derivative(np.sin)        # cos
+d3f = derivative(f, 3)
+plane.plot(screen, df)
+slope = df(1.5)
+```
+
+The derivative is exact for functions written with NumPy, and computed numerically for others (see `derivatives`).
+
+*Parameters:*
+
+- `func`: The function, taking and returning numbers or NumPy arrays.
+- `n`: The order of the derivative (0 returns the function itself, evaluated robustly).
+
+*Returns:* The derivative.
+
+*Raises:*
+
+- `TypeError`: If `func` is not callable.
+- `ValueError`: If `n` is not a whole number in `[0, 40]`.
+
+### derivatives
+
+```py
+pgp.derivatives(func: Function, x: Any, n: int) -> Any
+```
+
+Return a function's value and its derivatives up to order `n`.
+
+Computing them together costs little more than the highest one alone:
+
+```py
+value, slope, curvature = derivatives(f, 1.5, 2)
+```
+
+*Parameters:*
+
+- `func`: The function.
+- `x`: A number, or an array of numbers.
+- `n`: The highest order.
+
+*Returns:* For a number, the tuple `(f(x), f'(x), ..., f⁽ⁿ⁾(x))`; for an array, an array of shape `(n + 1, *x.shape)`. NaN where undefined.
+
+*Raises:*
+
+- `TypeError`: If `func` is not callable.
+- `ValueError`: If `n` is not a whole number in `[0, 40]`.
 
 ## Draggable points
 

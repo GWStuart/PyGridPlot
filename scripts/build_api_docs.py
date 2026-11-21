@@ -40,6 +40,12 @@ SECTIONS: list[tuple[str, str, list[str]]] = [
         ["Plane", "show"],
     ),
     (
+        "Derivatives",
+        "Derivatives of any order of functions of one variable, exact for "
+        "functions written with NumPy.",
+        ["derivative", "derivatives"],
+    ),
+    (
         "Draggable points",
         "Points the user drags, created with `Plane.draggable`.",
         ["DraggablePoint"],

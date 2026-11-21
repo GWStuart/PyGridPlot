@@ -146,7 +146,8 @@ def test_fades_change_smoothly_as_labels_move(start: float, step: float) -> None
         kept = fade_collisions(fixed, [label], padding=2, fade_px=8)
         return kept[0].opacity if kept else 0.0
 
-    assert abs(faded(start + step) - faded(start)) <= step / 8 + 1e-9
+    # Labels faded to 0.1% or less are dropped: an invisible step of 1e-3.
+    assert abs(faded(start + step) - faded(start)) <= step / 8 + 1e-3
 
 
 def test_fade_collisions_fades_near_labels_and_drops_overlaps() -> None:

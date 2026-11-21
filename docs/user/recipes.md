@@ -7,6 +7,7 @@ otherwise; `screen` is the display surface and `plane` your plane.
 - [Showing the mouse position](#showing-the-mouse-position)
 - [Marking a curve under the mouse](#marking-a-curve-under-the-mouse)
 - [Shading the area under a curve](#shading-the-area-under-a-curve)
+- [A tangent line at a draggable point](#a-tangent-line-at-a-draggable-point)
 - [Plotting data](#plotting-data)
 - [Animating](#animating)
 - [Adding a legend](#adding-a-legend)
@@ -71,6 +72,23 @@ plane.plot(screen, np.sin, color="steelblue")
 200 points is plenty for a smooth outline on screen. On a log y axis the
 points at `y = 0` lie infinitely far down, so the area fills to the bottom
 of the plane.
+
+## A tangent line at a draggable point
+
+Put a [draggable point](draggable-points.md) on the graph of `f` (a curve
+`(t, f(t))`) and draw the tangent line from the
+[derivative](plotting.md#derivatives) at the point. Create the point once,
+before the loop:
+
+```python
+f = np.cos
+point = plane.draggable(curve=(lambda t: t, f, (-10, 10)), t=0.5)   # before the loop
+
+value, slope = pgp.derivatives(f, point.x, 1)
+plane.plot(screen, f)
+plane.plot(screen, lambda x: value + slope * (x - point.x), width=1.5)
+plane.draw_draggables(screen)
+```
 
 ## Plotting data
 
@@ -240,6 +258,7 @@ The `examples/` folder has a runnable program for every topic:
 | `basic_grid.py` | The smallest program: a plane in a window. |
 | `functions.py` | The function test set and hard cases (`Space` switches sets). |
 | `curves.py` | Animated parametric and polar curves (`Space` switches, `P` pauses). |
+| `derivatives.py` | Tangent lines, Taylor polynomials and the osculating circle at a draggable point (`Space` switches). |
 | `draggable.py` | Draggable points: a wave shaped by handles and sliders, points on curves (`Space` switches). |
 | `implicit.py` | Implicit curves, contour lines, poles and jumps (`Space` switches, `P` pauses). |
 | `shapes.py` | Points, polylines, polygons and fill rules. |

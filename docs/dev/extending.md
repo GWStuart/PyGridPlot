@@ -6,6 +6,7 @@ every change follows. Each recipe names the files to touch, in order.
 - [A new kind of plot](#a-new-kind-of-plot)
 - [A new kind of axis](#a-new-kind-of-axis)
 - [A new kind of draggable point](#a-new-kind-of-draggable-point)
+- [A new derivative rule](#a-new-derivative-rule)
 - [A new marker shape](#a-new-marker-shape)
 - [A new theme option](#a-new-theme-option)
 - [A new primitive](#a-new-primitive)
@@ -81,6 +82,24 @@ to `DraggablePoint.__init__` and `Plane.draggable`, rejecting combinations
 that make no sense, and test it in `tests/core/handles/` (projection,
 bounds, log axes) and through events in `tests/test_dragging.py`. See
 [Draggable points](dragging.md) for how the pieces fit together.
+
+## A new derivative rule
+
+A NumPy ufunc without a rule makes derivatives fall back to finite
+differences. To differentiate it exactly, add a rule to `_RAW_RULES` in
+`core/plot/jets.py`: a function from the inputs' coefficient arrays
+(`c[k] = g⁽ᵏ⁾ / k!`, all of one order and shape) to the result's. The
+helpers cover most cases:
+
+- `_from_derivative(a, value, derivative)` when the derivative is easy to
+  write with other rules (this is how `arctan` is done:
+  `1 / (1 + u²)`);
+- `_flat(op)` for piecewise-constant functions;
+- `_select(condition, a, b)` for functions that pick one input per point.
+
+Test the rule in `tests/core/plot/test_jets.py` against the derivatives
+worked out by hand, at several orders. A NumPy *function* (not a ufunc)
+goes in `_FUNCTIONS`, handled through `__array_function__`.
 
 ## A new kind of axis
 

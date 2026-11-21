@@ -13,6 +13,8 @@ are its building blocks.
 | `evaluation.py` | Calling user functions so that they can never raise. |
 | `sampling.py` | Adaptive sampling of `y = f(x)`. |
 | `curves.py` | Adaptive sampling of parametric curves (and so polar ones) on screen. |
+| `jets.py` | Taylor arithmetic: the `Jet` number type that carries derivatives through NumPy code. |
+| `derivatives.py` | `derivative` and `derivatives`: exact via jets, point by point, or numerical. |
 | `implicit.py` | Finding implicit curves `F(x, y) = c` on a grid: marching squares (contourpy), checked and refined. |
 | `geometry.py` | Normalising point input; clipping polylines (Liang–Barsky) and polygons (Sutherland–Hodgman). |
 | `style.py` | `LineStyle`, `PointStyle`, `PolygonStyle`, `with_overrides`, and `ColorCycle` (the palette). |
@@ -230,6 +232,64 @@ found, and is documented for users. Features smaller than the fine grid can
 be missed (loops are found reliably from about 1.5 px in radius). A curve
 stops within a fine cell of where `F` becomes undefined; bisecting the
 domain edge, as the curve sampler does, would be a possible improvement.
+
+## Derivatives: `jets.py` and `derivatives.py`
+
+User functions are arbitrary Python, so symbolic differentiation is out,
+and the autodiff libraries either need functions written with their own
+NumPy (autograd) or are far too large (JAX). Finite differences work on
+anything but fail exactly where this library cares most: next to a jump
+they invent a spike (`floor` gets a "derivative" of thousands), at a kink
+they smear, at a pole they can get the sign wrong, and their error grows
+quickly with the order (about `1e-10` for a first derivative, `1e-6` by the
+fourth, even with Richardson extrapolation and the best step).
+
+So derivatives use **Taylor-mode forward automatic differentiation**,
+built in (`jets.py`, NumPy only):
+
+- A `Jet` holds, for every point at once, the Taylor coefficients
+  `c[k] = g⁽ᵏ⁾(x) / k!` of whatever has been computed so far, shape
+  `(n + 1, *shape)`. `Jet.variable(x, n)` is `x` itself (`c = [x, 1, 0, ...]`).
+- NumPy hands every ufunc call on a jet to `Jet.__array_ufunc__` (and the
+  operators go through the ufuncs), so a user's function runs unchanged.
+  Each ufunc has a rule on coefficient arrays (`_RAW_RULES`), costing
+  `O(n²)` per point: Cauchy products and their inverse, the recurrences
+  that solve each function's differential equation (`y' = y u'` for `exp`,
+  `u y' = p y u'` for powers, coupled `sin`/`cos`, `y' = (1 ± y²) u'` for
+  `tan` and `tanh`), and, for inverse functions, integrating their
+  derivative computed with jets one order lower (`_from_derivative`).
+- Whole powers use repeated squaring, exact even where the base is 0 (the
+  power recurrence divides by the base). Piecewise functions (`abs`,
+  `floor`, `maximum`, `np.where`, `np.clip`, `np.select`, `np.piecewise`
+  via `__array_function__`) take the derivatives of the piece that applies
+  at each point, which is why derivatives jump cleanly.
+- Comparisons and tests act on the values; a jet of one point converts to
+  `bool`, so Python `if` statements work point by point. A jet refuses to
+  become a `float`, so `math` functions raise `TypeError` cleanly, and so
+  does NumPy for any ufunc or function without a rule.
+- Where a value is undefined (NaN or infinite), all its derivatives are set
+  to NaN (`_wrap`): a recurrence would otherwise happily produce the
+  derivative of `log` at -1.
+
+`derivatives.taylor_derivatives` picks the method, falling through in turn:
+
+1. the vectorised call `func(Jet.variable(xs, n))`;
+2. if that fails (a Python `if` on an array, say), single-point jets: up to
+   three probe points first, so a function that can never take a jet costs
+   only three failed calls, then every point, with NaN where the function
+   itself fails;
+3. otherwise numerically: central differences of order `k` with step
+   `eps^(1/(k+4)) · max(1, |x|)`, Richardson-extrapolated over two steps,
+   with all shifted points evaluated robustly in one call.
+
+A result that is a plain number or numeric array (a constant function) is
+a jet with zero derivatives; anything else (an object array, a jet of the
+wrong order) means the method failed. `Derivative` objects are ordinary
+callables, so the samplers, builders and the robust evaluation need no
+changes; `derivative(derivative(f, a), b)` collapses to
+`derivative(f, a + b)`. A derivative called with a jet (a derivative inside
+a function being differentiated) raises `TypeError`, which sends that case
+to the numerical path.
 
 ## Building primitives: `builders.py`
 

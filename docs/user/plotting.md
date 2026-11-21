@@ -7,7 +7,7 @@ exactly, and changing what you draw from one frame to the next animates it.
 
 | Method | Draws |
 |---|---|
-| [`plot(surface, f)`](#functions) | The graph of `y = f(x)`. |
+| [`plot(surface, f)`](#functions) | The graph of `y = f(x)`, or of a [derivative](#derivatives). |
 | [`parametric(surface, x, y, t_range)`](#parametric-curves) | The curve `(x(t), y(t))`. |
 | [`polar(surface, r)`](#polar-curves) | The curve `r = r(θ)`. |
 | [`implicit(surface, F)`](#implicit-curves) | The curve `F(x, y) = 0` (or `= c`). |
@@ -92,6 +92,90 @@ for f in powers:
 Without the `k=k`, all three functions would use the last `k`, because a
 lambda looks its variables up when it is called, not when it is created. The
 same applies to animation variables captured by lambdas inside a loop.
+
+## Derivatives
+
+`pgp.derivative(f, n)` returns the `n`-th derivative of a function of one
+variable, itself a function: plot it, call it at a point, or pass it
+anywhere a function is expected.
+
+```py
+pgp.derivative(func, n=1)          # f⁽ⁿ⁾, a function of x
+pgp.derivatives(func, x, n)        # (f(x), f'(x), ..., f⁽ⁿ⁾(x)) at once
+```
+
+```python
+def f(x):
+    return np.sin(x) * np.exp(-x / 4)
+
+plane.plot(screen, f)
+plane.plot(screen, pgp.derivative(f))         # f'
+plane.plot(screen, pgp.derivative(f, 2))      # f''
+slope = pgp.derivative(f)(1.5)                # a number, for a number
+value, slope, curvature = pgp.derivatives(f, 1.5, 2)
+```
+
+The derivatives are **exact** (to rounding) for functions written with
+NumPy, at any order up to 40: the function is not sampled at nearby points
+but run with a special number that carries its derivatives along (Taylor
+mode automatic differentiation). There is no step size to choose and no
+error that grows with the order, and derivatives stay exact right next to
+jumps, kinks and poles: the derivative of `np.abs` jumps from -1 to 1 at 0,
+that of `np.floor` is 0 between the steps, and neither shows a spike.
+Where the function is undefined, so is its derivative.
+
+What can be differentiated exactly:
+
+- arithmetic and powers, `np.sqrt`, `np.cbrt`, `np.exp`, `np.log` (and
+  their base-2, base-10, `expm1` and `log1p` forms), trigonometric,
+  hyperbolic and inverse functions, `np.arctan2`, `np.hypot`;
+- piecewise functions: `np.abs`, `np.sign`, `np.floor` and friends, `%`,
+  `np.maximum`/`np.minimum`, `np.where`, `np.clip`, `np.select` and
+  `np.piecewise`, with comparisons such as `x > 0`;
+- functions written for one number at a time with NumPy and Python `if`
+  statements, such as `def f(x): return np.sin(x) if x > 0 else x * x`.
+  These are exact too, but differentiated one point at a time, a few
+  hundred times more slowly (about 40 µs per point); write them with
+  `np.where` if speed matters.
+
+Functions written with the `math` module, or that use something without a
+rule (SciPy's special functions, for example), are differentiated
+**numerically** instead, by finite differences. That is automatic and works
+well for smooth functions (about `1e-10` relative error for a first
+derivative, `1e-6` for a fourth), but near a jump or a kink it sees a slope
+that is not there (a spike), and it loses accuracy fast at high orders.
+Prefer NumPy for anything you differentiate.
+
+A derivative of a derivative simply raises the order:
+`pgp.derivative(pgp.derivative(f), 2)` is the third derivative, computed
+directly.
+
+### Tangent lines and Taylor polynomials
+
+`derivatives` gives the value and slope together, which is all a tangent
+line needs. With a [draggable point](draggable-points.md) on the curve, the
+tangent follows the point:
+
+```python
+p = plane.draggable(curve=(lambda t: t, f, (-10, 10)), t=1.0)   # before the loop
+
+value, slope = pgp.derivatives(f, p.x, 1)
+plane.plot(screen, f)
+plane.plot(screen, lambda x: value + slope * (x - p.x))
+plane.draw_draggables(screen)
+```
+
+A Taylor polynomial of degree `n` uses the first `n` derivatives:
+
+```python
+a, n = p.x, 5
+coefficients = pgp.derivatives(f, a, n)
+taylor = lambda x: sum(c * (x - a) ** k / math.factorial(k)
+                       for k, c in enumerate(coefficients))
+plane.plot(screen, taylor)
+```
+
+`examples/derivatives.py` shows both, and the osculating circle.
 
 ## Parametric curves
 

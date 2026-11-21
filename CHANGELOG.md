@@ -8,6 +8,14 @@ follow [semantic versioning](https://semver.org/) once 1.0 is released.
 
 ### Added
 
+- **Derivatives**: `pgp.derivative(f, n)` returns the `n`-th derivative of a
+  function of one variable (up to order 40), to plot or evaluate;
+  `pgp.derivatives(f, x, n)` returns every order at once. Exact for NumPy
+  functions, by Taylor-mode automatic differentiation built in (no new
+  dependency), including next to jumps, kinks and poles and for functions
+  with Python `if` statements; numerical, by Richardson-extrapolated finite
+  differences, for `math` functions. `examples/derivatives.py`: tangent
+  lines, Taylor polynomials and osculating circles at a draggable point.
 - **Draggable points**: `Plane.draggable(...)` creates a `DraggablePoint`
   the user drags with the mouse; read its `x`, `y` (and `t`) every frame
   and draw the points with `Plane.draw_draggables`. Points can be free,

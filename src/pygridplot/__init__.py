@@ -13,7 +13,8 @@ plane itself), the style classes (:class:`LineStyle`, :class:`PointStyle`,
 (:class:`InteractionConfig`, :class:`KeyBindings`, :class:`SamplingConfig`,
 :class:`CurveSampling`, :class:`ImplicitSampling`, :class:`ViewLimits`),
 the :class:`View` with its :class:`ViewState`, :class:`DraggablePoint`
-(made by :meth:`Plane.draggable`), and :func:`show`. The
+(made by :meth:`Plane.draggable`), :func:`derivative` and
+:func:`derivatives` (exact derivatives of any order), and :func:`show`. The
 subpackages (``pygridplot.core``, ``pygridplot.render``) are the
 implementation; see ``docs/dev/index.md``.
 
@@ -42,6 +43,7 @@ from pygridplot.core.grid.formatting import NumberFormat
 from pygridplot.core.grid.theme import DARK, LIGHT, GridTheme
 from pygridplot.core.handles.point import DraggablePoint
 from pygridplot.core.plot.curves import CurveSampling
+from pygridplot.core.plot.derivatives import derivative, derivatives
 from pygridplot.core.plot.implicit import ImplicitSampling
 from pygridplot.core.plot.sampling import SamplingConfig
 from pygridplot.core.plot.style import LineStyle, PointStyle, PolygonStyle
@@ -71,5 +73,7 @@ __all__ = [
     "ViewLimits",
     "ViewState",
     "__version__",
+    "derivative",
+    "derivatives",
     "show",
 ]

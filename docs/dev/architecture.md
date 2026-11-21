@@ -107,6 +107,8 @@ src/pygridplot/
 │   │   ├── evaluation.py    Calling user functions robustly (errors/complex -> NaN)
 │   │   ├── sampling.py      Adaptive sampling of y = f(x): jumps, poles, domain edges
 │   │   ├── curves.py        Adaptive sampling of parametric curves on screen
+│   │   ├── jets.py          Taylor arithmetic: exact derivatives through NumPy code
+│   │   ├── derivatives.py   derivative(), derivatives(): jets, point by point, numerical
 │   │   ├── implicit.py      Implicit curves F(x, y) = 0: marching squares (contourpy), checked
 │   │   ├── geometry.py      Point input; clipping polylines and polygons
 │   │   └── builders.py      One function per kind of plot -> clipped primitives

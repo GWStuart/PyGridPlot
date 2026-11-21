@@ -169,6 +169,28 @@ def scene_draggable(plane: pgp.Plane, surface: pygame.Surface) -> None:
     plane.draw_draggables(surface)
 
 
+def scene_derivatives(plane: pgp.Plane, surface: pygame.Surface) -> None:
+    """Draw a function, its first three derivatives and a tangent line.
+
+    The function has a jump and a kink, where the derivatives must jump
+    cleanly, without the spikes of finite differences.
+
+    Args:
+        plane: The plane.
+        surface: The surface to draw on.
+    """
+
+    def f(x: np.ndarray) -> np.ndarray:
+        return np.sin(x) + 0.3 * np.abs(x - 2) + np.where(x < -3, 1.0, 0.0)
+
+    for order, width in ((3, 1.2), (2, 1.5), (1, 2.0), (0, 2.5)):
+        plane.plot(surface, pgp.derivative(f, order), width=width)
+    a = 0.7
+    value, slope = pgp.derivatives(f, a, 1)
+    plane.plot(surface, lambda x: value + slope * (x - a), width=1.5, opacity=0.8)
+    plane.points(surface, (a, value), edge_color="white")
+
+
 SCENES: dict[str, Scene] = {
     "test_set": scene_test_set,
     "hard": scene_hard,
@@ -177,6 +199,7 @@ SCENES: dict[str, Scene] = {
     "curves": scene_curves,
     "implicit": scene_implicit,
     "draggable": scene_draggable,
+    "derivatives": scene_derivatives,
 }
 
 
@@ -265,6 +288,13 @@ VIEWS: tuple[GalleryView, ...] = (
     GalleryView("48_draggable_dark", scale=60.0, theme="dark", scene="draggable"),
     GalleryView(
         "49_draggable_zoomed", center=(1.234, 2.5), scale=6e4, scene="draggable"
+    ),
+    GalleryView("50_derivatives", scale=60.0, scene="derivatives"),
+    GalleryView(
+        "51_derivatives_kink",
+        center=(2.0, -0.4),
+        scale=(2e3, 400.0),
+        scene="derivatives",
     ),
 )
 
