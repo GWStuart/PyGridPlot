@@ -40,6 +40,11 @@ SECTIONS: list[tuple[str, str, list[str]]] = [
         ["Plane", "show"],
     ),
     (
+        "Draggable points",
+        "Points the user drags, created with `Plane.draggable`.",
+        ["DraggablePoint"],
+    ),
+    (
         "Styles",
         "Reusable looks for plotted objects. Keyword arguments of the plotting "
         "methods override their fields.",

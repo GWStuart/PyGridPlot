@@ -11,6 +11,7 @@ setting with its parameters and defaults.
 **Contents:**
 
 - The plane: [`Plane`](#plane), [`show`](#show)
+- Draggable points: [`DraggablePoint`](#draggablepoint)
 - Styles: [`LineStyle`](#linestyle), [`PointStyle`](#pointstyle), [`PolygonStyle`](#polygonstyle)
 - Themes: [`GridTheme`](#gridtheme), [`LIGHT`](#light), [`DARK`](#dark), [`NumberFormat`](#numberformat)
 - Configuration: [`InteractionConfig`](#interactionconfig), [`KeyBindings`](#keybindings), [`SamplingConfig`](#samplingconfig), [`CurveSampling`](#curvesampling), [`ImplicitSampling`](#implicitsampling), [`ViewLimits`](#viewlimits)
@@ -97,7 +98,7 @@ The initial view can be given like a graphing calculator's window settings, `x_r
 
 - **`plane.interaction`** (`InteractionConfig`, read and write)
 
-  Settings of the built-in pan/zoom controls.
+  Settings of the built-in pan/zoom controls and of dragging points.
 
 - **`plane.renderer`** (`PygameRenderer`, read only)
 
@@ -115,9 +116,9 @@ The initial view can be given like a graphing calculator's window settings, `x_r
   plane.handle_event(event: pygame.event.Event) -> bool
   ```
 
-  Let the plane react to an input event (pan, zoom, keyboard).
+  Let the plane react to an input event (dragging points, pan, zoom, keys).
 
-  Pass every event, including mouse motion: the plane tracks the cursor to zoom about it.
+  Pass every event, including mouse motion: the plane tracks the cursor to zoom about it and to highlight draggable points under it. A press over a draggable point drags the point; anywhere else it pans.
 
   *Parameters:*
 
@@ -143,9 +144,9 @@ The initial view can be given like a graphing calculator's window settings, `x_r
   plane.begin_frame()
   ```
 
-  Start a new frame for the colour palette.
+  Start a new frame for the colour palette and the draggable points.
 
-  The next object drawn without a colour gets the first palette colour again. `draw_grid` calls this automatically. Call it yourself only if you draw plots without drawing the grid, so that every object keeps the same palette colour from frame to frame.
+  The next object drawn without a colour gets the first palette colour again, and each draggable point updates its `DraggablePoint.moved` flag. `draw_grid` calls this automatically. Call it yourself only if you draw plots without drawing the grid, so that every object keeps the same palette colour from frame to frame.
 
 - **`plane.draw_grid()`**
 
@@ -396,6 +397,80 @@ The initial view can be given like a graphing calculator's window settings, `x_r
   - `fill_rule`: `"nonzero"` (default) or `"evenodd"`, for polygons whose edges cross.
   - `style`: A reusable `PolygonStyle`. The other keyword arguments override its fields.
 
+- **`plane.draggable()`**
+
+  ```py
+  plane.draggable(
+      position: tuple[float, float] | None = None,
+      *,
+      lock: Lock | None = None,
+      curve: CurveSpec | None = None,
+      t: float | None = None,
+      x_range: Range | None = None,
+      y_range: Range | None = None,
+      color: ColorLike | None = None,
+      style: PointStyle | None = None,
+      coordinates: Coordinates = 'hover',
+      enabled: bool = True,
+  ) -> DraggablePoint
+  ```
+
+  Create a point that the user can drag with the mouse.
+
+  Create the point once, before the main loop. `handle_event` then drags it, your code reads its `DraggablePoint.x` and `DraggablePoint.y` every frame, and `draw_draggables` draws it:
+
+  ```py
+  a = plane.draggable((1, 2))                       # free
+  s = plane.draggable((-3, 0.5), lock="x", y_range=(0, 1))  # a slider
+  c = plane.draggable(curve=(np.cos, np.sin, (0, 2 * np.pi)))
+  ```
+
+  *Parameters:*
+
+  - `position`: Where the point starts (needed for free and locked points). A point on a curve starts at the point of the curve nearest to it, or at `t` if no position is given.
+  - `lock`: `"x"` keeps x fixed so the point slides vertically, `"y"` keeps y fixed so it slides horizontally; `None` (the default) lets it move freely.
+  - `curve`: `(x, y, t_range)`: keep the point on the parametric curve `(x(t), y(t))`, written as for `parametric`. Dragging follows the curve from where the point is, jumping to another part of the curve only if it is clearly closer to the cursor.
+  - `t`: Starting parameter of a point on a curve (default: the start of `t_range`).
+  - `x_range`: Keep x within `(low, high)` (free and locked points).
+  - `y_range`: Keep y within `(low, high)` (free and locked points).
+  - `color`: Fill colour. The default gives each draggable point its own palette colour, in the order the points were created.
+  - `style`: A `PointStyle`. The default is a larger marker than plain points, outlined in the background colour.
+  - `coordinates`: Show the point's coordinates `"hover"` (while hovered or dragged, the default), `"always"` or `"never"`.
+  - `enabled`: Whether the point can be dragged.
+
+  *Returns:* The point, registered with this plane until its `DraggablePoint.remove` is called.
+
+  *Raises:*
+
+  - `ValueError`: If the options conflict (`lock` with `curve`, ranges with `curve`), a free or locked point has no position, or a range or position is invalid.
+
+- **`plane.draggables`** (`tuple[DraggablePoint, ...]`, read only)
+
+  The plane's draggable points, in the order they were created.
+
+- **`plane.dragged`** (`DraggablePoint | None`, read only)
+
+  The draggable point being dragged, if any.
+
+- **`plane.draw_draggables()`**
+
+  ```py
+  plane.draw_draggables(surface: pygame.Surface, *points: DraggablePoint)
+  ```
+
+  Draw draggable points, with their highlight and coordinates.
+
+  Call it after the plots, so the points sit on top of the curves they control. A hovered or dragged point gets a translucent ring, and its coordinates are shown as set by its `DraggablePoint.coordinates`.
+
+  *Parameters:*
+
+  - `surface`: The surface to draw on.
+  - `*points`: The points to draw (default: all of this plane's points, in creation order).
+
+  *Raises:*
+
+  - `ValueError`: If a point does not belong to this plane.
+
 - **`plane.to_world()`**
 
   ```py
@@ -505,6 +580,172 @@ Each function gets the next colour of the theme's palette. The view options are 
 - `scale`: Initial pixels per world unit (per decade on a log axis).
 - `width`: Line width in pixels for the functions (default 2.5).
 - `fps`: Frame-rate cap.
+
+## Draggable points
+
+Points the user drags, created with `Plane.draggable`.
+
+### DraggablePoint
+
+```py
+pgp.DraggablePoint(
+    view: View,
+    position: tuple[float, float] | None = None,
+    *,
+    lock: Lock | None = None,
+    curve: CurveSpec | None = None,
+    t: float | None = None,
+    x_range: Range | None = None,
+    y_range: Range | None = None,
+    style: PointStyle | None = None,
+    color: ColorLike | None = None,
+    coordinates: Coordinates = 'hover',
+    enabled: bool = True,
+    on_remove: Callable[[DraggablePoint], None] | None = None,
+)
+```
+
+A point that can be dragged with the mouse, freely or along a constraint.
+
+Create points with `Plane.draggable` rather than directly: the plane then routes mouse events to them and draws them.
+
+*Parameters:*
+
+- `view`: The view the point lives in (the plane's).
+- `position`: The starting position. For a point on a curve, the point starts at the nearest point of the curve (as seen on screen); without it, at `t`.
+- `lock`: `"x"` keeps x fixed, `"y"` keeps y fixed, `None` (the default) lets the point move freely.
+- `curve`: `(x, y, t_range)`: keep the point on this parametric curve.
+- `t`: Starting parameter of a point on a curve (default: the start of `t_range`).
+- `x_range`: Bounds for x, for free and locked points.
+- `y_range`: Bounds for y, for free and locked points.
+- `style`: How the point looks (default `DEFAULT_DRAGGABLE_STYLE`).
+- `color`: Fill colour; `None` gives each point a palette colour, in the order the points were created.
+- `coordinates`: When to show the coordinates: `"hover"` (while hovered or dragged), `"always"` or `"never"`.
+- `enabled`: Whether the point can be dragged.
+- `on_remove`: Called by `remove` (the plane forgets the point).
+
+*Raises:*
+
+- `ValueError`: If the settings conflict or are invalid (for example `lock` together with `curve`, or a position outside a log axis).
+- `TypeError`: If a curve component is neither callable nor a number.
+
+#### Members of `DraggablePoint`
+
+- **`draggablePoint.x`** (`float`, read only)
+
+  World x (NaN while a point's curve is undefined at its parameter).
+
+- **`draggablePoint.y`** (`float`, read only)
+
+  World y (NaN while a point's curve is undefined at its parameter).
+
+- **`draggablePoint.position`** (`tuple[float, float]`, read and write)
+
+  The world position `(x, y)`.
+
+  Setting it moves the point as near as its constraint allows: a free point goes there (within its bounds), a locked point too (locks restrict only dragging), and a point on a curve goes to the nearest point of the curve as seen on screen.
+
+- **`draggablePoint.t`** (`float | None`, read and write)
+
+  The curve parameter of a point on a curve (`None` for other points).
+
+  Setting it moves the point to that parameter (clamped to the curve's `t_range`).
+
+- **`draggablePoint.lock`** (`Lock | None`, read only)
+
+  `"x"` or `"y"` for a locked point, `None` otherwise.
+
+- **`draggablePoint.x_range`** (`Range | None`, read only)
+
+  Bounds for x, if any.
+
+- **`draggablePoint.y_range`** (`Range | None`, read only)
+
+  Bounds for y, if any.
+
+- **`draggablePoint.curve`** (`CurveSpec | None`, read and write)
+
+  The curve `(x, y, t_range)` of a point on a curve (`None` otherwise).
+
+  Assign a new curve (every frame, for an animated one) to move the point with it: the point keeps its parameter `t` (clamped to the new range). A free or locked point cannot be given a curve.
+
+- **`draggablePoint.coordinates`** (`Coordinates`, read and write)
+
+  When the coordinates are shown: `"hover"`, `"always"` or `"never"`.
+
+- **`draggablePoint.dragging`** (`bool`, read only)
+
+  Whether the point is being dragged.
+
+- **`draggablePoint.hovered`** (`bool`, read only)
+
+  Whether the cursor is over the point (and it can be dragged).
+
+- **`draggablePoint.moved`** (`bool`, read only)
+
+  Whether the point moved between the previous frame and this one.
+
+  Frames start at `Plane.draw_grid` (or `Plane.begin_frame`), so the value stays the same while you draw; use it to recompute something only when needed.
+
+- **`draggablePoint.visible`** (`bool`, read only)
+
+  Whether the point has a position that can be drawn.
+
+- **`draggablePoint.view`** (`View`, read only)
+
+  The view the point lives in (its plane's).
+
+- **`draggablePoint.screen_position`** (`tuple[float, float]`, read only)
+
+  The point's position on screen, in pixels.
+
+- **`draggablePoint.drag_to()`**
+
+  ```py
+  draggablePoint.drag_to(px: float, py: float) -> bool
+  ```
+
+  Move the point towards a screen position, as a drag would.
+
+  The plane calls this while the point is dragged; it can also be used to drive a point from code with screen coordinates.
+
+  *Parameters:*
+
+  - `px`: Screen x of the target.
+  - `py`: Screen y of the target.
+
+  *Returns:* Whether the point moved.
+
+- **`draggablePoint.set_interaction()`**
+
+  ```py
+  draggablePoint.set_interaction(*, hovered: bool, dragging: bool)
+  ```
+
+  Record whether the point is hovered and dragged (by the plane).
+
+  *Parameters:*
+
+  - `hovered`: Whether the cursor is over the point.
+  - `dragging`: Whether the point is being dragged.
+
+- **`draggablePoint.begin_frame()`**
+
+  ```py
+  draggablePoint.begin_frame()
+  ```
+
+  Start a new frame: update `moved` and resample a curve when needed.
+
+  `Plane.begin_frame` calls this for every point.
+
+- **`draggablePoint.remove()`**
+
+  ```py
+  draggablePoint.remove()
+  ```
+
+  Remove the point from its plane: it is no longer dragged or drawn.
 
 ## Styles
 
@@ -703,6 +944,9 @@ pgp.InteractionConfig(
     key_zoom_factor: float = 1.25,
     smoothing: float = 0.05,
     bindings: KeyBindings = <factory>,
+    drag_button: int = 1,
+    grab_margin_px: float = 6.0,
+    hover_cursor: bool = True,
 )
 ```
 
@@ -719,6 +963,9 @@ Settings for the built-in mouse and keyboard controls.
 - `key_zoom_factor`: Zoom factor for one `+`/`-` key press.
 - `smoothing`: Time constant in seconds of the easing spring. A single wheel notch is about 90% complete after `3.9 * smoothing` (0.2 s with the default). `0` makes movement instant.
 - `bindings`: Which keys trigger which actions.
+- `drag_button`: Mouse button that drags draggable points (see `Plane.draggable`).
+- `grab_margin_px`: A draggable point can be grabbed this many pixels beyond the edge of its marker.
+- `hover_cursor`: Show the hand cursor while the mouse is over a draggable point.
 
 ### KeyBindings
 

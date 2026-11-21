@@ -15,7 +15,8 @@ Arrow keys                Pan by a fraction of the plane
 
 Dragging is *anchored*: the world point under the cursor when the button
 went down is pinned to the cursor, so there is no drift however long the
-drag lasts.
+drag lasts. A press on a draggable point drags the point instead; that is
+handled first, by :mod:`pygridplot.dragging`.
 
 Wheel and keyboard movement is **eased** by a critically damped spring (see
 :mod:`pygridplot.core.easing`). The view glides towards its target with
@@ -99,6 +100,12 @@ class InteractionConfig:
             wheel notch is about 90% complete after ``3.9 * smoothing``
             (0.2 s with the default). ``0`` makes movement instant.
         bindings: Which keys trigger which actions.
+        drag_button: Mouse button that drags draggable points (see
+            :meth:`pygridplot.Plane.draggable`).
+        grab_margin_px: A draggable point can be grabbed this many pixels
+            beyond the edge of its marker.
+        hover_cursor: Show the hand cursor while the mouse is over a
+            draggable point.
     """
 
     pan_button: int = 1
@@ -110,6 +117,9 @@ class InteractionConfig:
     key_zoom_factor: float = 1.25
     smoothing: float = 0.05
     bindings: KeyBindings = field(default_factory=KeyBindings)
+    drag_button: int = 1
+    grab_margin_px: float = 6.0
+    hover_cursor: bool = True
 
     def __post_init__(self) -> None:
         """Validate the numeric settings."""
@@ -121,6 +131,9 @@ class InteractionConfig:
             raise ValueError(msg)
         if self.smoothing < 0.0:
             msg = "smoothing must be non-negative"
+            raise ValueError(msg)
+        if not 0.0 <= self.grab_margin_px <= 100.0:
+            msg = "grab_margin_px must be within [0, 100]"
             raise ValueError(msg)
 
 

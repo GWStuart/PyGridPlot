@@ -12,12 +12,14 @@ and default.
    configuring them, and moving the view from your own code.
 4. [Plotting](plotting.md): functions `y = f(x)`, parametric, polar and
    implicit curves, contour lines, points, polylines and polygons.
-5. [Logarithmic axes](log-axes.md): log-log and semi-log planes.
-6. [Styles and themes](styles-and-themes.md): colours, reusable styles, the
+5. [Draggable points](draggable-points.md): points the user drags, freely,
+   along one axis or along a curve.
+6. [Logarithmic axes](log-axes.md): log-log and semi-log planes.
+7. [Styles and themes](styles-and-themes.md): colours, reusable styles, the
    palette, themes and how numbers are written.
-7. [Recipes](recipes.md): worked examples (mouse readouts, animation,
+8. [Recipes](recipes.md): worked examples (mouse readouts, animation,
    legends, screenshots, ...), performance tips and troubleshooting.
-8. [API reference](reference.md): everything `import pygridplot` provides.
+9. [API reference](reference.md): everything `import pygridplot` provides.
 
 The `examples/` folder of the repository has a runnable program for every
 topic; [Recipes](recipes.md#examples) lists them.

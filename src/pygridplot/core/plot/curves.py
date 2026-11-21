@@ -53,6 +53,10 @@ ScreenCurve: TypeAlias = Callable[
 Undefined points are NaN (or infinite) in either coordinate.
 """
 
+CurvePiece: TypeAlias = tuple[NDArray[np.float64], NDArray[np.float64]]
+"""One unbroken piece of a sampled curve: screen points ``(N, 2)`` and the
+increasing parameter values ``(N,)`` they were sampled at."""
+
 ScalarT = TypeVar("ScalarT", bound=np.generic)
 
 _MAX_DEPTH: Final = 60
@@ -138,6 +142,30 @@ def sample_curve(
         The curve as screen-space polylines, each of shape ``(N, 2)`` with
         ``N >= 2``, broken wherever the curve is undefined or jumps.
     """
+    return [points for points, _ in sample_curve_pieces(curve, t_range, box, config)]
+
+
+def sample_curve_pieces(
+    curve: ScreenCurve,
+    t_range: tuple[float, float],
+    box: Box,
+    config: CurveSampling = DEFAULT_CURVE_SAMPLING,
+) -> list[CurvePiece]:
+    """Sample a curve like :func:`sample_curve`, keeping the parameter values.
+
+    Used where a position on screen must be turned back into a parameter,
+    as when a point is dragged along a curve.
+
+    Args:
+        curve: Maps parameter values to screen coordinates.
+        t_range: ``(t_min, t_max)`` to sample, inclusive.
+        box: The visible screen area (with any margin).
+        config: Sampling settings.
+
+    Returns:
+        The unbroken pieces of the curve (see :data:`CurvePiece`), in order
+        of the parameter.
+    """
     t0, t1 = float(t_range[0]), float(t_range[1])
     if not (math.isfinite(t0) and math.isfinite(t1) and t1 > t0):
         return []
@@ -148,7 +176,7 @@ def sample_curve(
         budget = config.max_samples - config.initial_samples
         budget = _refine(samples, curve, box, config, depth, budget)
         _find_edges(samples, curve, box, budget)
-    return samples.polylines(config.max_segment_px, depth)
+    return samples.pieces(config.max_segment_px, depth)
 
 
 def _depth_limit(samples: _Samples, box: Box, config: CurveSampling) -> int:
@@ -262,8 +290,8 @@ class _Samples:
         self.open = _insert(self.open, inserted, keep_open)
         self.depth = _insert(self.depth, inserted, depth)
 
-    def polylines(self, max_segment_px: float, depth: int) -> list[NDArray[np.float64]]:
-        """Split the samples into polylines at gaps and jumps.
+    def pieces(self, max_segment_px: float, depth: int) -> list[CurvePiece]:
+        """Split the samples into unbroken pieces at gaps and jumps.
 
         Args:
             max_segment_px: Segments longer than this that were halved
@@ -271,7 +299,7 @@ class _Samples:
             depth: The depth limit (see :func:`_depth_limit`).
 
         Returns:
-            The polylines, each with at least two points.
+            The pieces (points and parameters), each with at least two points.
         """
         a, b = self.points[:-1], self.points[1:]
         finite = np.isfinite(self.points).all(axis=1)
@@ -284,7 +312,7 @@ class _Samples:
         for cut in [*np.flatnonzero(broken).tolist(), len(self.points) - 1]:
             piece = self.points[start : cut + 1]
             if piece.shape[0] >= 2 and np.isfinite(piece).all():
-                lines.append(piece)
+                lines.append((piece, self.t[start : cut + 1]))
             start = cut + 1
         return lines
 

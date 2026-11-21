@@ -240,6 +240,7 @@ The `examples/` folder has a runnable program for every topic:
 | `basic_grid.py` | The smallest program: a plane in a window. |
 | `functions.py` | The function test set and hard cases (`Space` switches sets). |
 | `curves.py` | Animated parametric and polar curves (`Space` switches, `P` pauses). |
+| `draggable.py` | Draggable points: a wave shaped by handles and sliders, points on curves (`Space` switches). |
 | `implicit.py` | Implicit curves, contour lines, poles and jumps (`Space` switches, `P` pauses). |
 | `shapes.py` | Points, polylines, polygons and fill rules. |
 | `log_axes.py` | Log-log, semi-log and range-based planes (`X`/`Y` toggle log). |

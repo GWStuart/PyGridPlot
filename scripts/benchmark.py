@@ -48,14 +48,50 @@ def grid_case(**kwargs: object) -> Case:
 
 
 def plot_case(
-    draw: Callable[[pgp.Plane, pygame.Surface], None], **kwargs: object
+    draw: Callable[[pgp.Plane, pygame.Surface], None],
+    *,
+    draggables: int = 0,
+    **kwargs: object,
 ) -> Case:
-    """Draw plots (without the grid) on a plane created with ``kwargs``."""
+    """Draw plots (without the grid) on a plane created with ``kwargs``.
+
+    ``draggables`` free draggable points are added, spread over the plane,
+    the first of them hovered.
+    """
     plane = plane_for(**kwargs)
+    for k in range(draggables):
+        point = plane.draggable((k % 5 * 2.0 - 4.0, k // 5 * 1.5 - 2.0))
+        point.set_interaction(hovered=k == 0, dragging=False)
 
     def run(surface: pygame.Surface) -> None:
         plane.begin_frame()
         draw(plane, surface)
+
+    return run
+
+
+def drag_case() -> Case:
+    """Drag a point along a spirograph: one mouse motion per call."""
+    plane = plane_for(scale=60.0)
+    point = plane.draggable(
+        curve=(
+            lambda t: (
+                (BIG - SMALL) * np.cos(t) + PEN * np.cos((BIG - SMALL) / SMALL * t)
+            ),
+            lambda t: (
+                (BIG - SMALL) * np.sin(t) - PEN * np.sin((BIG - SMALL) / SMALL * t)
+            ),
+            (0, 18 * math.pi),
+        )
+    )
+    step = [0]
+
+    def run(surface: pygame.Surface) -> None:
+        if step[0] % 30 == 0:
+            point.begin_frame()  # a new frame: the curve is sampled again
+        step[0] += 1
+        sx, sy = point.screen_position
+        point.drag_to(sx + 3.0, sy + 1.0)
 
     return run
 
@@ -126,6 +162,10 @@ def cases() -> dict[str, Case]:
         ),
         "implicit scalar math": plot_case(
             lambda p, s: p.implicit(s, lambda x, y: math.sin(x) - y), scale=60.0
+        ),
+        "drag along a spirograph": drag_case(),
+        "draw 20 draggable points": plot_case(
+            lambda p, s: p.draw_draggables(s), scale=60.0, draggables=20
         ),
         "points 2000": plot_case(
             lambda p, s: p.points(s, np.column_stack((xs, np.sin(xs))))

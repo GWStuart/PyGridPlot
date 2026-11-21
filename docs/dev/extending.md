@@ -5,6 +5,7 @@ every change follows. Each recipe names the files to touch, in order.
 
 - [A new kind of plot](#a-new-kind-of-plot)
 - [A new kind of axis](#a-new-kind-of-axis)
+- [A new kind of draggable point](#a-new-kind-of-draggable-point)
 - [A new marker shape](#a-new-marker-shape)
 - [A new theme option](#a-new-theme-option)
 - [A new primitive](#a-new-primitive)
@@ -57,6 +58,29 @@ region where `F(x, y) < 0`:
    [Plotting](../user/plotting.md) with runnable examples and its limits,
    describe the method in [Plotting](plotting.md) for developers, add a
    benchmark case and a gallery scene, and consider an example program.
+
+## A new kind of draggable point
+
+Points are kept free, locked or on a curve by the constraints in
+`core/handles/constraints.py`. A new one (a point on the graph of
+`y = f(x)`, on an implicit curve, or snapped to a step) is a class with:
+
+- `drag(view, target, current) -> Placement | None`: the position for a drag
+  towards the screen point `target`, given the current `Placement`
+  (`None` keeps the point where it is);
+- a way to place the point from code (`AxisConstraint.place`,
+  `CurveConstraint.at` and `nearest`), used by the `position` and `t`
+  setters of `DraggablePoint`;
+- if it caches anything that depends on time, an `invalidate()` that
+  `DraggablePoint.begin_frame` calls.
+
+Work on screen when the movement should follow what the user sees (as
+`CurveConstraint` does), in transformed coordinates otherwise (as
+`AxisConstraint` does, so log axes need no special cases). Add the option
+to `DraggablePoint.__init__` and `Plane.draggable`, rejecting combinations
+that make no sense, and test it in `tests/core/handles/` (projection,
+bounds, log axes) and through events in `tests/test_dragging.py`. See
+[Draggable points](dragging.md) for how the pieces fit together.
 
 ## A new kind of axis
 

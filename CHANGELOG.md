@@ -8,6 +8,15 @@ follow [semantic versioning](https://semver.org/) once 1.0 is released.
 
 ### Added
 
+- **Draggable points**: `Plane.draggable(...)` creates a `DraggablePoint`
+  the user drags with the mouse; read its `x`, `y` (and `t`) every frame
+  and draw the points with `Plane.draw_draggables`. Points can be free,
+  locked to one axis (`lock="x"` / `"y"`, for sliders), or kept on a
+  parametric curve (`curve=(x, y, t_range)`), which they follow through
+  crossings without jumping between branches. Bounds, a hover ring and hand
+  cursor, coordinates rounded to a pixel, a `moved` flag, and new
+  `InteractionConfig` fields (`drag_button`, `grab_margin_px`,
+  `hover_cursor`); `examples/draggable.py`.
 - **Implicit curves**: `Plane.implicit(surface, F, level=0)` draws any
   curve `F(x, y) = level`, with loops, crossings and separate pieces, found
   by marching squares (contourpy) on a grid that is fine only near the
@@ -36,6 +45,8 @@ follow [semantic versioning](https://semver.org/) once 1.0 is released.
 
 ### Changed
 
+- `Plane(interactive=False)` now switches off only panning and zooming;
+  draggable points still work.
 - PyGridPlot now depends on contourpy (small, compiled, NumPy only).
 
 - Strokes are rasterised 1.5 to 3 times faster (two-level candidate

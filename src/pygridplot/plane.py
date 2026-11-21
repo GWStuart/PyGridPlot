@@ -32,7 +32,9 @@ loop and calls the plane each frame::
 
 Drawing is *immediate mode*: everything is recomputed from the current view
 every frame, so plots follow panning and zooming automatically and animating
-them needs no extra work.
+them needs no extra work. The one exception is draggable points
+(:meth:`Plane.draggable`), which are created once and keep the position the
+user drags them to.
 """
 
 from __future__ import annotations
@@ -49,6 +51,9 @@ from pygridplot.core.coords import ColorLike, ScreenRect
 from pygridplot.core.framing import ViewFraming, aspect_choice, equal_aspect_for
 from pygridplot.core.grid.scene import GridScene, GridState, build_grid
 from pygridplot.core.grid.theme import LIGHT, GridTheme
+from pygridplot.core.handles.constraints import Lock, Range
+from pygridplot.core.handles.drawing import coordinate_item, point_primitives
+from pygridplot.core.handles.point import Coordinates, CurveSpec, DraggablePoint
 from pygridplot.core.plot.builders import (
     CurveComponent,
     function_stroke,
@@ -72,6 +77,7 @@ from pygridplot.core.plot.style import (
 )
 from pygridplot.core.primitives import Fill, FillRule, Markers, MarkerShape, Stroke
 from pygridplot.core.view import View, ViewLimits, ViewState
+from pygridplot.dragging import DragController
 from pygridplot.interaction import InteractionConfig, InteractionController
 from pygridplot.render.pygame_renderer import PygameRenderer
 
@@ -155,11 +161,23 @@ class Plane:
             self._framing.fit((x_range, y_range), home=True)
         self._theme = theme if theme is not None else LIGHT
         self.interactive = interactive
-        """Whether :meth:`handle_event` reacts to input at all."""
+        """Whether the built-in pan and zoom controls react to input.
+
+        Draggable points can be dragged either way (see
+        :attr:`DraggablePoint.enabled <pygridplot.DraggablePoint.enabled>`)."""
         self._renderer = renderer if renderer is not None else PygameRenderer()
         self._grid_state = GridState()
         self._controller = InteractionController(
             self._view, interaction, on_reset=self.reset_view
+        )
+        self._draggables: list[DraggablePoint] = []
+        self._draggable_colors: dict[DraggablePoint, int] = {}
+        self._draggables_created = 0
+        self._drag = DragController(
+            self._view,
+            self._controller.config,
+            lambda: self._draggables,
+            blocked=lambda: self._controller.dragging,
         )
         self._colors = ColorCycle(self._theme.palette)
         self._sampling = sampling if sampling is not None else DEFAULT_SAMPLING
@@ -240,12 +258,13 @@ class Plane:
 
     @property
     def interaction(self) -> InteractionConfig:
-        """Settings of the built-in pan/zoom controls."""
+        """Settings of the built-in pan/zoom controls and of dragging points."""
         return self._controller.config
 
     @interaction.setter
     def interaction(self, config: InteractionConfig) -> None:
         self._controller.config = config
+        self._drag.config = config
 
     @property
     def renderer(self) -> PygameRenderer:
@@ -264,10 +283,11 @@ class Plane:
     # Per-frame API
     # ------------------------------------------------------------------
     def handle_event(self, event: pygame.event.Event) -> bool:
-        """Let the plane react to an input event (pan, zoom, keyboard).
+        """Let the plane react to an input event (dragging points, pan, zoom, keys).
 
         Pass every event, including mouse motion: the plane tracks the cursor
-        to zoom about it.
+        to zoom about it and to highlight draggable points under it. A press
+        over a draggable point drags the point; anywhere else it pans.
 
         Args:
             event: A pygame event.
@@ -276,6 +296,11 @@ class Plane:
             ``True`` if the plane used the event, so your code can skip
             handling it again.
         """
+        if self._drag.handle_event(event):
+            if event.type == pygame.MOUSEMOTION and self.interactive:
+                # The pan/zoom controls still track the cursor, to zoom about it.
+                self._controller.handle_event(event)
+            return True
         if not self.interactive:
             return False
         return self._controller.handle_event(event)
@@ -289,19 +314,23 @@ class Plane:
         Returns:
             ``True`` if the view changed.
         """
-        if not self.interactive:
-            return False
-        return self._controller.update()
+        changed = self._controller.update() if self.interactive else False
+        self._drag.update()
+        return changed
 
     def begin_frame(self) -> None:
-        """Start a new frame for the colour palette.
+        """Start a new frame for the colour palette and the draggable points.
 
         The next object drawn without a colour gets the first palette colour
-        again. :meth:`draw_grid` calls this automatically. Call it yourself only if
-        you draw plots without drawing the grid, so that every object keeps
-        the same palette colour from frame to frame.
+        again, and each draggable point updates its
+        :attr:`~pygridplot.DraggablePoint.moved` flag. :meth:`draw_grid` calls
+        this automatically. Call it yourself only if you draw plots without
+        drawing the grid, so that every object keeps the same palette colour
+        from frame to frame.
         """
         self._colors.reset()
+        for point in self._draggables:
+            point.begin_frame()
 
     def draw_grid(self, surface: pygame.Surface) -> None:
         """Draw the background, grid lines, axes and tick labels.
@@ -664,6 +693,148 @@ class Plane:
             self._view, points, shape, self._colors.resolve(shape.color)
         )
         self._draw(surface, area, outline)
+
+    # ------------------------------------------------------------------
+    # Draggable points
+    # ------------------------------------------------------------------
+    def draggable(
+        self,
+        position: tuple[float, float] | None = None,
+        *,
+        lock: Lock | None = None,
+        curve: CurveSpec | None = None,
+        t: float | None = None,
+        x_range: Range | None = None,
+        y_range: Range | None = None,
+        color: ColorLike | None = None,
+        style: PointStyle | None = None,
+        coordinates: Coordinates = "hover",
+        enabled: bool = True,
+    ) -> DraggablePoint:
+        """Create a point that the user can drag with the mouse.
+
+        Create the point once, before the main loop. :meth:`handle_event`
+        then drags it, your code reads its :attr:`~DraggablePoint.x` and
+        :attr:`~DraggablePoint.y` every frame, and :meth:`draw_draggables`
+        draws it::
+
+            a = plane.draggable((1, 2))                       # free
+            s = plane.draggable((-3, 0.5), lock="x", y_range=(0, 1))  # a slider
+            c = plane.draggable(curve=(np.cos, np.sin, (0, 2 * np.pi)))
+
+        Args:
+            position: Where the point starts (needed for free and locked
+                points). A point on a curve starts at the point of the curve
+                nearest to it, or at ``t`` if no position is given.
+            lock: ``"x"`` keeps x fixed so the point slides vertically,
+                ``"y"`` keeps y fixed so it slides horizontally; ``None``
+                (the default) lets it move freely.
+            curve: ``(x, y, t_range)``: keep the point on the parametric
+                curve ``(x(t), y(t))``, written as for :meth:`parametric`.
+                Dragging follows the curve from where the point is, jumping
+                to another part of the curve only if it is clearly closer to
+                the cursor.
+            t: Starting parameter of a point on a curve (default: the start
+                of ``t_range``).
+            x_range: Keep x within ``(low, high)`` (free and locked points).
+            y_range: Keep y within ``(low, high)`` (free and locked points).
+            color: Fill colour. The default gives each draggable point its own
+                palette colour, in the order the points were created.
+            style: A :class:`~pygridplot.PointStyle`. The default is a larger
+                marker than plain points, outlined in the background colour.
+            coordinates: Show the point's coordinates ``"hover"`` (while
+                hovered or dragged, the default), ``"always"`` or ``"never"``.
+            enabled: Whether the point can be dragged.
+
+        Returns:
+            The point, registered with this plane until its
+            :meth:`~DraggablePoint.remove` is called.
+
+        Raises:
+            ValueError: If the options conflict (``lock`` with ``curve``,
+                ranges with ``curve``), a free or locked point has no
+                position, or a range or position is invalid.
+        """
+        point = DraggablePoint(
+            self._view,
+            position,
+            lock=lock,
+            curve=curve,
+            t=t,
+            x_range=x_range,
+            y_range=y_range,
+            style=style,
+            color=color,
+            coordinates=coordinates,
+            enabled=enabled,
+            on_remove=self._forget_draggable,
+        )
+        self._draggables.append(point)
+        self._draggable_colors[point] = self._draggables_created
+        self._draggables_created += 1
+        return point
+
+    @property
+    def draggables(self) -> tuple[DraggablePoint, ...]:
+        """The plane's draggable points, in the order they were created."""
+        return tuple(self._draggables)
+
+    @property
+    def dragged(self) -> DraggablePoint | None:
+        """The draggable point being dragged, if any."""
+        return self._drag.dragged
+
+    def draw_draggables(self, surface: pygame.Surface, *points: DraggablePoint) -> None:
+        """Draw draggable points, with their highlight and coordinates.
+
+        Call it after the plots, so the points sit on top of the curves they
+        control. A hovered or dragged point gets a translucent ring, and its
+        coordinates are shown as set by its
+        :attr:`~DraggablePoint.coordinates`.
+
+        Args:
+            surface: The surface to draw on.
+            *points: The points to draw (default: all of this plane's
+                points, in creation order).
+
+        Raises:
+            ValueError: If a point does not belong to this plane.
+        """
+        self._sync_rect(surface)
+        chosen = points or tuple(self._draggables)
+        for point in chosen:
+            if point not in self._draggable_colors:
+                msg = f"{point!r} is not a draggable point of this plane"
+                raise ValueError(msg)
+        theme = self._theme
+        markers: list[Markers] = []
+        for point in chosen:
+            color = point.color
+            if color is None:
+                index = self._draggable_colors[point]
+                color = theme.palette[index % len(theme.palette)]
+            markers.extend(point_primitives(point, color, theme.background))
+        self._draw(surface, *markers)
+        labels = [coordinate_item(point, theme, self._renderer) for point in chosen]
+        texts = [label for label in labels if label is not None]
+        if not texts:
+            return
+        with self._renderer.clipped(surface, self.rect) as visible:
+            if visible is None:
+                return
+            for text in texts:
+                self._renderer.draw_text(surface, text)
+
+    def _forget_draggable(self, point: DraggablePoint) -> None:
+        """Unregister a removed point (see :meth:`DraggablePoint.remove`).
+
+        Args:
+            point: The point.
+        """
+        if point in self._draggable_colors:
+            self._draggables.remove(point)
+            del self._draggable_colors[point]
+            self._drag.forget(point)
 
     # ------------------------------------------------------------------
     # Coordinates and view control

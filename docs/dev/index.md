@@ -11,11 +11,13 @@ code and extend it. For how to *use* the library, see the
    labels and their layout, and logarithmic axes.
 3. [Plotting](plotting.md): evaluating user functions robustly, the function
    and curve samplers, finding implicit curves, and building primitives.
-4. [Rendering](rendering.md): the renderer protocol, rasterising strokes,
+4. [Draggable points](dragging.md): the one stateful object, how events
+   reach it, constraints, and following a curve without jumping branches.
+5. [Rendering](rendering.md): the renderer protocol, rasterising strokes,
    fills and markers, compositing, text, and where the time goes.
-5. [Testing and tools](testing.md): the test suite, property tests, the
+6. [Testing and tools](testing.md): the test suite, property tests, the
    documentation checks, and the visual and benchmark tools.
-6. [Extending PyGridPlot](extending.md): recipes for new kinds of plots,
+7. [Extending PyGridPlot](extending.md): recipes for new kinds of plots,
    axes, markers, theme options and backends, and the coding conventions.
 
 Every module, class and function also has a docstring explaining what it
@@ -27,7 +29,7 @@ give the overview and the reasoning that spans modules.
 ```bash
 python -m venv venv && source venv/bin/activate
 pip install -e ".[dev]"
-pytest                                   # ~570 tests, about 20 s, headless
+pytest                                   # ~620 tests, about 20 s, headless
 ruff check . && ruff format --check .    # lint and formatting
 mypy                                     # strict type checking of src/
 python scripts/build_api_docs.py         # after changing a public docstring

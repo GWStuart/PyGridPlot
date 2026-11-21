@@ -150,6 +150,25 @@ def scene_implicit(plane: pgp.Plane, surface: pygame.Surface) -> None:
     )
 
 
+def scene_draggable(plane: pgp.Plane, surface: pygame.Surface) -> None:
+    """Draw draggable points of every kind, one hovered and one being dragged.
+
+    Args:
+        plane: The plane.
+        surface: The surface to draw on.
+    """
+    free = plane.draggable((1.2345, 2.5))
+    slider = plane.draggable((-6.0, 1.5), lock="x", y_range=(0, 3))
+    plane.draggable((2.0, -3.5), lock="y", coordinates="always")
+    ring = plane.draggable(curve=(np.cos, np.sin, (0, 2 * math.pi)), t=2.2)
+    free.set_interaction(hovered=True, dragging=False)
+    ring.set_interaction(hovered=True, dragging=True)
+    plane.polyline(surface, [(-6, 0), (-6, 3)], width=4, opacity=0.4)
+    plane.plot(surface, lambda x: slider.y * np.sin(x - free.x) + free.y - slider.y)
+    plane.parametric(surface, np.cos, np.sin, (0, 2 * math.pi), width=1.5)
+    plane.draw_draggables(surface)
+
+
 SCENES: dict[str, Scene] = {
     "test_set": scene_test_set,
     "hard": scene_hard,
@@ -157,6 +176,7 @@ SCENES: dict[str, Scene] = {
     "log": scene_log,
     "curves": scene_curves,
     "implicit": scene_implicit,
+    "draggable": scene_draggable,
 }
 
 
@@ -241,6 +261,11 @@ VIEWS: tuple[GalleryView, ...] = (
     GalleryView("44_implicit_zoom_out", scale=12.0, scene="implicit"),
     GalleryView("45_implicit_double_point", scale=2e3, scene="implicit"),
     GalleryView("46_implicit_loglog", log_x=True, log_y=True, scene="implicit"),
+    GalleryView("47_draggable", scale=60.0, scene="draggable"),
+    GalleryView("48_draggable_dark", scale=60.0, theme="dark", scene="draggable"),
+    GalleryView(
+        "49_draggable_zoomed", center=(1.234, 2.5), scale=6e4, scene="draggable"
+    ),
 )
 
 

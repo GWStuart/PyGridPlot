@@ -90,15 +90,16 @@ presses some of the keys the examples use, zooms, and closes the window.
 
 Some qualities can only be judged by eye, or are about speed:
 
-- `python scripts/render_gallery.py --out DIR` renders 46 tricky views
+- `python scripts/render_gallery.py --out DIR` renders 49 tricky views
   (deep zooms, far offsets, axes at the edges, cross-fades, themes,
-  functions, shapes, log axes, ranges, curves and implicit curves) to PNG
-  files plus a contact sheet `_sheet.png`. Render before and after a
-  change and compare. `--only NAME ...` renders a subset.
+  functions, shapes, log axes, ranges, curves, implicit curves and
+  draggable points) to PNG files plus a contact sheet `_sheet.png`. Render
+  before and after a change and compare. `--only NAME ...` renders a
+  subset.
 - `python scripts/benchmark.py` prints the median time of the main
   per-frame operations (grids, functions, curves, implicit curves, points,
-  fills); `--only TEXT` selects cases and `--repeat N` steadies the
-  numbers. Compare on the same machine, over a few runs.
+  fills, dragging); `--only TEXT` selects cases and `--repeat N` steadies
+  the numbers. Compare on the same machine, over a few runs.
 - `python examples/zoom_sweep.py --save-frames DIR` dumps frames of an
   automated zoom and pan, for checking smoothness frame by frame.
 - `python examples/grid_playground.py` toggles theme settings, log axes and

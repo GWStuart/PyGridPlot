@@ -35,13 +35,14 @@
         │
    pygridplot (__init__.py: the public API)
         │
-   plane.py ─────── interaction.py ─────── quick.py     pygame-specific integration
+   plane.py ── interaction.py ── dragging.py ── quick.py     pygame-specific integration
      │      │
      │      └── render/        the backend: primitives -> pixels
      │              │
      └──────────────┴── core/  pure maths: never imports anything above it
-                         ├── grid/   the adaptive grid and its labels
-                         └── plot/   plotted objects -> primitives
+                         ├── grid/     the adaptive grid and its labels
+                         ├── plot/     plotted objects -> primitives
+                         └── handles/  draggable points (uses grid/ and plot/)
 ```
 
 `core` may import only the standard library, NumPy, contourpy (a small,
@@ -57,7 +58,8 @@ Within `core` there are two more rules, also enforced by
 - The **foundation modules** (`core/*.py`: the view, transforms, primitives,
   ...) never import `core.grid` or `core.plot`. They are shared by both.
 - **`core.grid` and `core.plot` never import each other.** Each can change or
-  grow without touching the other. Anything both need (such as the label
+  grow without touching the other. `core.handles` (draggable points) builds
+  on both, and nothing in `core` imports it. Anything both need (such as the label
   text and marker vocabulary in `primitives.py`) belongs in a foundation
   module.
 
@@ -77,6 +79,7 @@ src/pygridplot/
 ├── __init__.py          The public API: Plane, styles, themes, configs, View, show
 ├── plane.py             Plane: the façade tying view, theme, controls and renderer together
 ├── interaction.py       pygame events -> pan/zoom (anchored drag, eased wheel and keys)
+├── dragging.py          pygame events -> draggable points (hit test, drag, hover, cursor)
 ├── quick.py             show(): a ready-made main loop
 ├── py.typed             Marks the package as typed (PEP 561)
 ├── core/                PURE: stdlib + NumPy (+ contourpy) only
@@ -99,14 +102,20 @@ src/pygridplot/
 │   │   ├── layout.py        Label placement: push-and-pin, collision fades
 │   │   ├── scene.py         build_grid(): the pipeline, into a GridScene
 │   │   └── theme.py         GridTheme, LIGHT, DARK
-│   └── plot/            Plotted objects -> primitives
-│       ├── style.py         LineStyle, PointStyle, PolygonStyle, ColorCycle (palette)
-│       ├── evaluation.py    Calling user functions robustly (errors/complex -> NaN)
-│       ├── sampling.py      Adaptive sampling of y = f(x): jumps, poles, domain edges
-│       ├── curves.py        Adaptive sampling of parametric curves on screen
-│       ├── implicit.py      Implicit curves F(x, y) = 0: marching squares (contourpy), checked
-│       ├── geometry.py      Point input; clipping polylines and polygons
-│       └── builders.py      One function per kind of plot -> clipped primitives
+│   ├── plot/            Plotted objects -> primitives
+│   │   ├── style.py         LineStyle, PointStyle, PolygonStyle, ColorCycle (palette)
+│   │   ├── evaluation.py    Calling user functions robustly (errors/complex -> NaN)
+│   │   ├── sampling.py      Adaptive sampling of y = f(x): jumps, poles, domain edges
+│   │   ├── curves.py        Adaptive sampling of parametric curves on screen
+│   │   ├── implicit.py      Implicit curves F(x, y) = 0: marching squares (contourpy), checked
+│   │   ├── geometry.py      Point input; clipping polylines and polygons
+│   │   └── builders.py      One function per kind of plot -> clipped primitives
+│   └── handles/         Draggable points
+│       ├── point.py         DraggablePoint: position, constraint, style, state
+│       ├── constraints.py   Free, locked and on-curve movement, with bounds
+│       ├── tracking.py      Following a curve with the cursor, branch by branch
+│       ├── labels.py        The coordinate label: rounded to a pixel, placed
+│       └── drawing.py       Markers, hover ring and label as primitives
 ├── render/              The pygame backend
 │   ├── base.py          The Renderer protocol (what any backend must provide)
 │   ├── pygame_renderer.py   PygameRenderer: draws every primitive type
@@ -128,7 +137,10 @@ docs/                    These pages (user/ and dev/)
 
 ### `plane.handle_event(event)`
 
-`interaction.InteractionController` turns events into view changes:
+`dragging.DragController` sees every event first: a press on a
+[draggable point](dragging.md) grabs it and is used up, and motion then
+drags the point. Everything else goes on to
+`interaction.InteractionController`, which turns events into view changes:
 
 - **Drag.** On button-down inside the plane it records the grabbed point
   in *transformed* coordinates (see [Coordinates](#coordinates)); every
@@ -194,6 +206,7 @@ the default view puts grid lines exactly on pixels.
 |---|---|---|
 | Centre, scale, axis kinds | `View` | What is visible. |
 | Springs, drag anchor | `InteractionController` | Eased motion and anchored dragging. |
+| Draggable points | `DraggablePoint`, listed by the `Plane` | Positions the user changes; the grabbed point and hover in `DragController`. |
 | Home view, pending fits | `ViewFraming` | `reset_view`, and fitting ranges once the size is known. |
 | Snap levels | `GridState` | Hysteresis in `"snap"` mode only (fades are stateless). |
 | Palette position | `ColorCycle` | Colours in drawing order, restarted every frame. |

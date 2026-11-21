@@ -193,15 +193,8 @@ def parametric_stroke(
     Raises:
         ValueError: If ``t_range`` is not an increasing pair of finite numbers.
     """
-    fx, fy = _component(x), _component(y)
-
-    def world(
-        t: NDArray[np.float64],
-    ) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
-        return fx(t), fy(t)
-
     return _curve_stroke(
-        view, world, _check_range("t_range", t_range), style, color, sampling
+        view, world_curve(x, y), check_range("t_range", t_range), style, color, sampling
     )
 
 
@@ -243,7 +236,7 @@ def polar_stroke(
         values = radius(theta)
         return values * np.cos(theta), values * np.sin(theta)
 
-    span = _check_range("theta_range", theta_range)
+    span = check_range("theta_range", theta_range)
     return _curve_stroke(view, world, span, style, color, sampling)
 
 
@@ -472,6 +465,31 @@ def _curve_stroke(
     return Stroke(tuple(paths), color, style.width, style.opacity)
 
 
+def world_curve(x: CurveComponent, y: CurveComponent) -> WorldCurve:
+    """Combine two curve components into a robust curve in world coordinates.
+
+    Args:
+        x: The x coordinate as a function of ``t`` (or a constant).
+        y: The y coordinate as a function of ``t`` (or a constant).
+
+    Returns:
+        A function from parameter values to world points, never raising (NaN
+        where a component is undefined). It does not silence NumPy warnings;
+        callers evaluate it inside ``np.errstate``.
+
+    Raises:
+        TypeError: If a component is neither callable nor a real number.
+    """
+    fx, fy = _component(x), _component(y)
+
+    def world(
+        t: NDArray[np.float64],
+    ) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
+        return fx(t), fy(t)
+
+    return world
+
+
 def _component(
     value: CurveComponent,
 ) -> Callable[[NDArray[np.float64]], NDArray[np.float64]]:
@@ -497,7 +515,7 @@ def _component(
     return lambda t: np.full(t.shape, constant)
 
 
-def _check_range(name: str, span: tuple[float, float]) -> tuple[float, float]:
+def check_range(name: str, span: tuple[float, float]) -> tuple[float, float]:
     """Validate a parameter range.
 
     Args:

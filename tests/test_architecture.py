@@ -46,29 +46,36 @@ def test_core_modules_only_import_stdlib_numerics_and_core(path: Path) -> None:
             assert allowed, f"{path.name} imports {name}"
 
 
-SUBPACKAGES = ("grid", "plot")
-"""The subpackages of ``core``, which build on its foundation modules."""
+ALLOWED_SUBPACKAGES: dict[str | None, set[str]] = {
+    None: set(),  # the foundation modules, core/*.py
+    "grid": {"grid"},
+    "plot": {"plot"},
+    "handles": {"handles", "grid", "plot"},
+}
+"""Which ``core`` subpackages each part of ``core`` may import."""
 
 
 @pytest.mark.parametrize(
     "path", sorted(CORE.rglob("*.py")), ids=lambda p: str(p.relative_to(CORE))
 )
 def test_core_layers_stay_apart(path: Path) -> None:
-    """Foundations never import the subpackages, which never import each other.
+    """Foundations import no subpackage; grid and plot never import each other.
 
-    The foundation modules (``core/*.py``) are shared by the grid and by
-    plotting, so they must not depend on either; and the grid and plotting
-    are independent, so either can change or grow without touching the
-    other.
+    The foundation modules (``core/*.py``) are shared by everything, so they
+    must not depend on any subpackage; the grid and plotting are
+    independent, so either can change or grow without touching the other;
+    and draggable points (``handles``) build on both, while neither depends
+    on them.
     """
     relative = path.relative_to(CORE)
     own = relative.parts[0] if len(relative.parts) > 1 else None
+    assert own in ALLOWED_SUBPACKAGES, f"add {own} to ALLOWED_SUBPACKAGES"
     for name in imported_modules(path):
-        for sub in SUBPACKAGES:
-            if name == f"pygridplot.core.{sub}" or name.startswith(
-                f"pygridplot.core.{sub}."
-            ):
-                assert own == sub, f"{relative} imports {name}"
+        parts = name.split(".")
+        if parts[:2] == ["pygridplot", "core"] and len(parts) > 2:
+            sub = parts[2]
+            if (CORE / sub).is_dir():
+                assert sub in ALLOWED_SUBPACKAGES[own], f"{relative} imports {name}"
 
 
 def test_examples_have_a_main_function() -> None:

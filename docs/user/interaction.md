@@ -8,7 +8,7 @@ switched off.
 
 | Input | Action |
 |---|---|
-| Left-drag | Pan. The point you grabbed stays exactly under the cursor. |
+| Left-drag | Pan. The point you grabbed stays exactly under the cursor. On a [draggable point](draggable-points.md), drag the point instead. |
 | Mouse wheel or trackpad | Zoom about the cursor, eased. |
 | `Shift` / `Ctrl` + wheel | Stretch only x / only y (needs [`equal_aspect=False`](the-plane.md#equal-aspect)). |
 | Arrow keys | Pan by 10% of the plane, eased. |
@@ -46,6 +46,9 @@ plane.interaction = pgp.InteractionConfig(keyboard=False, smoothing=0.0)
 | `key_zoom_factor` | `1.25` | Zoom factor per `+`/`-` press. |
 | `smoothing` | `0.05` | Easing time constant in seconds (90% of a move takes about four times this). `0` moves instantly. |
 | `bindings` | `KeyBindings()` | Which keys do what (below). |
+| `drag_button` | `1` | Mouse button that drags [draggable points](draggable-points.md). |
+| `grab_margin_px` | `6.0` | How far beyond its marker a draggable point can be grabbed. |
+| `hover_cursor` | `True` | Show the hand cursor over draggable points. |
 
 Use `smoothing=0` if your program only redraws when events arrive (eased
 motion needs frames to advance).
@@ -80,15 +83,16 @@ your own handling from reacting to the same input:
 ```python
 for event in pygame.event.get():
     if plane.handle_event(event):
-        continue                       # the plane panned or zoomed
+        continue                       # the plane panned, zoomed or dragged a point
     if event.type == pygame.MOUSEBUTTONDOWN and event.button == 3:
         x, y = plane.to_world(*event.pos)
         print(f"right click at ({x:.3g}, {y:.3g})")
 ```
 
-To switch the controls off entirely (while a dialog is open, say), set
-`plane.interactive = False`; `handle_event` then ignores everything and
-returns `False`. To keep the mouse but not the keys, or the reverse, use
+To switch the pan and zoom controls off (for a fixed view, or while a
+dialog is open), set `plane.interactive = False`; `handle_event` then
+ignores everything except [draggable points](draggable-points.md), which
+still work (set their `enabled` to `False` to stop them too). To keep the mouse but not the keys, or the reverse, use
 `InteractionConfig(keyboard=False)` or `InteractionConfig(wheel_zoom=False,
 pan_button=0)`.
 
