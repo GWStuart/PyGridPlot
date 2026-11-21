@@ -154,7 +154,12 @@ its own label.
   opacity.
 
 All positions are snapped with `core/pixels.py`, so a label sits a fixed
-number of pixels from its line and never wobbles while zooming.
+number of pixels from its line and never wobbles while zooming. The fades
+above, however, measure distances between the labels' *exact* positions
+(`PlacedLabel.offset`, `separation(..., exact=True)`): measured between
+snapped positions, a fade over `OVERLAP_FADE_PX = 8` pixels would change in
+steps of 1/8 whenever a label crossed a pixel boundary, which showed as a
+faint flicker while zooming.
 
 ## Log axes
 

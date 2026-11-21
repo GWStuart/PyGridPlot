@@ -3,9 +3,10 @@
 Plotted functions come from users and can do anything: work only on single
 numbers (:mod:`math`), raise errors for parts of their domain, return NaN,
 infinities or complex numbers, or return values of the wrong type or shape.
-:func:`evaluate` turns all of that into a float array with NaN wherever the
-function has no real value, so the code that samples and draws curves never
-has to worry about it.
+:func:`evaluate` (and :func:`evaluate_xy` for functions of two variables)
+turns all of that into a float array with NaN wherever the function has no
+real value, so the code that samples and draws curves never has to worry
+about it.
 
 The function is first called once on the whole NumPy array (fast for
 vectorised functions). If that raises, or returns something of the wrong
@@ -25,6 +26,9 @@ from numpy.typing import NDArray
 
 Function = Callable[[Any], Any]
 """A plottable function: it maps an x value (or an array of them) to y."""
+
+PlaneFunction = Callable[[Any, Any], Any]
+"""A function of two variables, ``F(x, y)``, as used for implicit curves."""
 
 _COMPLEX_TOLERANCE: Final = 1e-12
 """Largest relative imaginary part that still counts as a real result."""
@@ -65,15 +69,71 @@ def evaluate_quietly(func: Function, xs: NDArray[np.float64]) -> NDArray[np.floa
     Returns:
         ``f(x)`` for every x, with NaN where undefined.
     """
-    n = xs.shape[0]
+    return _evaluate_arrays(func, (xs,))
+
+
+def evaluate_xy(
+    func: PlaneFunction, xs: NDArray[np.float64], ys: NDArray[np.float64]
+) -> NDArray[np.float64]:
+    """Evaluate a function of two variables at many points without ever raising.
+
+    The two-variable version of :func:`evaluate`, used for implicit curves
+    ``F(x, y) = 0``: the function is called once with arrays of x and y
+    values, or point by point if that fails.
+
+    Args:
+        func: The function ``F(x, y)``, vectorised or scalar-only.
+        xs: The x coordinates of the points.
+        ys: The y coordinates of the points (the same length as ``xs``).
+
+    Returns:
+        ``F(x, y)`` for every point as floats, with NaN wherever the function
+        raised, returned a non-number, or returned a genuinely complex value.
+    """
+    with np.errstate(all="ignore"), warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        return evaluate_xy_quietly(func, xs, ys)
+
+
+def evaluate_xy_quietly(
+    func: PlaneFunction, xs: NDArray[np.float64], ys: NDArray[np.float64]
+) -> NDArray[np.float64]:
+    """Evaluate like :func:`evaluate_xy`, without silencing warnings itself.
+
+    See :func:`evaluate_quietly` for when to use the quiet versions.
+
+    Args:
+        func: The function ``F(x, y)``.
+        xs: The x coordinates.
+        ys: The y coordinates.
+
+    Returns:
+        ``F(x, y)`` for every point, with NaN where undefined.
+    """
+    return _evaluate_arrays(func, (xs, ys))
+
+
+def _evaluate_arrays(
+    func: Callable[..., Any], args: tuple[NDArray[np.float64], ...]
+) -> NDArray[np.float64]:
+    """Evaluate ``func(*args)``, vectorised if possible, else point by point.
+
+    Args:
+        func: The function.
+        args: One array of values per argument, all the same length.
+
+    Returns:
+        The value at every point, with NaN where undefined.
+    """
+    n = args[0].shape[0]
     if n == 0:
         return np.zeros(0)
     try:
-        values = _as_values(func(xs.copy()), n)
+        values = _as_values(func(*(arg.copy() for arg in args)), n)
     except Exception:
         values = None
     if values is None:
-        values = _evaluate_each(func, xs)
+        values = _evaluate_each(func, args)
     return values
 
 
@@ -126,21 +186,23 @@ def _real_part(values: NDArray[Any]) -> NDArray[np.float64]:
     return np.where(imag <= tolerance, real, np.nan)
 
 
-def _evaluate_each(func: Function, xs: NDArray[np.float64]) -> NDArray[np.float64]:
+def _evaluate_each(
+    func: Callable[..., Any], args: tuple[NDArray[np.float64], ...]
+) -> NDArray[np.float64]:
     """Evaluate a scalar-only function one point at a time.
 
     Args:
         func: The function.
-        xs: The x values.
+        args: One array of values per argument.
 
     Returns:
         The values, with NaN wherever the function raised or returned
         something that is not a real number.
     """
-    out = np.empty(xs.shape[0])
-    for i, x in enumerate(xs.tolist()):
+    out = np.empty(args[0].shape[0])
+    for i, point in enumerate(zip(*(arg.tolist() for arg in args), strict=True)):
         try:
-            out[i] = _scalar_value(func(x))
+            out[i] = _scalar_value(func(*point))
         except Exception:
             out[i] = math.nan
     return out

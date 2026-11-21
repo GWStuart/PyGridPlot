@@ -8,6 +8,13 @@ follow [semantic versioning](https://semver.org/) once 1.0 is released.
 
 ### Added
 
+- **Implicit curves**: `Plane.implicit(surface, F, level=0)` draws any
+  curve `F(x, y) = level`, with loops, crossings and separate pieces, found
+  by marching squares (contourpy) on a grid that is fine only near the
+  curve. Crossings are checked by bisection, so poles and jumps are never
+  drawn as lines, and refined onto the curve. A sequence of levels draws
+  contour lines with a single evaluation of `F`. Tuned with
+  `ImplicitSampling`; works on log axes; `examples/implicit.py`.
 - **Parametric and polar curves**: `Plane.parametric(surface, x, y,
   t_range)` and `Plane.polar(surface, r, theta_range)`, sampled adaptively
   on screen, with exact domain edges and broken at jumps and poles; tuned
@@ -29,12 +36,20 @@ follow [semantic versioning](https://semver.org/) once 1.0 is released.
 
 ### Changed
 
+- PyGridPlot now depends on contourpy (small, compiled, NumPy only).
+
 - Strokes are rasterised 1.5 to 3 times faster (two-level candidate
   generation, duplicate merging with `np.maximum.at`), and blended up to
   six times faster on 32-bit surfaces; large fills are about 1.4 times
   faster.
 - `core` is organised into foundation modules plus the `core.grid` and
   `core.plot` subpackages, with the layering enforced by tests.
+
+### Fixed
+
+- Labels fading near each other (on log axes, and pinned labels in the
+  corners) no longer change opacity in steps of 1/8 as they cross pixel
+  boundaries while zooming: the fades measure exact distances.
 
 ## [0.1.0.dev0] - 2026-11-20
 

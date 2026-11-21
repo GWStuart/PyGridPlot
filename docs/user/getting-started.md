@@ -3,7 +3,8 @@
 ## Installing
 
 PyGridPlot needs Python 3.10 or newer, [pygame-ce](https://pyga.me/) 2.5 or
-newer and NumPy. From a checkout of the repository:
+newer, NumPy, and [contourpy](https://contourpy.readthedocs.io/) (for
+implicit curves); pip installs them all. From a checkout of the repository:
 
 ```bash
 pip install -e .            # the library

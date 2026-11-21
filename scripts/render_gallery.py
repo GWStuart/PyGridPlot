@@ -126,12 +126,37 @@ def scene_curves(plane: pgp.Plane, surface: pygame.Surface) -> None:
     plane.parametric(surface, np.tan, lambda t: -4 + 0.3 * t, (-4, 4))
 
 
+def scene_implicit(plane: pgp.Plane, surface: pygame.Surface) -> None:
+    """Draw implicit curves: loops, crossings, poles, jumps and domain edges.
+
+    Args:
+        plane: The plane.
+        surface: The surface to draw on.
+    """
+    plane.implicit(surface, lambda x, y: x**2 + y**2, 9)
+    plane.implicit(surface, lambda x, y: (x**2 + y**2) ** 2 - 8 * (x**2 - y**2))
+    plane.implicit(
+        surface,
+        lambda x, y: (
+            ((x - 5) ** 2 + (y - 2) ** 2 - 2) ** 3 - 3 * (x - 5) ** 2 * (y - 2) ** 3
+        ),
+    )
+    plane.implicit(surface, lambda x, y: x**3 + y**3 - 6 * x * y)
+    plane.implicit(surface, lambda x, y: y + 4 - np.tan(x), width=1.5)
+    plane.implicit(surface, lambda x, y: y - 3 - np.floor(x) / 2, width=1.5)
+    plane.implicit(surface, lambda x, y: y**2 - x**3 + 2 * x + 6, width=1.5)
+    plane.implicit(
+        surface, lambda x, y: np.sin(3 * x) * np.sin(3 * y), 0.4, width=1.2, opacity=0.6
+    )
+
+
 SCENES: dict[str, Scene] = {
     "test_set": scene_test_set,
     "hard": scene_hard,
     "shapes": scene_shapes,
     "log": scene_log,
     "curves": scene_curves,
+    "implicit": scene_implicit,
 }
 
 
@@ -211,6 +236,11 @@ VIEWS: tuple[GalleryView, ...] = (
     GalleryView("39_curves_dark", scale=60.0, theme="dark", scene="curves"),
     GalleryView("40_curve_cusp_zoom", center=(-5.0, -3.0), scale=3e4, scene="curves"),
     GalleryView("41_curves_loglog", log_x=True, log_y=True, scene="curves"),
+    GalleryView("42_implicit", scale=60.0, scene="implicit"),
+    GalleryView("43_implicit_dark", scale=60.0, theme="dark", scene="implicit"),
+    GalleryView("44_implicit_zoom_out", scale=12.0, scene="implicit"),
+    GalleryView("45_implicit_double_point", scale=2e3, scene="implicit"),
+    GalleryView("46_implicit_loglog", log_x=True, log_y=True, scene="implicit"),
 )
 
 

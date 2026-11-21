@@ -2,17 +2,18 @@
 
 The library draws an adaptive grid with axes and clean tick labels on
 linear or logarithmic axes, handles pan and zoom, and plots functions,
-parametric and polar curves, points, polylines and polygons. It stays out
-of your way: your program owns the main loop.
+parametric, polar and implicit curves, points, polylines and polygons. It
+stays out of your way: your program owns the main loop.
 
 Everything a program needs is importable from here: :class:`Plane` (the
 plane itself), the style classes (:class:`LineStyle`, :class:`PointStyle`,
 :class:`PolygonStyle`), themes (:class:`GridTheme`, :data:`LIGHT`,
-:data:`DARK`, :class:`NumberFormat`), configuration (:class:`InteractionConfig`,
-:class:`KeyBindings`, :class:`SamplingConfig`, :class:`CurveSampling`,
-:class:`ViewLimits`), the :class:`View` with its :class:`ViewState`, and
-:func:`show`. The subpackages (``pygridplot.core``, ``pygridplot.render``)
-are the implementation; see ``docs/dev/index.md``.
+:data:`DARK`, :class:`NumberFormat`), configuration
+(:class:`InteractionConfig`, :class:`KeyBindings`, :class:`SamplingConfig`,
+:class:`CurveSampling`, :class:`ImplicitSampling`, :class:`ViewLimits`),
+the :class:`View` with its :class:`ViewState`, and :func:`show`. The
+subpackages (``pygridplot.core``, ``pygridplot.render``) are the
+implementation; see ``docs/dev/index.md``.
 
 Typical use::
 
@@ -38,6 +39,7 @@ Or, for a quick look: ``pgp.show(np.sin, np.cos)``.
 from pygridplot.core.grid.formatting import NumberFormat
 from pygridplot.core.grid.theme import DARK, LIGHT, GridTheme
 from pygridplot.core.plot.curves import CurveSampling
+from pygridplot.core.plot.implicit import ImplicitSampling
 from pygridplot.core.plot.sampling import SamplingConfig
 from pygridplot.core.plot.style import LineStyle, PointStyle, PolygonStyle
 from pygridplot.core.view import View, ViewLimits, ViewState
@@ -52,6 +54,7 @@ __all__ = [
     "LIGHT",
     "CurveSampling",
     "GridTheme",
+    "ImplicitSampling",
     "InteractionConfig",
     "KeyBindings",
     "LineStyle",

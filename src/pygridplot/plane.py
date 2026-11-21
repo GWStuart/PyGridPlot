@@ -24,6 +24,7 @@ loop and calls the plane each frame::
         plane.draw_grid(screen)
         plane.plot(screen, np.sin)
         plane.polar(screen, lambda t: 1 + np.cos(t))
+        plane.implicit(screen, lambda x, y: x**2 + y**2, 9)
         plane.points(screen, [(0, 0), (np.pi, 0)])
         plane.polygon(screen, [(1, 1), (3, 1), (2, 2.5)])
         pygame.display.flip()
@@ -37,6 +38,7 @@ them needs no extra work.
 from __future__ import annotations
 
 import math
+from collections.abc import Sequence
 from typing import Any, Literal, overload
 
 import numpy as np
@@ -50,6 +52,7 @@ from pygridplot.core.grid.theme import LIGHT, GridTheme
 from pygridplot.core.plot.builders import (
     CurveComponent,
     function_stroke,
+    implicit_stroke,
     parametric_stroke,
     point_markers,
     polar_stroke,
@@ -57,7 +60,8 @@ from pygridplot.core.plot.builders import (
     polyline_stroke,
 )
 from pygridplot.core.plot.curves import DEFAULT_CURVE_SAMPLING, CurveSampling
-from pygridplot.core.plot.evaluation import Function
+from pygridplot.core.plot.evaluation import Function, PlaneFunction
+from pygridplot.core.plot.implicit import DEFAULT_IMPLICIT_SAMPLING, ImplicitSampling
 from pygridplot.core.plot.sampling import DEFAULT_SAMPLING, SamplingConfig
 from pygridplot.core.plot.style import (
     ColorCycle,
@@ -468,6 +472,68 @@ class Plane:
             line,
             self._colors.resolve(line.color),
             sampling=sampling if sampling is not None else DEFAULT_CURVE_SAMPLING,
+        )
+        self._draw(surface, stroke)
+
+    def implicit(
+        self,
+        surface: pygame.Surface,
+        func: PlaneFunction,
+        level: float | Sequence[float] = 0.0,
+        *,
+        color: ColorLike | None = None,
+        width: float | None = None,
+        opacity: float | None = None,
+        style: LineStyle | None = None,
+        sampling: ImplicitSampling | None = None,
+    ) -> None:
+        """Plot the implicit curve ``func(x, y) = level``.
+
+        The curve is found on a grid of samples a couple of pixels apart
+        (marching squares), refined wherever it crosses the grid, so it can
+        be any shape: closed loops, several separate pieces, branches that
+        cross. Where ``func`` changes sign without passing through ``level``
+        (a pole such as ``y - tan(x)``, or a jump such as ``y - floor(x)``)
+        no line is drawn, and the curve stops where ``func`` is undefined.
+
+        ``func`` must change sign across the curve: a curve where it only
+        touches ``level`` (``(x - y)**2 = 0``) is not found, so write such
+        equations without the square. Features smaller than about two
+        pixels may be missed.
+
+        Args:
+            surface: The surface to draw on.
+            func: ``F(x, y)``, taking and returning NumPy arrays (or plain
+                numbers, at some cost in speed). It may raise errors or
+                return NaN where it is undefined.
+            level: The value of ``func`` along the curve, so that
+                ``plane.implicit(screen, lambda x, y: x**2 + y**2, 9)``
+                draws the circle ``x² + y² = 9``. A sequence of values
+                draws a curve for each, all in one style (contour lines,
+                like the height lines of a map); this is much faster than
+                one call per value, as ``func`` is evaluated only once.
+            color: Line colour (default: the next palette colour).
+            width: Line width in pixels (default 2.5).
+            opacity: Line opacity in ``[0, 1]``.
+            style: A reusable :class:`~pygridplot.LineStyle`. The other
+                keyword arguments override its fields.
+            sampling: How the curve is searched for (see
+                :class:`~pygridplot.ImplicitSampling`).
+
+        Raises:
+            ValueError: If a level is not a finite number.
+        """
+        self._sync_rect(surface)
+        line = with_overrides(
+            style or _DEFAULT_LINE, color=color, width=width, opacity=opacity
+        )
+        stroke = implicit_stroke(
+            self._view,
+            func,
+            line,
+            self._colors.resolve(line.color),
+            level=level,
+            sampling=sampling if sampling is not None else DEFAULT_IMPLICIT_SAMPLING,
         )
         self._draw(surface, stroke)
 

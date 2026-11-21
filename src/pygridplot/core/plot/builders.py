@@ -19,6 +19,7 @@ coordinates cannot be shown at all and are treated like NaN.
 * :func:`function_stroke`: the graph of ``y = f(x)``.
 * :func:`parametric_stroke`: a parametric curve ``(x(t), y(t))``.
 * :func:`polar_stroke`: a polar curve ``r(θ)``.
+* :func:`implicit_stroke`: an implicit curve ``F(x, y) = 0``.
 * :func:`polyline_stroke`: connected vertices, open or closed.
 * :func:`polygon_shapes`: a filled polygon and its outline.
 * :func:`point_markers`: fixed-size markers at points.
@@ -27,7 +28,7 @@ coordinates cannot be shown at all and are treated like NaN.
 from __future__ import annotations
 
 import math
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from typing import Final, TypeAlias
 
 import numpy as np
@@ -39,13 +40,23 @@ from pygridplot.core.plot.curves import (
     CurveSampling,
     sample_curve,
 )
-from pygridplot.core.plot.evaluation import Function, evaluate_quietly
+from pygridplot.core.plot.evaluation import (
+    Function,
+    PlaneFunction,
+    evaluate_quietly,
+    evaluate_xy_quietly,
+)
 from pygridplot.core.plot.geometry import (
     Box,
     as_points,
     clip_path,
     clip_paths,
     clip_polygon,
+)
+from pygridplot.core.plot.implicit import (
+    DEFAULT_IMPLICIT_SAMPLING,
+    ImplicitSampling,
+    sample_implicit,
 )
 from pygridplot.core.plot.sampling import (
     DEFAULT_SAMPLING,
@@ -234,6 +245,80 @@ def polar_stroke(
 
     span = _check_range("theta_range", theta_range)
     return _curve_stroke(view, world, span, style, color, sampling)
+
+
+def implicit_stroke(
+    view: View,
+    func: PlaneFunction,
+    style: LineStyle,
+    color: ColorLike,
+    *,
+    level: float | Sequence[float] = 0.0,
+    sampling: ImplicitSampling = DEFAULT_IMPLICIT_SAMPLING,
+) -> Stroke | None:
+    """Find the implicit curve ``func(x, y) = level`` and return it as a stroke.
+
+    The curve is found on a grid in *transformed* coordinates (see
+    :mod:`pygridplot.core.plot.implicit`), whose nodes are multiples of
+    :attr:`ImplicitSampling.resolution_px` pixels, so the work is even on
+    screen on linear and log axes alike, and panning moves the curve
+    rigidly.
+
+    Args:
+        view: The view being drawn.
+        func: ``F(x, y)``, vectorised or scalar-only, evaluated robustly (see
+            :mod:`pygridplot.core.plot.evaluation`).
+        style: Line width and opacity (its colour is ignored).
+        color: The resolved line colour.
+        level: The value of ``func`` along the curve, or several values
+            for several curves (one stroke), found together.
+        sampling: Implicit curve sampling settings.
+
+    Returns:
+        The stroke, or ``None`` if no part of the curve is visible.
+
+    Raises:
+        ValueError: If a level is not a finite number.
+    """
+    levels = np.atleast_1d(np.asarray(level, dtype=np.float64))
+    if levels.ndim != 1 or not np.isfinite(levels).all():
+        msg = "level must be a finite number or a sequence of them"
+        raise ValueError(msg)
+    if view.rect.is_empty:
+        return None
+    margin = style.width / 2 + CLIP_MARGIN_PX
+    sx, sy = view.scale_x, view.scale_y
+    bounds = view.transformed_bounds
+    u_range = (bounds.x_min - margin / sx, bounds.x_max + margin / sx)
+    w_range = (bounds.y_min - margin / sy, bounds.y_max + margin / sy)
+    step = (sampling.resolution_px / sx, sampling.resolution_px / sy)
+    x_transform, y_transform = view.transform_x, view.transform_y
+
+    def transformed(
+        u: NDArray[np.float64], w: NDArray[np.float64]
+    ) -> NDArray[np.float64]:
+        return evaluate_xy_quietly(func, x_transform.inverse(u), y_transform.inverse(w))
+
+    contours = sample_implicit(
+        transformed, u_range, w_range, step, sampling, levels=tuple(levels)
+    )
+    if contours is None:
+        return None
+    step_u, step_w = contours.step
+    i0, j0 = contours.origin
+    # The grid origin's pixel, computed precisely (see View.multiples_to_screen);
+    # from there each grid step is a fixed number of pixels.
+    x0 = float(view.multiples_to_screen("x", step_u, np.array([i0], dtype=np.int64))[0])
+    y0 = float(view.multiples_to_screen("y", step_w, np.array([j0], dtype=np.int64))[0])
+    px_u, px_w = step_u * sx, step_w * sy
+    screen = [
+        np.column_stack((x0 + line[:, 0] * px_u, y0 - line[:, 1] * px_w))
+        for line in contours.lines
+    ]
+    paths = clip_paths(screen, _clip_box(view, margin))
+    if not paths:
+        return None
+    return Stroke(tuple(paths), color, style.width, style.opacity)
 
 
 def polyline_stroke(

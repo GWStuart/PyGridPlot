@@ -1,8 +1,9 @@
 """Architecture rules and smoke tests for the examples and scripts.
 
-The core must stay pure (stdlib + NumPy + itself). That is what lets it be
-tested without a display and reused by future backends, so it is enforced
-here by inspecting every import statement in ``pygridplot/core``.
+The core must stay pure (stdlib + NumPy + contourpy + itself, never
+pygame). That is what lets it be tested without a display and reused by
+future backends, so it is enforced here by inspecting every import statement
+in ``pygridplot/core``.
 """
 
 from __future__ import annotations
@@ -16,7 +17,8 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 CORE = ROOT / "src" / "pygridplot" / "core"
-ALLOWED_THIRD_PARTY = {"numpy"}
+ALLOWED_THIRD_PARTY = {"contourpy", "numpy"}
+"""Pure numerical libraries: NumPy, and contourpy for implicit curves."""
 
 
 def imported_modules(path: Path) -> set[str]:
@@ -34,7 +36,7 @@ def imported_modules(path: Path) -> set[str]:
 @pytest.mark.parametrize(
     "path", sorted(CORE.rglob("*.py")), ids=lambda p: str(p.relative_to(CORE))
 )
-def test_core_modules_only_import_stdlib_numpy_and_core(path: Path) -> None:
+def test_core_modules_only_import_stdlib_numerics_and_core(path: Path) -> None:
     for name in imported_modules(path):
         top = name.split(".")[0]
         if top == "pygridplot":

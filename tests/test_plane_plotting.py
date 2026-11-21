@@ -214,3 +214,70 @@ def test_curves_move_rigidly_when_panning(dx: int, dy: int) -> None:
     # As for function plots, float round-off may change a pixel by a level.
     np.testing.assert_allclose(after[inner], shifted[inner], atol=2 / 255)
     assert before.max() > 0.9  # the curve was drawn at all
+
+
+def test_implicit_curves_draw_through_the_right_pixels() -> None:
+    plane, surface = blank_plane()
+    plane.implicit(surface, lambda x, y: x**2 + y**2, 4, color=BLACK)  # r = 2
+    plane.implicit(surface, lambda x, y: y - np.tan(x), color=BLACK)
+    painted = ink(surface)
+    cx, cy = (round(v) for v in plane.to_screen(0.0, 0.0))
+    assert painted[cy - 100, cx] > 0.9  # the circle, at the top
+    assert painted[cy, cx - 100] > 0.9  # and at the left
+    assert painted[cy, cx] > 0.9  # tan passes through the origin
+    # No line is drawn down the asymptote of tan at x = pi / 2.
+    only_tan = capture(
+        plane, lambda s: plane.implicit(s, lambda x, y: y - np.tan(x), color=BLACK)
+    )
+    column = round(plane.to_screen(math.pi / 2, 0.0)[0])
+    assert only_tan[:, column].max() < 0.05
+    # The branch leaves the top (y = 2.4) at x = arctan(2.4), 20 px before.
+    assert only_tan[:, column - 25].max() > 0.9
+
+
+def test_implicit_levels_draw_contour_lines_in_one_colour() -> None:
+    plane, surface = blank_plane()
+    plane.implicit(surface, lambda x, y: x**2 + y**2, [1, 4])
+    first = plane.theme.palette[0]
+    cx, cy = (round(v) for v in plane.to_screen(0.0, 0.0))
+    assert tuple(surface.get_at((cx + 50, cy)))[:3] == first  # r = 1
+    assert tuple(surface.get_at((cx + 100, cy)))[:3] == first  # r = 2
+
+
+def test_implicit_curves_take_palette_colours_and_styles() -> None:
+    plane, surface = blank_plane()
+    plane.implicit(surface, lambda x, y: x - 1)
+    plane.implicit(surface, lambda x, y: x + 1, style=pgp.LineStyle(width=4.0))
+    first, second = plane.theme.palette[:2]
+    row = SIZE[1] // 3
+    one, minus_one = (round(plane.to_screen(x, 0.0)[0]) for x in (1.0, -1.0))
+    assert tuple(surface.get_at((one, row)))[:3] == first
+    assert tuple(surface.get_at((minus_one, row)))[:3] == second
+    assert tuple(surface.get_at((minus_one + 1, row)))[:3] == second  # 4 px wide
+
+
+def test_implicit_curves_survive_broken_functions() -> None:
+    plane, surface = blank_plane()
+
+    def broken(x: object, y: object) -> float:
+        raise ZeroDivisionError
+
+    plane.implicit(surface, broken)
+    plane.implicit(surface, lambda x, y: "not a number")
+    plane.implicit(surface, lambda x, y: math.log(x) - y)  # scalar-only, x > 0
+    assert ink(surface)[:, : SIZE[0] // 2 - 2].max() == 0.0  # nothing left of 0
+    with pytest.raises(ValueError, match="level"):
+        plane.implicit(surface, lambda x, y: x, math.inf)
+
+
+@pytest.mark.parametrize(("dx", "dy"), [(7, -3), (-12, 5)])
+def test_implicit_curves_move_rigidly_when_panning(dx: int, dy: int) -> None:
+    plane, _ = blank_plane(center=(0.13, 0.29))
+    heart = lambda x, y: (x**2 + y**2 - 1) ** 3 - x**2 * y**3  # noqa: E731
+    before = capture(plane, lambda s: plane.implicit(s, heart, color=BLACK))
+    plane.view.pan_pixels(dx, dy)
+    after = capture(plane, lambda s: plane.implicit(s, heart, color=BLACK))
+    inner = (slice(40, 200), slice(40, 280))
+    shifted = np.roll(np.roll(before, dy, axis=0), dx, axis=1)
+    np.testing.assert_allclose(after[inner], shifted[inner], atol=2 / 255)
+    assert before.max() > 0.9  # the curve was drawn at all

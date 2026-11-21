@@ -114,8 +114,8 @@ plane.polar(screen, lambda a: 2 + 0.5 * np.sin(5 * a + t))
 
 The lambdas above use `t` straight away, inside the same frame, so late
 binding is not a problem here. It is when you create lambdas in a loop
-(see [Late binding](plotting.md#late-binding)). See `examples/animation.py`
-and `examples/curves.py`.
+(see [Late binding](plotting.md#late-binding)). See `examples/animation.py`,
+`examples/curves.py` and `examples/implicit.py`.
 
 ## Adding a legend
 
@@ -190,6 +190,10 @@ keep it that way:
   thousand pixels of line on screen, so a spiral with dozens of turns or a
   dense spirograph costs a few milliseconds each. Functions that oscillate
   infinitely fast (`sin(1/x)` near 0) are the most expensive of all.
+- **Implicit curves cost more than functions**: a few milliseconds for a
+  simple curve, more for curves that fill the plane. Draw several levels
+  of one function with a single call (`plane.implicit(screen, F, levels)`),
+  and write `F` with NumPy: scalar-only functions are much slower here.
 - **Big translucent fills** cost about 4 ms for a polygon covering most of
   a large window.
 - **Thin lines are cheaper** than wide ones.
@@ -236,6 +240,7 @@ The `examples/` folder has a runnable program for every topic:
 | `basic_grid.py` | The smallest program: a plane in a window. |
 | `functions.py` | The function test set and hard cases (`Space` switches sets). |
 | `curves.py` | Animated parametric and polar curves (`Space` switches, `P` pauses). |
+| `implicit.py` | Implicit curves, contour lines, poles and jumps (`Space` switches, `P` pauses). |
 | `shapes.py` | Points, polylines, polygons and fill rules. |
 | `log_axes.py` | Log-log, semi-log and range-based planes (`X`/`Y` toggle log). |
 | `animation.py` | Everything moving, every frame. |

@@ -60,6 +60,11 @@ class PlacedLabel:
         top: Screen y of the top edge of the digit box.
         size: The measured size of the label.
         opacity: Opacity in ``(0, 1]``.
+        offset: How far the label's exact position lies from its pixel
+            position, ``(dx, dy)`` with each in ``[-0.5, 0.5)``. Labels are
+            drawn on whole pixels to stay crisp, but the fades between close
+            labels measure exact distances (see :func:`separation`), so they
+            change smoothly as labels move instead of in steps of a pixel.
     """
 
     text: LabelText
@@ -67,6 +72,7 @@ class PlacedLabel:
     top: int
     size: TextSize
     opacity: float = 1.0
+    offset: tuple[float, float] = (0.0, 0.0)
 
     @property
     def box(self) -> tuple[int, int, int, int]:
@@ -155,8 +161,12 @@ def place_x_labels(
     for label in candidates:
         lead = label.size.sign_width if hang_minus else 0
         body = label.size.width - lead
-        left = snap(label.position) - lead - (body - 1) // 2
-        placed.append(PlacedLabel(label.text, left, top, label.size, label.opacity))
+        pixel = snap(label.position)
+        left = pixel - lead - (body - 1) // 2
+        offset = (label.position - pixel, 0.0)
+        placed.append(
+            PlacedLabel(label.text, left, top, label.size, label.opacity, offset)
+        )
     return placed
 
 
@@ -202,8 +212,12 @@ def place_y_labels(
     placed = []
     for label in candidates:
         left = y_label_left(axis_x, rect, label.size.width, spacing)
-        top = snap(label.position) - (label.size.height - 1) // 2
-        placed.append(PlacedLabel(label.text, left, top, label.size, label.opacity))
+        pixel = snap(label.position)
+        top = pixel - (label.size.height - 1) // 2
+        offset = (0.0, label.position - pixel)
+        placed.append(
+            PlacedLabel(label.text, left, top, label.size, label.opacity, offset)
+        )
     return placed
 
 
@@ -235,21 +249,25 @@ def place_origin_label(
     return PlacedLabel(text, y_label_left(axis_x, rect, size.width, spacing), top, size)
 
 
-def separation(a: PlacedLabel, b: PlacedLabel) -> int:
+def separation(a: PlacedLabel, b: PlacedLabel, *, exact: bool = False) -> float:
     """Return how far apart two labels' boxes are.
 
     Args:
         a: One label.
         b: The other label.
+        exact: Measure between the labels' exact positions (see
+            :attr:`PlacedLabel.offset`) instead of their pixels, for fades.
 
     Returns:
         The gap in pixels along whichever axis separates the boxes (the larger
         of the horizontal and vertical gaps). Zero or negative means the boxes
-        touch or overlap.
+        touch or overlap. Whole without ``exact``.
     """
     l1, t1, r1, b1 = a.box
     l2, t2, r2, b2 = b.box
-    return max(l2 - r1, l1 - r2, t2 - b1, t1 - b2)
+    # How far b's exact position is shifted from a's, beyond their pixels.
+    dx, dy = (b.offset[0] - a.offset[0], b.offset[1] - a.offset[1]) if exact else (0, 0)
+    return max(l2 - r1 + dx, l1 - r2 - dx, t2 - b1 + dy, t1 - b2 - dy)
 
 
 def resolve_overlaps(labels: list[PlacedLabel], padding: int) -> list[PlacedLabel]:
@@ -312,7 +330,8 @@ def soften_overlaps(
         for j in order[position + 1 :]:
             if boxes[j][start] - boxes[i][end] >= reach:
                 break  # sorted: every later label is further away
-            closeness = _closeness(separation(labels[i], labels[j]), padding, fade_px)
+            gap = separation(labels[i], labels[j], exact=True)
+            closeness = _closeness(gap, padding, fade_px)
             if closeness > 0.0:
                 factors[i] *= 1.0 - closeness * labels[j].opacity
                 factors[j] *= 1.0 - closeness * labels[i].opacity
@@ -363,7 +382,8 @@ def fade_collisions(
         factor = 1.0
         if top < band_bottom and band_top < bottom:
             for other in fixed:
-                closeness = _closeness(separation(label, other), padding, fade_px)
+                gap = separation(label, other, exact=True)
+                closeness = _closeness(gap, padding, fade_px)
                 factor = min(factor, 1.0 - other.opacity * closeness)
         if factor <= 1e-3:
             continue
@@ -373,7 +393,7 @@ def fade_collisions(
     return kept
 
 
-def _closeness(gap: int, padding: int, fade_px: float) -> float:
+def _closeness(gap: float, padding: int, fade_px: float) -> float:
     """Return how strongly a label at distance ``gap`` is pushed out.
 
     Args:

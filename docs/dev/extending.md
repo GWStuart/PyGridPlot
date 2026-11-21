@@ -15,37 +15,48 @@ every change follows. Each recipe names the files to touch, in order.
 
 ## A new kind of plot
 
-Parametric and polar curves were added exactly this way, so they are a
-worked example to copy. For an implicit curve `F(x, y) = 0`:
+Parametric, polar and implicit curves were all added this way, so they are
+worked examples to copy. As a sketch, take **inequalities**, shading the
+region where `F(x, y) < 0`:
 
 1. **Sample it in `core/plot/`**, as a pure function that knows nothing
    about the view. `curves.sample_curve(curve, t_range, box, config)` takes
-   a function from `t` to *screen* points and returns screen-space
-   polylines; an implicit-curve sampler would take `F` and the visible box,
-   evaluate `F` on a grid (robustly, with `evaluation.evaluate_quietly`
-   inside one `np.errstate` block), extract contours with marching squares,
-   and refine near the curve. Put its settings in a frozen, validated
-   dataclass next to it, like `CurveSampling`.
+   a function from `t` to *screen* points; `implicit.sample_implicit(func,
+   u_range, w_range, step, config, levels)` takes `F` in transformed
+   coordinates and returns lines in grid coordinates plus the grid's origin
+   and step. An inequality could reuse the implicit sampler's grid and
+   candidate cells: the boundary is the curve `F = 0`, and each
+   non-candidate cell is entirely inside or outside, decided by the sign
+   at its corners. Evaluate robustly (`evaluation.evaluate_xy_quietly`
+   inside one `np.errstate` block), anchor samples to the world so panning
+   stays rigid, and put the settings in a frozen, validated dataclass next
+   to the sampler, like `ImplicitSampling`.
 2. **Build primitives in `core/plot/builders.py`.** Add
-   `implicit_stroke(view, func, style, color, *, sampling)`: wrap the user's
-   function robustly, map through the view (`View.to_screen`, or the
-   transformed API so log axes work), sample, clip with
-   `geometry.clip_paths(paths, _clip_box(view, margin))`, and return a
-   `Stroke`, or `None` when nothing is visible.
-3. **Expose it in `plane.py`.** Add `Plane.implicit(surface, func, *,
-   color, width, opacity, style, sampling)`: call `self._sync_rect(surface)`,
+   `inequality_fill(view, func, style, color, *, sampling)`: wrap the user's
+   function robustly, work in transformed coordinates so log axes work
+   (see `implicit_stroke`), map to screen precisely (`View.to_screen`, or
+   `View.multiples_to_screen` for points on an anchored grid), clip
+   (`geometry.clip_paths` or `clip_polygon`), and return a primitive
+   (`Fill`, `Stroke`), or `None` when nothing is visible. If no existing
+   primitive fits, see [A new primitive](#a-new-primitive).
+3. **Expose it in `plane.py`.** Add `Plane.inequality(surface, func, *,
+   color, opacity, style, sampling)`: call `self._sync_rect(surface)`,
    resolve the style with `with_overrides`, the colour with
-   `self._colors.resolve`, build the stroke, and finish with
-   `self._draw(surface, stroke)`. Write the docstring for users: it becomes
-   the [API reference](../user/reference.md).
-4. **Test it**: the sampler in `tests/core/plot/` (accuracy against the
-   tolerance, edge cases, the budget, rigid panning as a property test), the
-   builder in `tests/core/plot/test_builders.py`, and the whole path in
-   `tests/test_plane_plotting.py` (the right pixels, palette colours,
-   rigidity when panning).
+   `self._colors.resolve`, build the primitive, and finish with
+   `self._draw(surface, primitive)`. Write the docstring for users: it
+   becomes the [API reference](../user/reference.md). Export any new
+   settings class from `pygridplot/__init__.py` (see
+   [A new public name](#a-new-public-name)).
+4. **Test it**: the sampler in `tests/core/plot/` (accuracy, edge cases such
+   as poles and undefined regions, the budget, rigid panning as a property
+   test; `test_implicit.py` is a model), the builder in
+   `tests/core/plot/test_builders.py` (log axes, clipping, broken
+   functions), and the whole path in `tests/test_plane_plotting.py` (the
+   right pixels, palette colours, rigidity when panning).
 5. **Document it**: run `python scripts/build_api_docs.py`, add a section to
-   [Plotting](../user/plotting.md) with runnable examples, and consider an
-   example program and a gallery scene.
+   [Plotting](../user/plotting.md) with runnable examples and its limits,
+   describe the method in [Plotting](plotting.md) for developers, add a
+   benchmark case and a gallery scene, and consider an example program.
 
 ## A new kind of axis
 
@@ -131,8 +142,9 @@ leave it out. Run the script and commit `docs/user/reference.md`.
 
 **Structure.**
 
-- Keep `core` pure (standard library and NumPy only), keep the foundation
-  modules free of `core.grid` and `core.plot`, and keep those two apart.
+- Keep `core` pure (standard library, NumPy and contourpy only; never
+  pygame), keep the foundation modules free of `core.grid` and
+  `core.plot`, and keep those two apart.
   The architecture tests enforce this.
 - One module per idea, with a module docstring that says what the module
   is for, how it fits with its neighbours and which function is its entry

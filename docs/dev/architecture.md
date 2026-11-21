@@ -44,7 +44,8 @@
                          └── plot/   plotted objects -> primitives
 ```
 
-`core` may import only the standard library, NumPy and other `core`
+`core` may import only the standard library, NumPy, contourpy (a small,
+pure contouring library, used for implicit curves) and other `core`
 modules. `tests/test_architecture.py` parses the imports of every module
 under `core/` and fails if this is broken. Keeping `core` pure means it is
 fast to test without a display, easy to reason about, and reusable by
@@ -78,7 +79,7 @@ src/pygridplot/
 ├── interaction.py       pygame events -> pan/zoom (anchored drag, eased wheel and keys)
 ├── quick.py             show(): a ready-made main loop
 ├── py.typed             Marks the package as typed (PEP 561)
-├── core/                PURE: stdlib + NumPy only
+├── core/                PURE: stdlib + NumPy (+ contourpy) only
 │   ├── coords.py        ScreenRect, Bounds, Axis, ColorLike
 │   ├── pixels.py        The pixel-snapping conventions (single source of truth)
 │   ├── transforms.py    AxisTransform: linear and log10 axes
@@ -86,7 +87,6 @@ src/pygridplot/
 │   ├── framing.py       ViewFraming: initial ranges, the home view, switching axis kinds
 │   ├── easing.py        Critically damped Spring for eased motion
 │   ├── primitives.py    The drawing primitives and the TextMeasurer protocol
-│   ├── theme.py         GridTheme, LIGHT, DARK
 │   ├── grid/            The adaptive grid
 │   │   ├── nice.py          NiceStep: exact 1-2-5 spacings as integer ladder levels
 │   │   ├── spacing.py       Choosing a spacing: cross-fades (fade) or hysteresis (snap)
@@ -97,12 +97,14 @@ src/pygridplot/
 │   │   ├── gridlines.py     AxisLines (per-line opacities) -> LineBatch primitives, axes
 │   │   ├── formatting.py    Exact number formatting -> LabelText (with superscripts)
 │   │   ├── layout.py        Label placement: push-and-pin, collision fades
-│   │   └── scene.py         build_grid(): the pipeline, into a GridScene
+│   │   ├── scene.py         build_grid(): the pipeline, into a GridScene
+│   │   └── theme.py         GridTheme, LIGHT, DARK
 │   └── plot/            Plotted objects -> primitives
 │       ├── style.py         LineStyle, PointStyle, PolygonStyle, ColorCycle (palette)
 │       ├── evaluation.py    Calling user functions robustly (errors/complex -> NaN)
 │       ├── sampling.py      Adaptive sampling of y = f(x): jumps, poles, domain edges
 │       ├── curves.py        Adaptive sampling of parametric curves on screen
+│       ├── implicit.py      Implicit curves F(x, y) = 0: marching squares (contourpy), checked
 │       ├── geometry.py      Point input; clipping polylines and polygons
 │       └── builders.py      One function per kind of plot -> clipped primitives
 ├── render/              The pygame backend
@@ -157,7 +159,8 @@ docs/                    These pages (user/ and dev/)
 2. **Primitives.** A builder in `core/plot/builders.py` turns the object
    into clipped screen-space primitives: `function_stroke` (via
    `sampling.sample_function`), `parametric_stroke` and `polar_stroke` (via
-   `curves.sample_curve`), `polyline_stroke`, `polygon_shapes` or
+   `curves.sample_curve`), `implicit_stroke` (via
+   `implicit.sample_implicit`), `polyline_stroke`, `polygon_shapes` or
    `point_markers`. [Plotting](plotting.md) explains the samplers.
 3. **Draw.** `Plane._draw()` clips the surface to the plane's rectangle and
    dispatches each primitive to the renderer (`draw_stroke`, `draw_fill`,

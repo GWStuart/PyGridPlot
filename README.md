@@ -7,8 +7,8 @@ of the Desmos graph view but driven entirely from Python code. It gives you:
 - linear or logarithmic axes, set up from a centre and scale or from x and y
   ranges;
 - smooth, eased panning and zooming;
-- robust, antialiased plotting of functions, parametric and polar curves,
-  points, polylines and polygons.
+- robust, antialiased plotting of functions, parametric, polar and implicit
+  curves, points, polylines and polygons.
 
 PyGridPlot is a *library, not a framework*: your program owns the main loop,
 and the plane is an object you call each frame.
@@ -64,6 +64,10 @@ pgp.show(np.exp, log_y=True, x_range=(0, 10))               # semi-log, quick mo
   and `plane.polar(screen, r)` sample adaptively on screen, so loops, cusps
   and spirals stay smooth at any zoom, and curves end exactly where they
   become undefined.
+- **Implicit curves and contour lines.** `plane.implicit(screen, F, c)`
+  draws any curve `F(x, y) = c`: loops, crossings and separate pieces,
+  accurate to a fraction of a pixel, with no false lines at poles or jumps.
+  Several levels at once make a contour map.
 - **Smooth rendering.** Curves use an antialiased round pen, so joints never
   darken. Lines are crisp, and points keep their pixel size at every zoom.
 - **Themeable.** Light and dark themes are built in, and every colour, width,
@@ -88,6 +92,7 @@ The [documentation](docs/index.md) has two parts:
 ```bash
 python examples/functions.py        # the function test set and hard cases (Space)
 python examples/curves.py           # animated parametric and polar curves (Space)
+python examples/implicit.py         # implicit curves and contour lines (Space)
 python examples/shapes.py           # points, polylines, polygons, fill rules
 python examples/log_axes.py         # log-log, semi-log and range-based planes (Space, X, Y)
 python examples/animation.py        # everything moving, every frame

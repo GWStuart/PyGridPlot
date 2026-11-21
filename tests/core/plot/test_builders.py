@@ -1,6 +1,8 @@
-"""Tests for turning plotted objects into primitives (:mod:`core.plotting`)."""
+"""Tests for turning plotted objects into primitives (:mod:`core.plot.builders`)."""
 
 from __future__ import annotations
+
+import math
 
 import numpy as np
 import pytest
@@ -8,12 +10,14 @@ import pytest
 from pygridplot.core.coords import ScreenRect
 from pygridplot.core.plot.builders import (
     function_stroke,
+    implicit_stroke,
     parametric_stroke,
     point_markers,
     polar_stroke,
     polygon_shapes,
     polyline_stroke,
 )
+from pygridplot.core.plot.implicit import ImplicitSampling
 from pygridplot.core.plot.style import LineStyle, PointStyle, PolygonStyle
 from pygridplot.core.view import View
 
@@ -292,3 +296,112 @@ def test_invisible_curves_give_no_stroke() -> None:
         )
         is None
     )
+
+
+# ----------------------------------------------------------------------
+# Implicit curves
+# ----------------------------------------------------------------------
+def test_implicit_circle_is_accurate_and_clipped() -> None:
+    view = make_view(center=(3.0, 0.0))  # the circle is cut by the left edge
+    stroke = implicit_stroke(view, lambda x, y: x**2 + y**2 - 16, LINE, "red")
+    assert stroke is not None
+    assert stroke.color == "red"
+    assert stroke.width == 3.0
+    for path in stroke.paths:
+        assert inside_margin(path, 1.5 + 2.0 + 1e-6)
+    x, y = view.to_world(*all_points(stroke).T)
+    inside = (x > view.bounds.x_min + 0.1) & (y > view.bounds.y_min + 0.1)
+    assert np.abs(np.hypot(x, y)[inside] - 4).max() * 50 < 0.01
+
+
+def test_implicit_level_selects_the_curve() -> None:
+    view = make_view()
+    radius_squared = lambda x, y: x**2 + y**2  # noqa: E731
+    by_level = all_points(implicit_stroke(view, radius_squared, LINE, "r", level=4))
+    by_offset = all_points(
+        implicit_stroke(view, lambda x, y: x**2 + y**2 - 4, LINE, "r")
+    )
+    np.testing.assert_allclose(by_level, by_offset)
+    with pytest.raises(ValueError, match="level"):
+        implicit_stroke(view, radius_squared, LINE, "r", level=math.nan)
+    with pytest.raises(ValueError, match="level"):
+        implicit_stroke(view, radius_squared, LINE, "r", level=[[1.0, 2.0]])
+    several = implicit_stroke(view, radius_squared, LINE, "r", level=[1, 4, 9])
+    assert several is not None
+    x, y = view.to_world(*all_points(several).T)
+    radius = np.hypot(x, y)
+    for r in (1, 2, 3):  # each circle is there
+        assert np.abs(radius - r).min() < 1e-3
+
+
+def test_implicit_curves_accept_scalar_and_raising_functions() -> None:
+    view = make_view()
+    # math.sqrt raises for x < 0, and takes only numbers.
+    stroke = implicit_stroke(view, lambda x, y: math.sqrt(x) - y, LINE, "r")
+    x, y = view.to_world(*all_points(stroke).T)
+    assert x.min() >= 0
+    assert np.abs(np.sqrt(x) - y)[x > 0.5].max() * 50 < 0.1
+
+    def broken(x: object, y: object) -> float:
+        raise ZeroDivisionError
+
+    assert implicit_stroke(view, broken, LINE, "r") is None
+    assert implicit_stroke(view, lambda x, y: "text", LINE, "r") is None
+
+
+def test_implicit_curves_follow_log_axes() -> None:
+    view = log_view()
+    # y = x^2 is a straight line on log-log axes (and its other branches,
+    # at negative x, are not visible there).
+    stroke = implicit_stroke(view, lambda x, y: y - x**2, LINE, "red")
+    assert straightness(all_points(stroke)) < 0.01
+    # The fine grid is spaced evenly on screen, not in x.
+    gaps = np.hypot(*np.diff(stroke.paths[0], axis=0).T)  # type: ignore[union-attr]
+    assert gaps.max() < 3 * 2.0
+
+
+def test_implicit_panning_moves_strokes_rigidly() -> None:
+    func = lambda x, y: x**3 + y**3 - 6 * x * y + 1  # noqa: E731
+    view = make_view(center=(0.37, -0.21))
+    before = all_points(implicit_stroke(view, func, LINE, "red"))
+    view.pan_pixels(11.0, -6.0)
+    after = all_points(implicit_stroke(view, func, LINE, "red"))
+    inner = (
+        (before[:, 0] > 60)
+        & (before[:, 0] < 740)
+        & (before[:, 1] > 60)
+        & (before[:, 1] < 540)
+    )
+    moved = {tuple(p) for p in np.round(before[inner] + (11.0, -6.0), 6)}
+    assert moved <= {tuple(p) for p in np.round(after, 6)}
+
+
+def test_implicit_sampling_settings_are_used() -> None:
+    view = make_view()
+    circle = lambda x, y: x**2 + y**2 - 9  # noqa: E731
+    fine = implicit_stroke(view, circle, LINE, "r")
+    coarse = implicit_stroke(
+        view, circle, LINE, "r", sampling=ImplicitSampling(resolution_px=8.0)
+    )
+    assert fine is not None
+    assert coarse is not None
+    assert len(all_points(coarse)) < len(all_points(fine)) / 3
+
+
+def test_invisible_implicit_curves_give_no_stroke() -> None:
+    circle = lambda x, y: (x - 1e3) ** 2 + y**2 - 1  # noqa: E731
+    assert implicit_stroke(make_view(), circle, LINE, "r") is None
+    empty = View(ScreenRect(0, 0, 0, 0))
+    assert implicit_stroke(empty, lambda x, y: x - y, LINE, "r") is None
+
+
+def test_implicit_curves_stay_correct_at_extreme_zoom() -> None:
+    view = make_view(center=(1.0, 1.0))
+    view.zoom(1e9)
+    stroke = implicit_stroke(view, lambda x, y: x**2 + y**2 - 2, LINE, "r")
+    points = all_points(stroke)
+    # Tangent to the circle at (1, 1): the line x + y = 2, through the centre.
+    assert straightness(points) < 0.01
+    cx, cy = 400.0, 300.0
+    distance = np.abs((points[:, 0] - cx) - (points[:, 1] - cy)) / math.sqrt(2)
+    assert distance.max() < 0.05

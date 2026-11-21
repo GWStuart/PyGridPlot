@@ -10,8 +10,8 @@ and default.
    converting coordinates, embedding a plane and using several.
 3. [Interaction](interaction.md): the built-in pan and zoom controls,
    configuring them, and moving the view from your own code.
-4. [Plotting](plotting.md): functions `y = f(x)`, parametric and polar
-   curves, points, polylines and polygons.
+4. [Plotting](plotting.md): functions `y = f(x)`, parametric, polar and
+   implicit curves, contour lines, points, polylines and polygons.
 5. [Logarithmic axes](log-axes.md): log-log and semi-log planes.
 6. [Styles and themes](styles-and-themes.md): colours, reusable styles, the
    palette, themes and how numbers are written.

@@ -13,7 +13,7 @@ setting with its parameters and defaults.
 - The plane: [`Plane`](#plane), [`show`](#show)
 - Styles: [`LineStyle`](#linestyle), [`PointStyle`](#pointstyle), [`PolygonStyle`](#polygonstyle)
 - Themes: [`GridTheme`](#gridtheme), [`LIGHT`](#light), [`DARK`](#dark), [`NumberFormat`](#numberformat)
-- Configuration: [`InteractionConfig`](#interactionconfig), [`KeyBindings`](#keybindings), [`SamplingConfig`](#samplingconfig), [`CurveSampling`](#curvesampling), [`ViewLimits`](#viewlimits)
+- Configuration: [`InteractionConfig`](#interactionconfig), [`KeyBindings`](#keybindings), [`SamplingConfig`](#samplingconfig), [`CurveSampling`](#curvesampling), [`ImplicitSampling`](#implicitsampling), [`ViewLimits`](#viewlimits)
 - The view: [`View`](#view), [`ViewState`](#viewstate)
 
 ## The plane
@@ -265,6 +265,43 @@ The initial view can be given like a graphing calculator's window settings, `x_r
   *Raises:*
 
   - `ValueError`: If `theta_range` is not an increasing pair of numbers.
+
+- **`plane.implicit()`**
+
+  ```py
+  plane.implicit(
+      surface: pygame.Surface,
+      func: PlaneFunction,
+      level: float | Sequence[float] = 0.0,
+      *,
+      color: ColorLike | None = None,
+      width: float | None = None,
+      opacity: float | None = None,
+      style: LineStyle | None = None,
+      sampling: ImplicitSampling | None = None,
+  )
+  ```
+
+  Plot the implicit curve `func(x, y) = level`.
+
+  The curve is found on a grid of samples a couple of pixels apart (marching squares), refined wherever it crosses the grid, so it can be any shape: closed loops, several separate pieces, branches that cross. Where `func` changes sign without passing through `level` (a pole such as `y - tan(x)`, or a jump such as `y - floor(x)`) no line is drawn, and the curve stops where `func` is undefined.
+
+  `func` must change sign across the curve: a curve where it only touches `level` (`(x - y)**2 = 0`) is not found, so write such equations without the square. Features smaller than about two pixels may be missed.
+
+  *Parameters:*
+
+  - `surface`: The surface to draw on.
+  - `func`: `F(x, y)`, taking and returning NumPy arrays (or plain numbers, at some cost in speed). It may raise errors or return NaN where it is undefined.
+  - `level`: The value of `func` along the curve, so that `plane.implicit(screen, lambda x, y: x**2 + y**2, 9)` draws the circle `x² + y² = 9`. A sequence of values draws a curve for each, all in one style (contour lines, like the height lines of a map); this is much faster than one call per value, as `func` is evaluated only once.
+  - `color`: Line colour (default: the next palette colour).
+  - `width`: Line width in pixels (default 2.5).
+  - `opacity`: Line opacity in `[0, 1]`.
+  - `style`: A reusable `LineStyle`. The other keyword arguments override its fields.
+  - `sampling`: How the curve is searched for (see `ImplicitSampling`).
+
+  *Raises:*
+
+  - `ValueError`: If a level is not a finite number.
 
 - **`plane.points()`**
 
@@ -754,6 +791,26 @@ How parametric and polar curves are sampled. The defaults suit most curves.
 - `max_segment_px`: Longest allowed segment on screen. Longer segments are halved even when they look straight, so details between two samples cannot be missed. A segment still longer than this after the last round is treated as a jump.
 - `max_rounds`: Most halvings of a segment beyond those the zoom level needs to make the initial segments `max_segment_px` long. They refine bends and domain edges, and a segment still longer than `max_segment_px` after all of them is a jump: 12 rounds mean an honest curve would have to cross that many pixels in 1/4096 of a step that normally crosses fewer.
 - `max_samples`: Total budget of evaluations per curve per frame. When it runs out, the longest segments are refined first.
+
+### ImplicitSampling
+
+```py
+pgp.ImplicitSampling(
+    resolution_px: float = 2.0,
+    coarse_factor: int = 4,
+    refine_steps: int = 3,
+    max_samples: int = 250000,
+)
+```
+
+How implicit curves are sampled. The defaults suit most curves.
+
+*Attributes:*
+
+- `resolution_px`: Spacing of the fine grid in pixels. Features smaller than this may be missed; halving it quadruples the work near the curve.
+- `coarse_factor`: The coarse grid, used to find where the curve can be, is this many fine cells across (1, 2, 4, 8 or 16; 1 evaluates the fine grid everywhere).
+- `refine_steps`: Bisection steps spent checking and refining each crossing of a grid edge. 0 skips the check, so poles and jumps may be drawn as lines.
+- `max_samples`: Most evaluations of `F` per call (per frame). When the grids would need more (a large window, or a dense curve), they are made coarser, and if even then too little is left for `refine_steps` steps per crossing, fewer are taken.
 
 ### ViewLimits
 

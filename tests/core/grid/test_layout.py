@@ -120,6 +120,35 @@ def test_separation() -> None:
     assert separation(a, PlacedLabel(TEXT, 5, 5, TextSize(10, 10))) < 0
 
 
+def test_exact_separation_uses_sub_pixel_offsets() -> None:
+    size = TextSize(10, 10)
+    a = PlacedLabel(TEXT, 0, 0, size, offset=(0.25, 0.0))
+    right = PlacedLabel(TEXT, 15, 0, size, offset=(-0.25, 0.0))
+    left = PlacedLabel(TEXT, -15, 0, size, offset=(-0.25, 0.0))
+    below = PlacedLabel(TEXT, 0, 13, size, offset=(0.0, 0.4))
+    assert separation(a, right) == 5  # whole pixels by default
+    assert separation(a, right, exact=True) == pytest.approx(4.5)
+    assert separation(a, left, exact=True) == pytest.approx(5.5)
+    assert separation(a, below, exact=True) == pytest.approx(3.4)
+
+
+@given(
+    start=st.floats(100.0, 120.0),
+    step=st.floats(0.0, 0.2),
+)
+def test_fades_change_smoothly_as_labels_move(start: float, step: float) -> None:
+    """Moving a label a fraction of a pixel changes its fade by that fraction."""
+    size = TextSize(20, 9)
+    fixed = [PlacedLabel(TEXT, 0, 100, size)]
+
+    def faded(y: float) -> float:
+        (label,) = place_y_labels([LabelCandidate(y, TEXT, size)], 10.0, RECT, SPACING)
+        kept = fade_collisions(fixed, [label], padding=2, fade_px=8)
+        return kept[0].opacity if kept else 0.0
+
+    assert abs(faded(start + step) - faded(start)) <= step / 8 + 1e-9
+
+
 def test_fade_collisions_fades_near_labels_and_drops_overlaps() -> None:
     size = TextSize(20, 9)
     fixed = [PlacedLabel(TEXT, 0, 100, size), PlacedLabel(TEXT, 50, 100, size)]

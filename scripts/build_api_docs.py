@@ -58,6 +58,7 @@ SECTIONS: list[tuple[str, str, list[str]]] = [
             "KeyBindings",
             "SamplingConfig",
             "CurveSampling",
+            "ImplicitSampling",
             "ViewLimits",
         ],
     ),

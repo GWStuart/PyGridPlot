@@ -288,9 +288,15 @@ def test_panning_by_whole_pixels_moves_every_line_rigidly(
 ) -> None:
     view = View(RECT, (cx, cy), 10**log_scale)
     before = build_grid(view, LIGHT, FakeMeasurer())
-    fractions = [(b.positions % 1.0) for b in before.lines]
-    near_tie = any(np.any(np.abs(f - 0.5) < 1e-6) for f in fractions)
-    assume(not near_tie)  # exact half-pixel ties may round either way
+    # A line of width w is placed by rounding its centre minus w / 2, so its
+    # ties lie at half pixels for odd widths and whole pixels for even ones
+    # (the 2 px axes). Exact ties may round either way after a pan, as the
+    # pan's float round-off decides them.
+    near_tie = any(
+        np.any(np.abs((b.positions - b.width / 2 + 0.5) % 1.0 - 0.5) < 1e-6)
+        for b in before.lines
+    )
+    assume(not near_tie)
     view.pan_pixels(dx, dy)
     after = build_grid(view, LIGHT, FakeMeasurer())
     for orientation, shift, size in (

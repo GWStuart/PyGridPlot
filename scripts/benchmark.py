@@ -108,6 +108,25 @@ def cases() -> dict[str, Case]:
         "curve spiral 12 turns": plot_case(
             lambda p, s: p.polar(s, lambda a: 0.15 * a, (0, 24 * math.pi)), scale=60.0
         ),
+        "implicit circle": plot_case(
+            lambda p, s: p.implicit(s, lambda x, y: x**2 + y**2, 16), scale=60.0
+        ),
+        "implicit heart": plot_case(
+            lambda p, s: p.implicit(
+                s, lambda x, y: (x**2 + y**2 - 4) ** 3 - 4 * x**2 * y**3
+            ),
+            scale=60.0,
+        ),
+        "implicit y = tan x": plot_case(
+            lambda p, s: p.implicit(s, lambda x, y: y - np.tan(x)), scale=60.0
+        ),
+        "implicit busy sin*sin": plot_case(
+            lambda p, s: p.implicit(s, lambda x, y: np.sin(3 * x) * np.sin(3 * y), 0.2),
+            scale=60.0,
+        ),
+        "implicit scalar math": plot_case(
+            lambda p, s: p.implicit(s, lambda x, y: math.sin(x) - y), scale=60.0
+        ),
         "points 2000": plot_case(
             lambda p, s: p.points(s, np.column_stack((xs, np.sin(xs))))
         ),

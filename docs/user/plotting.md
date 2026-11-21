@@ -10,6 +10,7 @@ exactly, and changing what you draw from one frame to the next animates it.
 | [`plot(surface, f)`](#functions) | The graph of `y = f(x)`. |
 | [`parametric(surface, x, y, t_range)`](#parametric-curves) | The curve `(x(t), y(t))`. |
 | [`polar(surface, r)`](#polar-curves) | The curve `r = r(θ)`. |
+| [`implicit(surface, F)`](#implicit-curves) | The curve `F(x, y) = 0` (or `= c`). |
 | [`points(surface, points)`](#points) | Markers that keep their size in pixels. |
 | [`polyline(surface, points)`](#polylines) | Vertices joined by straight lines. |
 | [`polygon(surface, points)`](#polygons) | A filled shape with an outline. |
@@ -155,6 +156,97 @@ The initial samples must be dense enough that no feature hides between two
 of them, so a curve with a very large parameter range (hundreds of spiral
 turns, say) may need more `initial_samples`.
 
+## Implicit curves
+
+```py
+plane.implicit(surface, func, level=0, *, color=None, width=None,
+               opacity=None, style=None, sampling=None)
+```
+
+```python
+plane.implicit(screen, lambda x, y: x**2 + y**2, 4)                   # circle, radius 2
+plane.implicit(screen, lambda x, y: x**3 + y**3 - 6 * x * y)          # folium of Descartes
+plane.implicit(screen, lambda x, y: (x**2 + y**2)**2 - 8 * (x**2 - y**2))  # lemniscate
+plane.implicit(screen, lambda x, y: x - np.sin(y))                    # x = sin y
+```
+
+An implicit curve is every point where `func(x, y)` equals `level` (0 by
+default), so any equation can be drawn by moving everything to one side:
+`x² + y² = 4` is `func = x² + y²` with `level = 4`, or `x² + y² - 4` with
+the default level. The curve can have any shape: closed loops, several
+separate pieces, branches that cross, parts that are not a function of
+`x` or of `y`.
+
+`func` takes two arguments, written like the functions given to `plot`:
+NumPy (fast) or plain `math` (slower), allowed to raise errors or return
+NaN where it is undefined. Where `func` changes sign without passing
+through the level, at a pole or a jump, no line is drawn, and the curve
+ends where `func` becomes undefined:
+
+```python
+plane.implicit(screen, lambda x, y: y - np.tan(x))      # branches, no asymptotes
+plane.implicit(screen, lambda x, y: y - np.floor(x))    # steps, no risers
+plane.implicit(screen, lambda x, y: y - math.sqrt(x))   # starts at x = 0
+```
+
+The curve is found again every frame on a grid of samples 2 pixels apart,
+refined where it crosses the grid, so it is accurate to a small fraction
+of a pixel at any zoom, on linear and log axes alike.
+
+### Contour lines
+
+Give a sequence of levels to draw one curve for each, all in the same
+style, like the height lines of a map. This is much faster than one call
+per level, because `func` is evaluated only once:
+
+```python
+def height(x, y):
+    return np.sin(x) + np.cos(y)
+
+plane.implicit(screen, height, np.linspace(-1.5, 1.5, 7), width=1.5)
+plane.implicit(screen, height, 0, width=3)              # emphasise one level
+```
+
+### What implicit curves cannot do
+
+- **`func` must change sign across the curve.** A curve where it only
+  touches the level is not drawn: `(x - y)**2` is never negative, so
+  `(x - y)**2 = 0` draws nothing (and nor does a region where `func`
+  equals the level throughout). Write `x - y` instead. For the same reason
+  a curve may break where two of its branches touch without crossing.
+- **Features smaller than about 2 pixels may be missed**, such as a loop
+  less than 3 pixels across, or two curves closer together than a pixel or
+  two. Zoom in to see them, or sample more finely (below).
+- **A curve stops within a pixel or two of where `func` becomes
+  undefined**, rather than exactly at the edge as for `plot`.
+- **A function of `x` is better drawn with `plot`**, and a curve with a
+  known parametrisation with `parametric`: both are faster and treat
+  domain edges exactly. Use `implicit` for the curves that have no simpler
+  form.
+
+### Implicit sampling settings
+
+Pass an `ImplicitSampling` as `sampling=` to trade speed for detail:
+
+| Field | Default | Meaning |
+|---|---|---|
+| `resolution_px` | `2.0` | Spacing of the sampling grid in pixels. Features smaller than this may be missed; halving it quadruples the work near the curve. |
+| `coarse_factor` | `4` | The grid used to find where the curve might be is this many times coarser (1, 2, 4, 8 or 16; 1 samples everywhere). |
+| `refine_steps` | `3` | Steps spent checking each crossing of the grid and moving it onto the curve. `0` skips the check, so poles and jumps would be drawn as lines. |
+| `max_samples` | `250000` | Budget of evaluations per call per frame. Beyond it the grid is made coarser. |
+
+```python
+fine = pgp.ImplicitSampling(resolution_px=1.0)
+plane.implicit(screen, lambda x, y: np.sin(x * y) - 0.5, sampling=fine)
+```
+
+The budget keeps slow functions usable: a plain `math` function costs
+about 0.4 microseconds per evaluation (NumPy is tens of times faster), so
+the default budget bounds a call at about 100 ms even in the worst case, a
+curve that winds across the whole plane. Dense contour maps
+on large windows can reach the budget with NumPy functions; raising
+`max_samples` (to `10**6`, say) keeps them at full resolution.
+
 ## Points
 
 ```py
@@ -245,5 +337,6 @@ with per-pixel alpha, so translucent layers can be composited later.
 
 Everything above works on [logarithmic axes](log-axes.md) too. Functions
 and curves are sampled in log space, so a power law is an exactly straight
-line on log-log axes. Points, polylines and polygons are transformed vertex
+line on log-log axes, and implicit curves are found on a grid that is even
+on screen. Points, polylines and polygons are transformed vertex
 by vertex and joined by straight lines on screen.

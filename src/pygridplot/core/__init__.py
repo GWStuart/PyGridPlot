@@ -1,10 +1,11 @@
 """The pure maths layer of PyGridPlot.
 
-Everything in this package depends only on the standard library and NumPy.
-It must **never** import pygame (``tests/test_architecture.py`` enforces
-this), so it stays fast to test, easy to reason about and reusable with
-other rendering backends. Code here describes *what* to draw, as
-backend-neutral primitives in screen space; renderers decide *how*.
+Everything in this package depends only on the standard library, NumPy and
+(for implicit curves) contourpy. It must **never** import pygame
+(``tests/test_architecture.py`` enforces this), so it stays fast to test,
+easy to reason about and reusable with other rendering backends. Code here
+describes *what* to draw, as backend-neutral primitives in screen space;
+renderers decide *how*.
 
 Foundations, used by everything else:
 
@@ -25,7 +26,7 @@ Subpackages:
 
 * :mod:`pygridplot.core.grid`: the adaptive grid, its tick labels and their
   layout (entry point :func:`pygridplot.core.grid.scene.build_grid`).
-* :mod:`pygridplot.core.plot`: plotted objects (functions, curves, points,
-  polylines, polygons) to primitives (entry point
+* :mod:`pygridplot.core.plot`: plotted objects (functions, parametric,
+  polar and implicit curves, points, polylines, polygons) to primitives (entry point
   :mod:`pygridplot.core.plot.builders`).
 """

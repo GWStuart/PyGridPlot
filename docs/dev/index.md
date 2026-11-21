@@ -10,7 +10,7 @@ code and extend it. For how to *use* the library, see the
 2. [The grid](grid.md): choosing spacings, generating and painting lines,
    labels and their layout, and logarithmic axes.
 3. [Plotting](plotting.md): evaluating user functions robustly, the function
-   and curve samplers, and building primitives.
+   and curve samplers, finding implicit curves, and building primitives.
 4. [Rendering](rendering.md): the renderer protocol, rasterising strokes,
    fills and markers, compositing, text, and where the time goes.
 5. [Testing and tools](testing.md): the test suite, property tests, the
@@ -27,7 +27,7 @@ give the overview and the reasoning that spans modules.
 ```bash
 python -m venv venv && source venv/bin/activate
 pip install -e ".[dev]"
-pytest                                   # ~510 tests, about 15 s, headless
+pytest                                   # ~570 tests, about 20 s, headless
 ruff check . && ruff format --check .    # lint and formatting
 mypy                                     # strict type checking of src/
 python scripts/build_api_docs.py         # after changing a public docstring
