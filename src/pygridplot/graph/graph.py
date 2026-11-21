@@ -1,11 +1,13 @@
-"""The :class:`Graph`: a retained list of items, drawn onto a plane each frame.
+"""The :class:`Graph`: a named list of objects, with text expressions and saving.
 
-A graph is to the plane's immediate-mode API what a document is to a pen:
-it holds the plots, curves, points, parameters and definitions of a
-picture, by name and in order, drawn with one call each frame and saved to
-a file. Under the hood it is exactly the immediate-mode API: drawing a
-graph makes the same plane calls a program would make by hand, so
-everything (reuse of unchanged plots, log axes, themes) works the same.
+A graph holds the objects of a picture (functions, curves, points, the
+:mod:`~pygridplot.objects`), plus parameters and definitions, by name and
+in order. It adds to them what a graphing calculator's expression list
+has: lines of maths (``graph.add("y = a sin(x)")``), names that other
+objects' text can use in any order, errors per object, and saving to a
+file. Drawing a graph draws its objects, which make the same plane calls a
+program would make by hand, so everything (reuse of unchanged plots, log
+axes, themes) works the same.
 
 A graph does not own a plane. Draw it onto any plane, or several; the
 program still owns the loop::
@@ -28,51 +30,42 @@ program still owns the loop::
 from __future__ import annotations
 
 import json
-import math
-import warnings
-import weakref
 from collections.abc import Callable, Iterator, Mapping, Sequence
-from dataclasses import dataclass
 from os import PathLike
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, TypeVar, cast
 
 import numpy as np
 
-from pygridplot.core.expr import (
-    FunctionBinding,
-    compile_expression,
-)
-from pygridplot.core.handles.point import DraggablePoint
+from pygridplot.core.expr import FunctionBinding, compile_expression
+from pygridplot.core.handles.constraints import Lock, Range
+from pygridplot.core.handles.point import Coordinates, DraggablePoint
 from pygridplot.core.plot.curves import CurveSampling
 from pygridplot.core.plot.implicit import ImplicitSampling
 from pygridplot.core.plot.sampling import SamplingConfig
 from pygridplot.core.plot.style import LineStyle, PointStyle, PolygonStyle
-from pygridplot.graph.errors import GraphError, GraphWarning
-from pygridplot.graph.items import (
-    FULL_TURN,
-    Coordinate,
-    CurveTarget,
-    DefinitionItem,
-    DraggableItem,
-    Expression,
-    ImplicitItem,
-    Item,
-    ParameterItem,
-    ParametricItem,
-    PlotItem,
-    PointItem,
-    PointsItem,
-    PolarItem,
-    PolygonItem,
-    PolylineItem,
-    StyledItem,
-    check_name,
-    parse_signature,
-)
+from pygridplot.graph.definitions import Definition, Parameter, parse_signature
+from pygridplot.graph.errors import GraphError
 from pygridplot.graph.lines import interpret
 from pygridplot.graph.namespace import Namespace, compile_items
 from pygridplot.graph.view import GraphView
+from pygridplot.objects import (
+    FULL_TURN,
+    CurveObject,
+    CurveTarget,
+    Function,
+    ImplicitCurve,
+    ParametricCurve,
+    PlotObject,
+    Point,
+    Points,
+    PolarCurve,
+    Polygon,
+    Polyline,
+    StyledObject,
+    check_name,
+)
+from pygridplot.objects.values import Expression
 
 if TYPE_CHECKING:
     import pygame
@@ -80,34 +73,20 @@ if TYPE_CHECKING:
     from pygridplot.plane import Plane
 
 
-ItemT = TypeVar("ItemT", bound=Item)
-
-
-@dataclass(slots=True, eq=False)
-class _Bound:
-    """A draggable item's point on one plane.
-
-    Attributes:
-        point: The plane's point.
-        settings: The item's constraint when the point was made.
-        synced: The item's ``(x, y, t)`` after the last synchronisation.
-    """
-
-    point: DraggablePoint
-    settings: tuple[object, ...]
-    synced: tuple[float, float, float | None]
+ItemT = TypeVar("ItemT", bound=PlotObject)
 
 
 class Graph:
-    """An ordered list of named items: plots, curves, points, parameters, ...
+    """An ordered list of named objects: functions, curves, points, parameters, ...
 
-    Add items with :meth:`add` (one line of maths, ``"y = x^2"``) or with
+    Add objects with :meth:`add` (one line of maths, ``"y = x^2"``), with
     the method for each kind (:meth:`plot`, :meth:`parametric`,
     :meth:`polar`, :meth:`implicit`, :meth:`point`, :meth:`points`,
     :meth:`polyline`, :meth:`polygon`, :meth:`draggable`,
     :meth:`parameter`, :meth:`define`), which take the same arguments as
-    the plane's methods. Each returns its item, which can be changed
-    afterwards; ``graph["name"]`` finds a named one.
+    the plane's methods, or with :meth:`append` for an object made on its
+    own (``graph.append(pgp.Function(np.sin))``). Each is returned, and can
+    be changed afterwards; ``graph["name"]`` finds a named one.
 
     Expressions are text in the expression language (``"a sin(x - P.x)"``,
     see :mod:`pygridplot.core.expr`) and may use the names of other items,
@@ -116,9 +95,9 @@ class Graph:
     place of an expression's text; such a graph can be drawn but only
     saved if the functions are registered.
 
-    :meth:`draw` draws the graph onto a plane; :meth:`save` and
-    :meth:`load` (or :meth:`to_json` and :meth:`from_json`) keep it in a
-    file.
+    :meth:`draw` draws the graph onto a plane (or add it to one:
+    ``plane.add(graph)``); :meth:`save` and :meth:`load` (or :meth:`to_json`
+    and :meth:`from_json`) keep it in a file.
 
     Args:
         functions: Python functions that expressions can call, by name.
@@ -131,15 +110,10 @@ class Graph:
         functions: Mapping[str, Callable[..., Any]] | None = None,
         view: GraphView | None = None,
     ) -> None:
-        self._items: list[Item] = []
+        self._items: list[PlotObject] = []
         self._functions: dict[str, Callable[..., Any]] = {}
         self._namespace: Namespace | None = None
-        self._draw_errors: dict[Item, str] = {}
-        self._reported: dict[Item, str] = {}
         self._next_palette = 0
-        self._bound: weakref.WeakKeyDictionary[Plane, dict[DraggableItem, _Bound]] = (
-            weakref.WeakKeyDictionary()
-        )
         self.view = view
         for name, func in (functions or {}).items():
             self.register(name, func)
@@ -148,7 +122,7 @@ class Graph:
     # The items
     # ------------------------------------------------------------------
     @property
-    def items(self) -> tuple[Item, ...]:
+    def items(self) -> tuple[PlotObject, ...]:
         """The items, in drawing order."""
         return tuple(self._items)
 
@@ -156,11 +130,11 @@ class Graph:
         """Return the number of items."""
         return len(self._items)
 
-    def __iter__(self) -> Iterator[Item]:
+    def __iter__(self) -> Iterator[PlotObject]:
         """Iterate over the items in drawing order."""
         return iter(tuple(self._items))
 
-    def __getitem__(self, key: str | int) -> Item:
+    def __getitem__(self, key: str | int) -> PlotObject:
         """Return the item with a name, or at a position.
 
         Args:
@@ -187,7 +161,7 @@ class Graph:
             return any(item.name == key for item in self._items)
         return any(item is key for item in self._items)
 
-    def get(self, name: str, default: Item | None = None) -> Item | None:
+    def get(self, name: str, default: PlotObject | None = None) -> PlotObject | None:
         """Return the item with a name, or ``default``.
 
         Args:
@@ -199,39 +173,39 @@ class Graph:
         """
         return next((item for item in self._items if item.name == name), default)
 
-    def append(self, item: Item, *, index: int | None = None) -> Item:
-        """Add an item made separately (or taken from another graph).
+    def append(self, item: ItemT, *, index: int | None = None) -> ItemT:
+        """Add an object made on its own (or taken from another graph).
 
         Args:
-            item: The item.
+            item: The object.
             index: Its position (default: last).
 
         Returns:
-            The item.
+            The object.
 
         Raises:
             GraphError: If it already belongs to a graph, or its name is
                 taken.
         """
-        if item._graph is not None:
+        if item._owner is not None:
             msg = f"{item!r} already belongs to a graph (remove it first)"
             raise GraphError(msg)
         if item.name is not None:
             self._check_free(item.name)
-        if isinstance(item, StyledItem):
+        if isinstance(item, StyledObject):
             if item.palette is None:
                 item.palette = self._next_palette
             self._next_palette = max(self._next_palette, item.palette + 1)
         position = len(self._items) if index is None else index
         self._items.insert(position, item)
-        item._graph = self
+        item._owner = self
         self._invalidate()
         return item
 
-    def remove(self, item: Item | str) -> Item:
+    def remove(self, item: PlotObject | str) -> PlotObject:
         """Remove an item (by itself or by name).
 
-        Its points are taken off every plane at once.
+        A draggable point's handles are taken off every plane at once.
 
         Args:
             item: The item or its name.
@@ -247,15 +221,10 @@ class Graph:
             msg = f"{target!r} is not in this graph"
             raise KeyError(msg)
         self._items = [i for i in self._items if i is not target]
-        target._graph = None
-        if isinstance(target, DraggableItem):
-            for bound in self._bound.values():
-                entry = bound.pop(target, None)
-                if entry is not None:
-                    entry.point.remove()
-        self._reported.pop(target, None)
-        self._draw_errors.pop(target, None)
-        target._error = None
+        target._owner = None
+        target._changed()  # it compiles on its own from now on
+        if isinstance(target, Point):
+            target._detach_all()
         self._invalidate()
         return target
 
@@ -265,7 +234,7 @@ class Graph:
             self.remove(item)
         self._next_palette = 0
 
-    def move(self, item: Item | str, index: int) -> None:
+    def move(self, item: PlotObject | str, index: int) -> None:
         """Move an item to another position (changing what is drawn on top).
 
         Args:
@@ -336,11 +305,11 @@ class Graph:
     # ------------------------------------------------------------------
     # Adding items
     # ------------------------------------------------------------------
-    def add(self, text: str, **options: Any) -> Item:
-        """Add an item from one line of maths, as a graphing calculator reads it.
+    def add(self, text: str, **options: Any) -> PlotObject:
+        """Add an object from one line of maths, as a graphing calculator reads it.
 
         ==============================  ======================================
-        Line                            Item
+        Line                            PlotObject
         ==============================  ======================================
         ``y = x^2`` or ``x^2``          a plot
         ``f(x) = x^2``                  a plot named ``f``
@@ -353,16 +322,21 @@ class Graph:
         ``x^2 + y^2 = 9``, ``x = 3``    an implicit curve (other equations)
         ==============================  ======================================
 
+        The objects are those of :mod:`pygridplot.objects`
+        (:class:`~pygridplot.Function`, :class:`~pygridplot.ParametricCurve`,
+        ..., :class:`~pygridplot.Point`), plus :class:`Parameter` and
+        :class:`Definition`.
+
         Args:
             text: The line.
-            **options: Further arguments for the item, as for the method that
+            **options: Further arguments for the object, as for the method that
                 creates it: styles (``color="red"``), ``t_range``,
                 ``domain``, ``name``, ... A point with ``draggable=True``
                 becomes a draggable point (its coordinates must then be
                 numbers), which also accepts ``lock``, ``curve``, and so on.
 
         Returns:
-            The new item.
+            The new object.
 
         Raises:
             ExpressionError: If the line is not valid.
@@ -383,10 +357,10 @@ class Graph:
             if isinstance(x, str) or isinstance(y, str):
                 msg = "a draggable point's coordinates must be numbers"
                 raise GraphError(msg)
-            return self.draggable((x, y), **arguments)
+            return self.point((x, y), draggable=True, **arguments)
         if method == "define":
             return self.define(arguments.pop("signature"), **arguments)
-        creator: Callable[..., Item] = getattr(self, method)
+        creator: Callable[..., PlotObject] = getattr(self, method)
         return creator(**arguments)
 
     def plot(
@@ -401,14 +375,14 @@ class Graph:
         style: LineStyle | None = None,
         sampling: SamplingConfig | None = None,
         visible: bool = True,
-    ) -> PlotItem:
-        """Add the graph of a function, ``y = f(x)`` (see :class:`PlotItem`).
+    ) -> Function:
+        """Add the graph of a function, ``y = f(x)`` (a :class:`~pygridplot.Function`).
 
         Returns:
             The new item.
         """
         return self._new(
-            PlotItem(
+            Function(
                 expression,
                 name=name,
                 domain=domain,
@@ -434,14 +408,14 @@ class Graph:
         style: LineStyle | None = None,
         sampling: CurveSampling | None = None,
         visible: bool = True,
-    ) -> ParametricItem:
-        """Add a parametric curve ``(x(t), y(t))`` (see :class:`ParametricItem`).
+    ) -> ParametricCurve:
+        """Add a curve ``(x(t), y(t))`` (a :class:`~pygridplot.ParametricCurve`).
 
         Returns:
             The new item.
         """
         return self._new(
-            ParametricItem(
+            ParametricCurve(
                 x,
                 y,
                 t_range,
@@ -467,14 +441,14 @@ class Graph:
         style: LineStyle | None = None,
         sampling: CurveSampling | None = None,
         visible: bool = True,
-    ) -> PolarItem:
-        """Add a polar curve ``r = r(θ)`` (see :class:`PolarItem`).
+    ) -> PolarCurve:
+        """Add a polar curve ``r = r(θ)`` (a :class:`~pygridplot.PolarCurve`).
 
         Returns:
             The new item.
         """
         return self._new(
-            PolarItem(
+            PolarCurve(
                 r,
                 theta_range,
                 name=name,
@@ -499,14 +473,14 @@ class Graph:
         style: LineStyle | None = None,
         sampling: ImplicitSampling | None = None,
         visible: bool = True,
-    ) -> ImplicitItem:
-        """Add an implicit curve ``F(x, y) = level`` (see :class:`ImplicitItem`).
+    ) -> ImplicitCurve:
+        """Add a curve ``F(x, y) = level`` (a :class:`~pygridplot.ImplicitCurve`).
 
         Returns:
             The new item.
         """
         return self._new(
-            ImplicitItem(
+            ImplicitCurve(
                 expression,
                 level,
                 name=name,
@@ -521,9 +495,15 @@ class Graph:
 
     def point(
         self,
-        position: tuple[Coordinate, Coordinate],
+        position: Any = None,
         *,
+        draggable: bool = False,
         name: str | None = None,
+        lock: Lock | None = None,
+        curve: CurveTarget | None = None,
+        t: float | None = None,
+        x_range: Range | None = None,
+        y_range: Range | None = None,
         color: Any = None,
         radius: float | None = None,
         marker: Any = None,
@@ -531,17 +511,25 @@ class Graph:
         edge_width: float | None = None,
         opacity: float | None = None,
         style: PointStyle | None = None,
+        coordinates: Coordinates = "hover",
+        enabled: bool = True,
         visible: bool = True,
-    ) -> PointItem:
-        """Add a point whose coordinates may be expressions (see :class:`PointItem`).
+    ) -> Point:
+        """Add a fixed, derived or draggable point (a :class:`~pygridplot.Point`).
 
         Returns:
-            The new item.
+            The new point.
         """
         return self._new(
-            PointItem(
+            Point(
                 position,
+                draggable=draggable,
                 name=name,
+                lock=lock,
+                curve=curve,
+                t=t,
+                x_range=x_range,
+                y_range=y_range,
                 color=color,
                 radius=radius,
                 marker=marker,
@@ -549,6 +537,8 @@ class Graph:
                 edge_width=edge_width,
                 opacity=opacity,
                 style=style,
+                coordinates=coordinates,
+                enabled=enabled,
                 visible=visible,
             )
         )
@@ -566,14 +556,14 @@ class Graph:
         opacity: float | None = None,
         style: PointStyle | None = None,
         visible: bool = True,
-    ) -> PointsItem:
-        """Add several points (see :class:`PointsItem`).
+    ) -> Points:
+        """Add several points (a :class:`~pygridplot.Points`).
 
         Returns:
             The new item.
         """
         return self._new(
-            PointsItem(
+            Points(
                 points,
                 name=name,
                 color=color,
@@ -598,14 +588,14 @@ class Graph:
         opacity: float | None = None,
         style: LineStyle | None = None,
         visible: bool = True,
-    ) -> PolylineItem:
-        """Add vertices joined by straight lines (see :class:`PolylineItem`).
+    ) -> Polyline:
+        """Add vertices joined by straight lines (a :class:`~pygridplot.Polyline`).
 
         Returns:
             The new item.
         """
         return self._new(
-            PolylineItem(
+            Polyline(
                 points,
                 closed=closed,
                 name=name,
@@ -631,14 +621,14 @@ class Graph:
         fill_rule: Any = None,
         style: PolygonStyle | None = None,
         visible: bool = True,
-    ) -> PolygonItem:
-        """Add a filled polygon (see :class:`PolygonItem`).
+    ) -> Polygon:
+        """Add a filled polygon (a :class:`~pygridplot.Polygon`).
 
         Returns:
             The new item.
         """
         return self._new(
-            PolygonItem(
+            Polygon(
                 points,
                 name=name,
                 color=color,
@@ -654,53 +644,31 @@ class Graph:
         )
 
     def draggable(
-        self,
-        position: tuple[float, float] | None = None,
-        *,
-        name: str | None = None,
-        lock: Any = None,
-        curve: CurveTarget | None = None,
-        t: float | None = None,
-        x_range: Any = None,
-        y_range: Any = None,
-        color: Any = None,
-        style: PointStyle | None = None,
-        coordinates: Any = "hover",
-        enabled: bool = True,
-        visible: bool = True,
-    ) -> DraggableItem:
-        """Add a point the user can drag (see :class:`DraggableItem`).
+        self, position: tuple[float, float] | None = None, **options: Any
+    ) -> Point:
+        """Add a point the user can drag: :meth:`point` with ``draggable=True``.
+
+        Args:
+            position: Where it starts (needed unless it follows a curve).
+            **options: As for :meth:`point`: ``name``, ``lock``, ``curve``
+                (an object, a curve of the graph by name, or
+                ``(x(t), y(t), t_range)``), ``t``, bounds, style, ...
+
+        Returns:
+            The new point.
+        """
+        return self.point(position, draggable=True, **options)
+
+    def parameter(self, name: str, value: float | str) -> Parameter:
+        """Add a named value (see :class:`Parameter`).
 
         Returns:
             The new item.
         """
-        return self._new(
-            DraggableItem(
-                position,
-                name=name,
-                lock=lock,
-                curve=curve,
-                t=t,
-                x_range=x_range,
-                y_range=y_range,
-                color=color,
-                style=style,
-                coordinates=coordinates,
-                enabled=enabled,
-                visible=visible,
-            )
-        )
+        return self._new(Parameter(name, value))
 
-    def parameter(self, name: str, value: Coordinate) -> ParameterItem:
-        """Add a named value (see :class:`ParameterItem`).
-
-        Returns:
-            The new item.
-        """
-        return self._new(ParameterItem(name, value))
-
-    def define(self, signature: str, expression: str) -> DefinitionItem:
-        """Add a function for other items, not drawn (see :class:`DefinitionItem`).
+    def define(self, signature: str, expression: str) -> Definition:
+        """Add a function for other objects, not drawn (see :class:`Definition`).
 
         Args:
             signature: Its name and parameters, as in ``"g(u, v)"``.
@@ -710,7 +678,7 @@ class Graph:
             The new item.
         """
         name, parameters = parse_signature(signature)
-        return self._new(DefinitionItem(name, parameters, expression))
+        return self._new(Definition(name, parameters, expression))
 
     # ------------------------------------------------------------------
     # Evaluating
@@ -757,22 +725,22 @@ class Graph:
         if isinstance(binding, FunctionBinding):
             return binding.func
         item = self.get(name)
-        if item is not None and item in namespace.errors:
-            msg = f"{name!r} has an error: {namespace.errors[item]}"
+        if item is not None and item.error is not None:
+            msg = f"{name!r} has an error: {item.error}"
             raise GraphError(msg)
         msg = f"{name!r} is not a function of this graph"
         raise GraphError(msg)
 
     @property
-    def errors(self) -> dict[Item, str]:
-        """The items that cannot be drawn, in order, with the reason for each.
+    def errors(self) -> dict[PlotObject, str]:
+        """The objects that cannot be drawn, in order, with the reason for each.
 
         Errors in expressions (an unknown name, a circular definition, ...)
         are found without drawing; the rare errors found only when drawing
         (an invalid setting for a plane) are those of the last :meth:`draw`.
         """
-        found = {**self._compiled().errors, **self._draw_errors}
-        return {item: found[item] for item in self._items if item in found}
+        found = {item: item.error for item in self._items}
+        return {item: error for item, error in found.items() if error is not None}
 
     # ------------------------------------------------------------------
     # Views
@@ -802,35 +770,53 @@ class Graph:
     # Drawing
     # ------------------------------------------------------------------
     def draw(self, plane: Plane, surface: pygame.Surface) -> None:
-        """Draw every visible item onto a plane, in order, draggable points on top.
+        """Draw every visible object onto a plane, in order, draggable points on top.
 
-        Call it every frame, after :meth:`Plane.draw_grid`. Items with an
-        error are skipped (see :attr:`errors`), with a :class:`GraphWarning`
-        the first time each error appears.
+        Call it every frame, after :meth:`Plane.draw_grid`, or add the graph
+        to the plane (``plane.add(graph)``) and let :meth:`Plane.draw` do it.
+        Objects with an error are skipped (see :attr:`errors`), with a
+        :class:`~pygridplot.PlotWarning` the first time each error appears.
 
         Args:
             plane: The plane to draw on.
             surface: The surface (usually the display).
         """
-        namespace = self._compiled()
-        self._draw_errors = {}
-        handles = self._sync(plane, namespace)
-        palette = plane.theme.palette
+        self.update(plane)
+        self.render(plane, surface)
+        shown = self.handles(plane)
+        if shown:
+            plane.draw_draggables(surface, *shown)
+
+    def update(self, plane: Plane) -> None:
+        """Compile if anything changed, and update every object (half of :meth:`draw`).
+
+        Args:
+            plane: The plane about to be drawn on.
+        """
+        self._compiled()
         for item in self._items:
-            if not item.visible or item in namespace.errors:
-                continue
-            if isinstance(item, (DraggableItem, ParameterItem, DefinitionItem)):
-                continue
-            assert isinstance(item, StyledItem)
-            try:
-                _draw_item(
-                    plane, surface, item, namespace.runtime[item], _color(item, palette)
-                )
-            except (TypeError, ValueError) as error:
-                self._draw_errors[item] = str(error)
-        if handles:
-            plane.draw_draggables(surface, *handles)
-        self._warn({**namespace.errors, **self._draw_errors})
+            item.update(plane)
+
+    def render(self, plane: Plane, surface: pygame.Surface) -> None:
+        """Draw every object, in order (the second half of :meth:`draw`).
+
+        Args:
+            plane: The plane.
+            surface: The surface.
+        """
+        for item in self._items:
+            item.render(plane, surface)
+
+    def handles(self, plane: Plane) -> tuple[DraggablePoint, ...]:
+        """Return the handles of the graph's draggable points on a plane.
+
+        Args:
+            plane: The plane.
+
+        Returns:
+            The handles of the visible draggable points, to draw last.
+        """
+        return tuple(h for item in self._items for h in item.handles(plane))
 
     def detach(self, plane: Plane) -> None:
         """Take the graph's draggable points off a plane it will no longer draw on.
@@ -838,8 +824,8 @@ class Graph:
         Args:
             plane: The plane.
         """
-        for entry in self._bound.pop(plane, {}).values():
-            entry.point.remove()
+        for item in self._items:
+            item.detach(plane)
 
     # ------------------------------------------------------------------
     # Saving
@@ -976,8 +962,8 @@ class Graph:
             msg = f"the name {name!r} is a registered function"
             raise GraphError(msg)
 
-    def _rename(self, item: Item, name: str | None) -> None:
-        """Check a new name for an item (called by the item)."""
+    def _rename(self, item: PlotObject, name: str | None) -> None:
+        """Check a new name for an object (called by the object)."""
         if name is not None and name != item.name:
             self._check_free(name)
 
@@ -988,196 +974,14 @@ class Graph:
     def _compiled(self) -> Namespace:
         """Return the compiled namespace, compiling first if anything changed."""
         if self._namespace is None:
-            namespace = compile_items(self._items, self._functions)
-            self._namespace = namespace
-            for item in self._items:
-                item._error = namespace.errors.get(item, self._draw_errors.get(item))
+            self._namespace = compile_items(self._items, self._functions)
         return self._namespace
 
-    def _warn(self, errors: Mapping[Item, str]) -> None:
-        """Record the errors of a drawing, warning about those that are new.
+    def _resolve(self, obj: PlotObject) -> tuple[Any, str | None]:
+        """Return an object's compiled runtime and error (for the object)."""
+        namespace = self._compiled()
+        return namespace.runtime.get(obj), namespace.errors.get(obj)
 
-        An item's error is warned about when it appears or changes, not again
-        while it stays the same; :attr:`Item.error` always holds it.
-        """
-        for index, item in enumerate(self._items):
-            message = errors.get(item)
-            item._error = message
-            if message is None:
-                self._reported.pop(item, None)
-                continue
-            if self._reported.get(item) == message:
-                continue
-            self._reported[item] = message
-            label = repr(item.name) if item.name else f"item {index} ({item.kind})"
-            warnings.warn(f"{label}: {message}", GraphWarning, stacklevel=3)
-
-    def _sync(self, plane: Plane, namespace: Namespace) -> list[DraggablePoint]:
-        """Keep each draggable item's point on a plane in step with the item.
-
-        Returns:
-            The visible points, to draw on top.
-        """
-        bound = self._bound.setdefault(plane, {})
-        draggables = [i for i in self._items if isinstance(i, DraggableItem)]
-        present = set(draggables)
-        for item in list(bound):
-            if item not in present or item in namespace.errors:
-                bound.pop(item).point.remove()
-        palette = plane.theme.palette
-        handles: list[DraggablePoint] = []
-        for item in draggables:
-            if item in namespace.errors:
-                continue
-            source = namespace.curves.get(item)
-            entry = bound.get(item)
-            try:
-                if entry is None or entry.settings != item._settings():
-                    if entry is not None:
-                        entry.point.remove()
-                    entry = _create_point(plane, item, source)
-                    bound[item] = entry
-                else:
-                    _update_point(plane, item, entry, source)
-            except (TypeError, ValueError) as error:
-                stale = bound.pop(item, None)
-                if stale is not None:  # do not leave an undrawn point draggable
-                    stale.point.remove()
-                self._draw_errors[item] = str(error)
-                continue
-            point = entry.point
-            point.color = _color(item, palette)
-            point.style = item.style
-            point.coordinates = item.coordinates
-            point.enabled = item.enabled and item.visible
-            if item.visible:
-                handles.append(point)
-        return handles
-
-
-def _color(item: StyledItem, palette: Sequence[Any]) -> Any:
-    """Return an item's colour: its own, or its palette slot's."""
-    if item.color is not None:
-        return item.color
-    slot = item.palette or 0
-    return palette[slot % len(palette)]
-
-
-def _draw_item(
-    plane: Plane, surface: pygame.Surface, item: StyledItem, runtime: Any, color: Any
-) -> None:
-    """Draw one item with the plane's method for its kind."""
-    style = item.style
-    if isinstance(item, PlotItem):
-        plane.plot(
-            surface,
-            runtime,
-            style=style,
-            color=color,
-            domain=item.domain,
-            sampling=item.sampling,
-        )
-    elif isinstance(item, ParametricItem):
-        x, y = runtime
-        plane.parametric(
-            surface,
-            x,
-            y,
-            item.t_range,
-            style=style,
-            color=color,
-            sampling=item.sampling,
-        )
-    elif isinstance(item, PolarItem):
-        plane.polar(
-            surface,
-            runtime,
-            item.theta_range,
-            style=style,
-            color=color,
-            sampling=item.sampling,
-        )
-    elif isinstance(item, ImplicitItem):
-        plane.implicit(
-            surface,
-            runtime,
-            item.level,
-            style=style,
-            color=color,
-            sampling=item.sampling,
-        )
-    elif isinstance(item, PointItem):
-        plane.points(surface, [runtime()], style=style, color=color)
-    elif isinstance(item, PointsItem):
-        plane.points(surface, runtime(), style=style, color=color)
-    elif isinstance(item, PolylineItem):
-        plane.polyline(surface, runtime(), style=style, color=color, closed=item.closed)
-    elif isinstance(item, PolygonItem):
-        plane.polygon(surface, runtime(), style=style, color=color)
-
-
-def _create_point(plane: Plane, item: DraggableItem, source: Any) -> _Bound:
-    """Make the plane's point for a draggable item."""
-    curve = None if source is None else source.spec(plane.view, item.t)
-    position = item.position
-    t = item.t
-    if curve is not None and t is None and position is None:
-        t = source.start(curve)
-    point = plane.draggable(
-        None if curve is not None and t is not None else position,
-        lock=item.lock,
-        curve=curve,
-        t=t if curve is not None else None,
-        x_range=item.x_range,
-        y_range=item.y_range,
-        style=item.style,
-        coordinates=item.coordinates,
-        enabled=item.enabled,
-    )
-    item._points.add(point)
-    item._set_state(point.position, point.t)
-    return _Bound(point, item._settings(), _state(item))
-
-
-def _update_point(
-    plane: Plane, item: DraggableItem, entry: _Bound, source: Any
-) -> None:
-    """Bring a plane's point and its item into step.
-
-    The point moved by dragging (or because its curve changed) updates the
-    item; the item changed from code (or by another plane) moves the point.
-    A drag wins over a change from code.
-    """
-    point = entry.point
-    curve = None if source is None else source.spec(plane.view, item.t)
-    changed_by_code = not _same(_state(item), entry.synced)
-    if curve is not None:
-        point.curve = curve  # follows a changed curve, keeping its parameter
-    if changed_by_code and not point.dragging:
-        before = entry.synced
-        if (
-            curve is not None
-            and item.t is not None
-            and not _same_number(item.t, before[2])
-        ):
-            point.t = item.t
-        elif item.position is not None:
-            point.position = item.position
-    item._set_state(point.position, point.t)
-    entry.synced = _state(item)
-
-
-def _state(item: DraggableItem) -> tuple[float, float, float | None]:
-    return (item.x, item.y, item.t)
-
-
-def _same_number(a: float | None, b: float | None) -> bool:
-    if a is None or b is None:
-        return a is b
-    return a == b or (math.isnan(a) and math.isnan(b))
-
-
-def _same(
-    a: tuple[float, float, float | None], b: tuple[float, float, float | None]
-) -> bool:
-    return all(_same_number(p, q) for p, q in zip(a, b, strict=True))
+    def _curve_named(self, point: PlotObject) -> CurveObject:
+        """Return the curve a draggable point follows by name (for the point)."""
+        return self._compiled().curves[point]  # type: ignore[index]

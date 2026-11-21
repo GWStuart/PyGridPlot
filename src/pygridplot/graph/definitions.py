@@ -1,4 +1,9 @@
-"""Items that only define names: parameters and function definitions."""
+"""The items only a graph has: parameters and function definitions.
+
+They draw nothing; they give names to values and functions that the other
+objects of the graph use in their text (``"a sin(x)"``, ``"g(x, 2)"``).
+Outside a graph, Python variables and functions do the same job.
+"""
 
 from __future__ import annotations
 
@@ -14,10 +19,10 @@ from pygridplot.core.expr import (
 )
 from pygridplot.core.expr.parser import Call, Name
 from pygridplot.graph.errors import GraphError
-from pygridplot.graph.items.base import (
+from pygridplot.objects.base import PlotObject
+from pygridplot.objects.values import (
     Coordinate,
     Formula,
-    Item,
     Maker,
     check_name,
     getter,
@@ -25,8 +30,8 @@ from pygridplot.graph.items.base import (
 )
 
 
-class ParameterItem(Item):
-    """A named value that other items use: ``a = 2``.
+class Parameter(PlotObject):
+    """A named value that other objects of the graph use: ``a = 2``.
 
     The value is a number, or an expression of other names (``"2 b"``).
     Change it at any time (``graph["a"].value = 3``): everything using it
@@ -38,8 +43,9 @@ class ParameterItem(Item):
     """
 
     kind: ClassVar[str] = "parameter"
+    drawn: ClassVar[bool] = False
 
-    def __init__(self, name: str, value: Coordinate) -> None:
+    def __init__(self, name: str, value: float | str) -> None:
         super().__init__(name=check_name(name))
         self._value = Formula.make(value, f"the value of {name}", numbers=True)
 
@@ -51,15 +57,15 @@ class ParameterItem(Item):
 
     @name.setter
     def name(self, name: str) -> None:
-        Item.name.fset(self, check_name(name))  # type: ignore[attr-defined]
+        PlotObject.name.fset(self, check_name(name))  # type: ignore[attr-defined]
 
     @property
     def value(self) -> Coordinate:
         """The value as given: a number or an expression."""
-        return self._value.source  # type: ignore[return-value]
+        return self._value.source
 
     @value.setter
-    def value(self, value: Coordinate) -> None:
+    def value(self, value: float | str) -> None:
         formula = Formula.make(value, f"the value of {self.name}", numbers=True)
         was_text, self._value = self._value.is_text, formula
         if was_text or formula.is_text:
@@ -80,8 +86,8 @@ class ParameterItem(Item):
         return f"{self._name} = {show(self._value)}"
 
 
-class DefinitionItem(Item):
-    """A function defined for other items, not drawn: ``g(u, v) = u v + 1``.
+class Definition(PlotObject):
+    """A function defined for other objects, not drawn: ``g(u, v) = u v + 1``.
 
     Args:
         name: The function's name.
@@ -90,6 +96,7 @@ class DefinitionItem(Item):
     """
 
     kind: ClassVar[str] = "definition"
+    drawn: ClassVar[bool] = False
 
     def __init__(self, name: str, parameters: Sequence[str], expression: str) -> None:
         super().__init__(name=check_name(name))
@@ -104,7 +111,7 @@ class DefinitionItem(Item):
 
     @name.setter
     def name(self, name: str) -> None:
-        Item.name.fset(self, check_name(name))  # type: ignore[attr-defined]
+        PlotObject.name.fset(self, check_name(name))  # type: ignore[attr-defined]
 
     @property
     def parameters(self) -> tuple[str, ...]:

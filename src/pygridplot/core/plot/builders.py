@@ -41,7 +41,7 @@ from pygridplot.core.plot.curves import (
     sample_curve,
 )
 from pygridplot.core.plot.evaluation import (
-    Function,
+    FunctionLike,
     PlaneFunction,
     evaluate_quietly,
     evaluate_xy_quietly,
@@ -68,7 +68,7 @@ from pygridplot.core.primitives import Fill, Markers, Stroke
 from pygridplot.core.transforms import AxisTransform
 from pygridplot.core.view import View
 
-CurveComponent: TypeAlias = Function | float
+CurveComponent: TypeAlias = FunctionLike | float
 """One coordinate of a parametric curve: a function of ``t``, or a constant."""
 
 WorldCurve: TypeAlias = Callable[
@@ -87,7 +87,7 @@ the plane.
 
 def function_stroke(
     view: View,
-    func: Function,
+    func: FunctionLike,
     style: LineStyle,
     color: ColorLike,
     *,
@@ -136,8 +136,8 @@ def function_stroke(
 
 
 def transformed_function(
-    func: Function, x_transform: AxisTransform, y_transform: AxisTransform
-) -> Function:
+    func: FunctionLike, x_transform: AxisTransform, y_transform: AxisTransform
+) -> FunctionLike:
     """Return ``func`` as seen in transformed coordinates: ``w = T_y(f(T_x⁻¹(u)))``.
 
     Sampling this function on a uniform grid of ``u`` is sampling the graph

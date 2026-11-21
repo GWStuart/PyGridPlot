@@ -26,7 +26,7 @@ from typing import Any
 
 from pygridplot.core.expr import ExpressionError, parse_equation, references
 from pygridplot.core.expr.parser import Call, Compare, Name, Node, Number, Tuple, Unary
-from pygridplot.graph.items import VARIABLE_NAMES
+from pygridplot.objects.values import VARIABLE_NAMES
 
 INEQUALITY = "inequalities (shaded regions) are not supported yet"
 

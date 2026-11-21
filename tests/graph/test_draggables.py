@@ -11,12 +11,12 @@ import pygame
 import pytest
 
 import pygridplot as pgp
-from pygridplot.graph import DraggableItem, PlotItem
+from pygridplot import Function, Point
 
 from .conftest import drag, frame, make_plane, mouse, pixels
 
 
-def screen(plane: pgp.Plane, point: DraggableItem) -> tuple[float, float]:
+def screen(plane: pgp.Plane, point: Point) -> tuple[float, float]:
     """Return where an item's point is on the screen."""
     return plane.to_screen(point.x, point.y)
 
@@ -121,8 +121,8 @@ def test_a_point_on_a_named_plot() -> None:
     assert dot.t is not None
     assert dot.t < 2.0
     assert dot.position == pytest.approx((dot.t, dot.t**2 / 4))
-    assert isinstance(f, PlotItem)
-    f.expression = "x^3 / 8"  # the point follows the changed curve
+    assert isinstance(f, Function)
+    f.func = "x^3 / 8"  # the point follows the changed curve
     frame(plane, surface, graph)
     assert dot.position == pytest.approx((dot.t, dot.t**3 / 8))
 
@@ -193,7 +193,7 @@ def test_curve_errors() -> None:
     unknown = graph.draggable(curve="nope")
     wrong = graph.draggable(curve="a")
     plane, surface = make_plane()
-    with pytest.warns(pgp.GraphWarning):
+    with pytest.warns(pgp.PlotWarning):
         graph.draw(plane, surface)
     assert unknown.error == "unknown curve 'nope'"
     assert wrong.error is not None

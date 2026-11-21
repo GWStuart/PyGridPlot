@@ -476,3 +476,33 @@ def test_damaged_files_raise_only_graph_errors(data: st.DataObject) -> None:
     except GraphError:
         return
     graph.to_dict()  # whatever loads can be saved again
+
+
+def test_a_point_following_a_curve_object_is_saved_by_its_name() -> None:
+    graph = pgp.Graph()
+    f = graph.plot("x^2", name="f")
+    graph.append(pgp.Point(curve=f, t=1, draggable=True))
+    data = graph.to_dict()
+    assert data["items"][1]["curve"] == "f"
+    loaded = pgp.Graph.from_dict(data)
+    assert loaded.items[1].curve == "f"  # type: ignore[attr-defined]
+    unnamed = pgp.Graph()
+    g = unnamed.plot("x^2")
+    unnamed.append(pgp.Point(curve=g, draggable=True))
+    with pytest.raises(GraphError, match=r"items\[1\]\.curve: .*not a named object"):
+        unnamed.to_dict()
+
+
+def test_points_given_by_functions_need_registering() -> None:
+    def height() -> float:
+        return 2.0
+
+    graph = pgp.Graph(functions={"height": height})
+    graph.point((1, height))
+    data = graph.to_dict()
+    assert data["items"][0]["position"] == [1, {"function": "height"}]
+    assert pgp.Graph.from_dict(data, functions={"height": height}).items[0].y == 2.0  # type: ignore[attr-defined]
+    whole = pgp.Graph()
+    whole.point(lambda: (1, 2))
+    with pytest.raises(GraphError, match="one Python function cannot be saved"):
+        whole.to_dict()

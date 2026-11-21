@@ -57,34 +57,32 @@ SECTIONS: list[tuple[str, str, list[str]]] = [
         ["DraggablePoint"],
     ),
     (
-        "Graphs",
-        "A retained list of plots, curves, points, parameters and definitions, "
-        "drawn with one call each frame and saved as JSON (see the "
-        "[graphs guide](graphs.md)).",
-        ["Graph", "GraphView", "GraphError", "GraphWarning"],
+        "Objects",
+        "Functions, curves and points made once and changed through their "
+        "attributes: `plane.add` them and `plane.draw` draws them every frame, "
+        "or put them in a graph (see [Objects](objects.md)).",
+        [
+            "Function",
+            "ParametricCurve",
+            "PolarCurve",
+            "ImplicitCurve",
+            "Point",
+            "Points",
+            "Polyline",
+            "Polygon",
+            "PlotWarning",
+            "objects.PlotObject",
+            "objects.StyledObject",
+            "objects.LineObject",
+            "objects.MarkerObject",
+        ],
     ),
     (
-        "Graph items",
-        "The rows of a graph, made by its methods (`graph.plot(...)` returns a "
-        "`PlotItem`) and changed through their attributes. They are importable "
-        "from `pygridplot.graph`.",
-        [
-            "graph.PlotItem",
-            "graph.ParametricItem",
-            "graph.PolarItem",
-            "graph.ImplicitItem",
-            "graph.PointItem",
-            "graph.PointsItem",
-            "graph.PolylineItem",
-            "graph.PolygonItem",
-            "graph.DraggableItem",
-            "graph.ParameterItem",
-            "graph.DefinitionItem",
-            "graph.Item",
-            "graph.StyledItem",
-            "graph.LineItem",
-            "graph.PointLikeItem",
-        ],
+        "Graphs",
+        "Named lists of objects, with lines of maths, names usable in any order "
+        "and saving as JSON (see the [graphs guide](graphs.md)). `Parameter` "
+        "and `Definition` are the items only a graph has.",
+        ["Graph", "GraphView", "GraphError", "graph.Parameter", "graph.Definition"],
     ),
     (
         "Expressions",

@@ -1,61 +1,35 @@
-"""Graphs: retained lists of plots, curves, points and parameters.
+"""Graphs: named lists of objects, with text expressions and saving.
 
-A :class:`Graph` holds the items of a picture, by name and in order, drawn
-onto a plane with one call each frame and saved to JSON. It is built on
-the plane's immediate-mode API, so the two mix freely.
+A :class:`Graph` holds the objects of a picture (the functions, curves and
+points of :mod:`pygridplot.objects`, plus :class:`Parameter` and
+:class:`Definition`), by name and in order. It reads lines of maths
+(``graph.add("y = a sin(x)")``), lets objects' text use each other's names
+in any order, reports errors per object, and saves to JSON. It is built on
+the objects, which are built on the plane's immediate-mode API, so the
+three mix freely.
 
 * :mod:`~pygridplot.graph.graph`: :class:`Graph`.
-* :mod:`~pygridplot.graph.items`: the kinds of item (:class:`PlotItem`, ...).
-* :mod:`~pygridplot.graph.lines`: reading one line of maths into an item.
-* :mod:`~pygridplot.graph.namespace`: compiling items with their names.
+* :mod:`~pygridplot.graph.definitions`: :class:`Parameter` and
+  :class:`Definition`, the items only a graph has.
+* :mod:`~pygridplot.graph.lines`: reading one line of maths into an object.
+* :mod:`~pygridplot.graph.namespace`: compiling objects with their names.
 * :mod:`~pygridplot.graph.view`: :class:`GraphView`, the view saved with a
   graph.
 * :mod:`~pygridplot.graph.serialize`: the JSON format.
-* :mod:`~pygridplot.graph.errors`: :class:`GraphError` and
-  :class:`GraphWarning`.
+* :mod:`~pygridplot.graph.errors`: :class:`GraphError`.
 """
 
 from pygridplot.core.expr import ExpressionError
-from pygridplot.graph.errors import GraphError, GraphWarning
+from pygridplot.graph.definitions import Definition, Parameter
+from pygridplot.graph.errors import GraphError
 from pygridplot.graph.graph import Graph
-from pygridplot.graph.items import (
-    DefinitionItem,
-    DraggableItem,
-    ImplicitItem,
-    Item,
-    LineItem,
-    ParameterItem,
-    ParametricItem,
-    PlotItem,
-    PointItem,
-    PointLikeItem,
-    PointsItem,
-    PolarItem,
-    PolygonItem,
-    PolylineItem,
-    StyledItem,
-)
 from pygridplot.graph.view import GraphView
 
 __all__ = [
-    "DefinitionItem",
-    "DraggableItem",
+    "Definition",
     "ExpressionError",
     "Graph",
     "GraphError",
     "GraphView",
-    "GraphWarning",
-    "ImplicitItem",
-    "Item",
-    "LineItem",
-    "ParameterItem",
-    "ParametricItem",
-    "PlotItem",
-    "PointItem",
-    "PointLikeItem",
-    "PointsItem",
-    "PolarItem",
-    "PolygonItem",
-    "PolylineItem",
-    "StyledItem",
+    "Parameter",
 ]

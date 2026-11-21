@@ -18,7 +18,9 @@ automatically, so frames where little changes stay cheap.
 | [`polygon(surface, points)`](#polygons) | A filled shape with an outline. |
 
 All of them accept `color`, `opacity` and a reusable `style`; see
-[Styles and themes](styles-and-themes.md). Objects drawn without a colour
+[Styles and themes](styles-and-themes.md). Each also exists as an
+[object](objects.md) (`pgp.Function`, `pgp.ParametricCurve`, ...) that takes
+the same arguments, is made once, and is drawn by the plane every frame. Objects drawn without a colour
 take the theme's [palette](styles-and-themes.md#the-palette) colours in
 order. Everything is clipped to the plane's rectangle.
 

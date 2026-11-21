@@ -38,27 +38,28 @@ from dataclasses import fields, replace
 from typing import TYPE_CHECKING, Any, Final
 
 from pygridplot.core.expr import ExpressionError
+from pygridplot.core.handles.point import DEFAULT_DRAGGABLE_STYLE
 from pygridplot.core.plot.curves import CurveSampling
 from pygridplot.core.plot.implicit import ImplicitSampling
 from pygridplot.core.plot.sampling import SamplingConfig
+from pygridplot.core.plot.style import PointStyle
+from pygridplot.graph.definitions import Definition, Parameter
 from pygridplot.graph.errors import GraphError
-from pygridplot.graph.items import (
-    FULL_TURN,
-    DefinitionItem,
-    DraggableItem,
-    ImplicitItem,
-    Item,
-    ParameterItem,
-    ParametricItem,
-    PlotItem,
-    PointItem,
-    PointsItem,
-    PolarItem,
-    PolygonItem,
-    PolylineItem,
-    StyledItem,
-)
 from pygridplot.graph.view import GraphView
+from pygridplot.objects import (
+    FULL_TURN,
+    CurveObject,
+    Function,
+    ImplicitCurve,
+    ParametricCurve,
+    PlotObject,
+    Point,
+    Points,
+    PolarCurve,
+    Polygon,
+    Polyline,
+    StyledObject,
+)
 
 if TYPE_CHECKING:
     from pygridplot.graph.graph import Graph
@@ -106,7 +107,12 @@ class _Writer:
         self.names = {id(func): name for name, func in graph.functions.items()}
 
     def formula(self, source: Any, path: str) -> Any:
-        """Return an expression as saved: its text, a number, a function's name."""
+        """Return an expression as saved: its text, a number, a function's name.
+
+        A NaN number (a gap in data) is saved as ``null``.
+        """
+        if isinstance(source, float) and math.isnan(source):
+            return None
         if isinstance(source, (str, float)):
             return source
         name = self.names.get(id(source))
@@ -120,17 +126,19 @@ class _Writer:
             raise GraphError(msg)
         return {"function": name}
 
-    def item(self, item: Item, path: str) -> dict[str, Any]:
-        data: dict[str, Any] = {"kind": item.kind}
+    def item(self, item: PlotObject, path: str) -> dict[str, Any]:
+        draggable = isinstance(item, Point) and item.draggable
+        data: dict[str, Any] = {"kind": "draggable" if draggable else item.kind}
         if item.name is not None:
             data["name"] = item.name
         if not item.visible:
             data["visible"] = False
         data.update(self.fields(item, path))
-        if isinstance(item, StyledItem):
+        if isinstance(item, StyledObject):
             if item.palette is not None:
                 data["palette"] = item.palette
-            style = _changed_fields(item.style, type(item).default_style)
+            default = DEFAULT_DRAGGABLE_STYLE if draggable else type(item).default_style
+            style = _changed_fields(item.style, default)
             if style:
                 data["style"] = style
         sampling = getattr(item, "sampling", None)
@@ -138,14 +146,14 @@ class _Writer:
             data["sampling"] = _changed_fields(sampling, type(sampling)())
         return data
 
-    def fields(self, item: Item, path: str) -> dict[str, Any]:
-        """Return the fields particular to an item's kind."""
-        if isinstance(item, PlotItem):
-            result = {"expression": self.formula(item.expression, f"{path}.expression")}
+    def fields(self, item: PlotObject, path: str) -> dict[str, Any]:
+        """Return the fields particular to an object's kind."""
+        if isinstance(item, Function):
+            result = {"expression": self.formula(item.func, f"{path}.expression")}
             if item.domain is not None:
                 result["domain"] = list(item.domain)
             return result
-        if isinstance(item, ParametricItem):
+        if isinstance(item, ParametricCurve):
             result = {
                 "x": self.formula(item.x, f"{path}.x"),
                 "y": self.formula(item.y, f"{path}.y"),
@@ -153,32 +161,49 @@ class _Writer:
             if item.t_range != FULL_TURN:
                 result["t_range"] = list(item.t_range)
             return result
-        if isinstance(item, PolarItem):
+        if isinstance(item, PolarCurve):
             result = {"r": self.formula(item.r, f"{path}.r")}
             if item.theta_range != FULL_TURN:
                 result["theta_range"] = list(item.theta_range)
             return result
-        if isinstance(item, ImplicitItem):
+        if isinstance(item, ImplicitCurve):
             level = item.level
-            result = {"expression": self.formula(item.expression, f"{path}.expression")}
+            result = {"expression": self.formula(item.func, f"{path}.expression")}
             if level != 0.0:
                 result["level"] = list(level) if isinstance(level, tuple) else level
             return result
-        if isinstance(item, PointItem):
-            return {"position": list(item.position)}
-        if isinstance(item, (PointsItem, PolylineItem, PolygonItem)):
-            result = {"points": [[_gap(v) for v in point] for point in item.points]}
-            if isinstance(item, PolylineItem) and item.closed:
+        if isinstance(item, Point):
+            if item.draggable:
+                return self.draggable(item, path)
+            source = item.source
+            if not isinstance(source, tuple):
+                msg = (
+                    f"{path}.position: a point whose position is one Python "
+                    "function cannot be saved: give its coordinates separately"
+                )
+                raise GraphError(msg)
+            return {
+                "position": [
+                    self.formula(v, f"{path}.position[{i}]")
+                    for i, v in enumerate(source)
+                ]
+            }
+        if isinstance(item, (Points, Polyline, Polygon)):
+            result = {
+                "points": [
+                    [self.formula(v, f"{path}.points[{i}]") for v in point]
+                    for i, point in enumerate(item.points)
+                ]
+            }
+            if isinstance(item, Polyline) and item.closed:
                 result["closed"] = True
             return result
-        if isinstance(item, DraggableItem):
-            return self.draggable(item, path)
-        if isinstance(item, ParameterItem):
+        if isinstance(item, Parameter):
             return {"value": item.value}
-        assert isinstance(item, DefinitionItem)
+        assert isinstance(item, Definition)
         return {"parameters": list(item.parameters), "expression": item.expression}
 
-    def draggable(self, item: DraggableItem, path: str) -> dict[str, Any]:
+    def draggable(self, item: Point, path: str) -> dict[str, Any]:
         result: dict[str, Any] = {}
         if item.position is not None and all(math.isfinite(v) for v in item.position):
             result["position"] = list(item.position)
@@ -187,7 +212,15 @@ class _Writer:
         if item.lock is not None:
             result["lock"] = item.lock
         curve = item.curve
-        if isinstance(curve, str):
+        if isinstance(curve, CurveObject):
+            if curve.graph is not item.graph or curve.name is None:
+                msg = (
+                    f"{path}.curve: the point follows a curve object that is not "
+                    "a named object of the graph, so it cannot be saved"
+                )
+                raise GraphError(msg)
+            result["curve"] = curve.name
+        elif isinstance(curve, str):
             result["curve"] = curve
         elif curve is not None:
             x, y, t_range = curve
@@ -205,11 +238,6 @@ class _Writer:
         if not item.enabled:
             result["enabled"] = False
         return result
-
-
-def _gap(value: Any) -> Any:
-    """Write a NaN coordinate of a data point (a gap) as ``null``."""
-    return None if isinstance(value, float) and math.isnan(value) else value
 
 
 def _view_to_dict(view: GraphView) -> dict[str, Any]:
@@ -472,8 +500,8 @@ def _coordinate(value: Any, path: str) -> Any:
     raise GraphError(msg)
 
 
-def _points(reader: _Reader, key: str) -> list[tuple[Any, Any]]:
-    """Read data points (``null`` is a NaN coordinate: a gap)."""
+def _points(reader: _Reader, key: str, graph: Graph) -> list[tuple[Any, Any]]:
+    """Read points (``null`` is a NaN coordinate: a gap)."""
     value = reader.take(key, list)
     points = []
     for i, point in enumerate(value):
@@ -482,14 +510,16 @@ def _points(reader: _Reader, key: str) -> list[tuple[Any, Any]]:
             msg = f"{where}: expected an [x, y] pair"
             raise GraphError(msg)
         points.append(
-            tuple(math.nan if v is None else _coordinate(v, where) for v in point)
+            tuple(
+                math.nan if v is None else _formula_value(v, where, graph, numbers=True)
+                for v in point
+            )
         )
     return points  # type: ignore[return-value]
 
 
-def _style(reader: _Reader, item_type: type[StyledItem]) -> Any:
+def _style(reader: _Reader, default: Any) -> Any:
     data = reader.take("style", dict, None)
-    default = item_type.default_style
     if data is None:
         return default
     return _dataclass_from(data, default, f"{reader.where('style')}")
@@ -554,7 +584,7 @@ def _settings_value(value: Any) -> Any:
     return value
 
 
-def _item_from_dict(data: Mapping[str, Any], path: str, graph: Graph) -> Item:
+def _item_from_dict(data: Mapping[str, Any], path: str, graph: Graph) -> PlotObject:
     """Make one item from its saved data."""
     reader = _Reader(data, path)
     kind = reader.take("kind", str)
@@ -573,7 +603,9 @@ def _item_from_dict(data: Mapping[str, Any], path: str, graph: Graph) -> Item:
     return item
 
 
-def _make_item(kind: str, reader: _Reader, graph: Graph, name: str | None) -> Item:
+def _make_item(
+    kind: str, reader: _Reader, graph: Graph, name: str | None
+) -> PlotObject:
     """Make an item of a kind from the reader's keys."""
     where = reader.where
 
@@ -585,7 +617,7 @@ def _make_item(kind: str, reader: _Reader, graph: Graph, name: str | None) -> It
 
     if kind == "plot":
         domain = _pair(reader, "domain") if "domain" in reader.data else None
-        return PlotItem(
+        return Function(
             _formula_value(
                 reader.take("expression", object),
                 where("expression"),
@@ -594,26 +626,26 @@ def _make_item(kind: str, reader: _Reader, graph: Graph, name: str | None) -> It
             ),
             name=name,
             domain=domain,
-            style=_style(reader, PlotItem),
+            style=_style(reader, Function.default_style),
             sampling=_sampling(reader, SamplingConfig),
             palette=palette(),
         )
     if kind == "parametric":
-        return ParametricItem(
+        return ParametricCurve(
             _formula_value(reader.take("x", object), where("x"), graph, numbers=True),
             _formula_value(reader.take("y", object), where("y"), graph, numbers=True),
             _pair(reader, "t_range") if "t_range" in reader.data else FULL_TURN,
             name=name,
-            style=_style(reader, ParametricItem),
+            style=_style(reader, ParametricCurve.default_style),
             sampling=_sampling(reader, CurveSampling),
             palette=palette(),
         )
     if kind == "polar":
-        return PolarItem(
+        return PolarCurve(
             _formula_value(reader.take("r", object), where("r"), graph, numbers=True),
             _pair(reader, "theta_range") if "theta_range" in reader.data else FULL_TURN,
             name=name,
-            style=_style(reader, PolarItem),
+            style=_style(reader, PolarCurve.default_style),
             sampling=_sampling(reader, CurveSampling),
             palette=palette(),
         )
@@ -621,7 +653,7 @@ def _make_item(kind: str, reader: _Reader, graph: Graph, name: str | None) -> It
         level = reader.take("level", object, 0.0)
         if isinstance(level, list):
             level = tuple(level)
-        return ImplicitItem(
+        return ImplicitCurve(
             _formula_value(
                 reader.take("expression", object),
                 where("expression"),
@@ -630,7 +662,7 @@ def _make_item(kind: str, reader: _Reader, graph: Graph, name: str | None) -> It
             ),
             level,
             name=name,
-            style=_style(reader, ImplicitItem),
+            style=_style(reader, ImplicitCurve.default_style),
             sampling=_sampling(reader, ImplicitSampling),
             palette=palette(),
         )
@@ -638,35 +670,35 @@ def _make_item(kind: str, reader: _Reader, graph: Graph, name: str | None) -> It
         position = reader.take("position", list)
         if len(position) != 2:
             reader.fail("position", "expected an [x, y] pair")
-        return PointItem(
-            (
-                _coordinate(position[0], where("position")),
-                _coordinate(position[1], where("position")),
+        return Point(
+            tuple(
+                _formula_value(v, where(f"position[{i}]"), graph, numbers=True)
+                for i, v in enumerate(position)
             ),
             name=name,
-            style=_style(reader, PointItem),
+            style=_style(reader, PointStyle()),
             palette=palette(),
         )
     if kind == "points":
-        return PointsItem(
-            _points(reader, "points"),
+        return Points(
+            _points(reader, "points", graph),
             name=name,
-            style=_style(reader, PointsItem),
+            style=_style(reader, Points.default_style),
             palette=palette(),
         )
     if kind == "polyline":
-        return PolylineItem(
-            _points(reader, "points"),
+        return Polyline(
+            _points(reader, "points", graph),
             closed=reader.take("closed", bool, False),
             name=name,
-            style=_style(reader, PolylineItem),
+            style=_style(reader, Polyline.default_style),
             palette=palette(),
         )
     if kind == "polygon":
-        return PolygonItem(
-            _points(reader, "points"),
+        return Polygon(
+            _points(reader, "points", graph),
             name=name,
-            style=_style(reader, PolygonItem),
+            style=_style(reader, Polygon.default_style),
             palette=palette(),
         )
     if kind == "draggable":
@@ -675,12 +707,12 @@ def _make_item(kind: str, reader: _Reader, graph: Graph, name: str | None) -> It
         if name is None:
             reader.fail("name", "missing")
         value = reader.take("value", object)
-        return ParameterItem(name, _coordinate(value, where("value")))  # type: ignore[arg-type]
+        return Parameter(name, _coordinate(value, where("value")))  # type: ignore[arg-type]
     if kind == "definition":
         if name is None:
             reader.fail("name", "missing")
         parameters = reader.take("parameters", list)
-        return DefinitionItem(
+        return Definition(
             name,  # type: ignore[arg-type]
             parameters,
             reader.take("expression", str),
@@ -691,7 +723,7 @@ def _make_item(kind: str, reader: _Reader, graph: Graph, name: str | None) -> It
 
 def _draggable(
     reader: _Reader, graph: Graph, name: str | None, palette: int | None
-) -> DraggableItem:
+) -> Point:
     position = _pair(reader, "position") if "position" in reader.data else None
     t = reader.take("t", float, None)
     lock = reader.take("lock", str, None)
@@ -715,15 +747,16 @@ def _draggable(
     y_range = (
         _pair(reader, "y_range", open_ends=True) if "y_range" in reader.data else None
     )
-    return DraggableItem(
+    return Point(
         position,
+        draggable=True,
         name=name,
         lock=lock,
         curve=curve,
         t=t,
         x_range=x_range,
         y_range=y_range,
-        style=_style(reader, DraggableItem),
+        style=_style(reader, DEFAULT_DRAGGABLE_STYLE),
         coordinates=reader.take("coordinates", str, "hover"),
         enabled=reader.take("enabled", bool, True),
         palette=palette,

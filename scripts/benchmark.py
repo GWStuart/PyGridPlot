@@ -206,13 +206,33 @@ def by_hand_case() -> Case:
     return run
 
 
+def objects_case(*, cache: bool = False) -> Case:
+    """Draw the same picture as :func:`by_hand_case`, made of objects."""
+    plane = plane_for(scale=60.0, cache=cache)
+    a = 1.5
+    f = pgp.Function(lambda x: a * np.sin(x) + x / 4)
+    point = pgp.Point(curve=f, t=1.2, draggable=True)
+    slope = f.derivative()
+    plane.add(
+        f,
+        pgp.Function(slope),
+        pgp.Function(lambda x: slope(point.x) * (x - point.x) + point.y),
+        pgp.ParametricCurve(lambda t: 3 * np.cos(t) + np.cos(3 * t), "2sin(t)"),
+        pgp.PolarCurve(lambda th: 1 + np.cos(3 * th) / 2),
+        pgp.ImplicitCurve(lambda x, y: x**2 / 9 + y**2 / 4, 1.0),
+        pgp.Point(lambda: (point.x + 1, f(point.x + 1))),
+        point,
+    )
+    return plane.draw
+
+
 def compile_case() -> Case:
     """Compile the graph of :data:`GRAPH_LINES` again, as after any edit."""
     graph = graph_for()
     first = graph.items[1]
 
     def run(surface: pygame.Surface) -> None:
-        first.expression = first.expression  # type: ignore[attr-defined]
+        first.func = first.func  # type: ignore[attr-defined]
         assert not graph.errors  # compiles
 
     return run
@@ -306,6 +326,8 @@ def cases() -> dict[str, Case]:
         "graph: 8 lines + point": graph_case(),
         "graph: same, by hand": by_hand_case(),
         "graph: compile 8 lines": compile_case(),
+        "objects: same, as objects": objects_case(),
+        "cached: idle objects": objects_case(cache=True),
         "cached: idle graph": graph_case(cache=True),
         "points 2000": plot_case(
             lambda p, s: p.points(s, np.column_stack((xs, np.sin(xs))))

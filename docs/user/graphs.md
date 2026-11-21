@@ -1,10 +1,12 @@
 # Graphs
 
-A **graph** is a list of named items (plots, curves, points, parameters
-and definitions) that is kept between frames, drawn with one call and
-saved to a file. It is what the expression list of a graphing calculator
-holds, and it is built on the plane's ordinary methods: drawing a graph
-makes exactly the calls you would make by hand.
+A **graph** is a list of named [objects](objects.md) (functions, curves,
+points), plus parameters and definitions, kept between frames, drawn with
+one call and saved to a file. It is what the expression list of a graphing
+calculator holds: maths written as text, with names that the other lines
+can use. Underneath it is the objects, drawn with the plane's ordinary
+methods, so drawing a graph makes exactly the calls you would make by
+hand.
 
 ```python
 graph = pgp.Graph()
@@ -21,17 +23,17 @@ while running:
         plane.handle_event(event)    # drags P; the wave follows
 
     plane.draw_grid(screen)
-    graph.draw(plane, screen)
+    graph.draw(plane, screen)        # or plane.add(graph) once, then plane.draw(screen)
     pygame.display.flip()
 
 graph.save("wave.json")              # and Graph.load("wave.json") later
 ```
 
 Use a graph when what is drawn is *data*: typed in by a user, loaded from
-a file, edited while the program runs, or shared between programs. For
-drawing that your code decides every frame, the plane's methods are
-simpler (see [Plotting](plotting.md)); both can be mixed freely on one
-plane.
+a file, edited while the program runs, or shared between programs. For a
+picture written in Python, [objects](objects.md) on their own are simpler,
+and for drawing that your code decides every frame, so are the plane's
+methods (see [Plotting](plotting.md)); all three mix freely on one plane.
 
 ## Adding items
 
@@ -71,21 +73,25 @@ Inequalities (`y < x^2`, shaded regions) are not supported yet.
 Each kind of item also has a method, with the same arguments as the
 plane's method that draws it, except that expressions may be text, and
 that a parametric curve's `t_range` may be left out (it is `(0, 2π)`, as
-for a line of maths):
+for a line of maths). The items are the [objects](objects.md), so each
+method returns one:
 
-| Graph method | Draws like | Item |
+| Graph method | Draws like | Returns |
 |---|---|---|
-| `graph.plot(expression, *, name, domain, ...)` | `plane.plot` | `PlotItem` |
-| `graph.parametric(x, y, t_range, ...)` | `plane.parametric` | `ParametricItem` |
-| `graph.polar(r, theta_range, ...)` | `plane.polar` | `PolarItem` |
-| `graph.implicit(expression, level, ...)` | `plane.implicit` | `ImplicitItem` |
-| `graph.point((x, y), ...)` | `plane.points` | `PointItem` |
-| `graph.points(points, ...)` | `plane.points` | `PointsItem` |
-| `graph.polyline(points, *, closed, ...)` | `plane.polyline` | `PolylineItem` |
-| `graph.polygon(points, ...)` | `plane.polygon` | `PolygonItem` |
-| `graph.draggable(position, *, lock, curve, ...)` | `plane.draggable` | `DraggableItem` |
-| `graph.parameter(name, value)` | (not drawn) | `ParameterItem` |
-| `graph.define(signature, expression)` | (not drawn) | `DefinitionItem` |
+| `graph.plot(expression, *, name, domain, ...)` | `plane.plot` | `pgp.Function` |
+| `graph.parametric(x, y, t_range, ...)` | `plane.parametric` | `pgp.ParametricCurve` |
+| `graph.polar(r, theta_range, ...)` | `plane.polar` | `pgp.PolarCurve` |
+| `graph.implicit(expression, level, ...)` | `plane.implicit` | `pgp.ImplicitCurve` |
+| `graph.point((x, y), ...)` | `plane.points` | `pgp.Point` |
+| `graph.points(points, ...)` | `plane.points` | `pgp.Points` |
+| `graph.polyline(points, *, closed, ...)` | `plane.polyline` | `pgp.Polyline` |
+| `graph.polygon(points, ...)` | `plane.polygon` | `pgp.Polygon` |
+| `graph.draggable(position, *, lock, curve, ...)` | `plane.draggable` | `pgp.Point` (draggable) |
+| `graph.parameter(name, value)` | (not drawn) | `Parameter` |
+| `graph.define(signature, expression)` | (not drawn) | `Definition` |
+
+An object made on its own joins a graph with `graph.append(obj)` (at the
+end, or at `index=`); an object belongs to at most one graph.
 
 ```python
 graph = pgp.Graph()
@@ -143,7 +149,7 @@ a = graph.add("a = 1")
 wave = graph.add("y = a sin(x)")
 wave.color = "purple"
 wave.width = 4
-wave.expression = "a cos(x)"
+wave.func = "a cos(x)"
 a.value = 2.5                    # everything using a follows
 wave.visible = False             # hidden, but its name still works
 ```
@@ -181,10 +187,11 @@ choose one yourself, or `palette` to choose the slot.
 
 ## Draggable points
 
-A graph's draggable points work like the plane's (see
-[Draggable points](draggable-points.md)), and the graph keeps them: their
-position is part of the graph, changed by dragging, by setting it, and
-saved with the graph.
+A graph's draggable points are draggable [`pgp.Point`s](objects.md#points)
+(see also [Draggable points](draggable-points.md)): `graph.draggable(...)`
+is `graph.point(..., draggable=True)`, and `graph.add("P = (1, 2)",
+draggable=True)` makes one from a line. Their position is part of the
+graph, changed by dragging, by setting it, and saved with the graph.
 
 ```python
 graph = pgp.Graph()
@@ -198,8 +205,9 @@ graph.add("y = S.y sin(x - P.x) + P.y")                   # driven by P and S
 
 - `curve` is the name of a plot, parametric or polar curve of the graph,
   which the point follows even when its expression changes (on a plot,
-  `t` is `x`), or `(x(t), y(t), t_range)` for a curve of its own, as for
-  the plane: `curve=("cos(t)", "sin(t)", (0, math.pi))`.
+  `t` is `x`), the curve object itself (`curve=graph["f"]`), or
+  `(x(t), y(t), t_range)` for a curve of its own:
+  `curve=("cos(t)", "sin(t)", (0, math.pi))`.
 - Read the position as `P.position`, `P.x`, `P.y` (and `D.t` on a curve);
   set it from code with `P.position = (2, 1)` or `D.t = 0.5`.
 - A point on a curve that is given neither `position` nor `t` starts at
@@ -208,9 +216,9 @@ graph.add("y = S.y sin(x - P.x) + P.y")                   # driven by P and S
 - A hidden point (`visible = False`) is neither drawn nor draggable; a
   disabled one (`enabled = False`) is drawn but cannot be dragged.
 
-The graph creates the plane's point when it first draws on a plane, and
-keeps the two in step: dragging moves the item; changing the item moves
-the point. A graph drawn on several planes keeps a point on each, all in
+Each point keeps a handle (the plane's `DraggablePoint`) on every plane
+it is drawn on, made the first time, and keeps the two in step: dragging
+moves the point; changing the point moves the handle. A graph drawn on several planes keeps a point on each, all in
 step. `graph.remove(P)` takes the point off every plane;
 `graph.detach(plane)` takes all of a graph's points off one plane that
 will no longer draw it.
@@ -220,7 +228,7 @@ will no longer draw it.
 An item that cannot be drawn (an unknown name, a circular definition, a
 syntax error in a changed expression) is skipped, and the rest of the
 graph still draws. `item.error` says what is wrong, `graph.errors` lists
-every item with an error, and drawing issues a `pgp.GraphWarning` the
+every item with an error, and drawing issues a `pgp.PlotWarning` the
 first time each error appears:
 
 ```python
@@ -236,7 +244,7 @@ print(uses.error)    # unknown name 'b'
 ```
 
 Syntax errors are found as soon as an expression is set: `graph.add` and
-assigning `item.expression` raise a `pgp.ExpressionError`, so a line
+assigning `item.func` raise a `pgp.ExpressionError`, so a line
 typed by a user can be checked before it is added. Names are checked when
 the graph is next drawn or asked for its errors, since items may be added
 in any order.

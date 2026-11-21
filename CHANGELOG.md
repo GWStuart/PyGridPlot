@@ -8,18 +8,37 @@ follow [semantic versioning](https://semver.org/) once 1.0 is released.
 
 ### Added
 
-- **Graphs**: `pgp.Graph`, a retained list of named items (plots,
-  parametric, polar and implicit curves, points, polylines, polygons,
-  draggable points, parameters and function definitions) built on the
-  plane's immediate-mode API and drawn with `graph.draw(plane, surface)`.
+- **Objects**: persistent functions, curves and points, made once and
+  changed through their attributes: `pgp.Function`, `pgp.ParametricCurve`,
+  `pgp.PolarCurve`, `pgp.ImplicitCurve`, `pgp.Point`, `pgp.Points`,
+  `pgp.Polyline`, `pgp.Polygon`, each taking the arguments of the plane
+  method it mirrors and keeping them as attributes read every frame.
+  `plane.add(...)` keeps them and `plane.draw(screen)` draws the grid,
+  the objects and the draggable points in one call (`plane.remove`,
+  `plane.objects`, `plane.clear_objects`, `plane.draw_objects` to mix with
+  immediate drawing; `obj.draw(plane, screen)` for one object). Functions
+  are callable and differentiable (`f(2)`, `f.derivative()`,
+  `pgp.derivative(f)`); a `Point` is fixed, derived from other objects (a
+  function of nothing, per coordinate or whole) or draggable
+  (`draggable=True`, with `lock`, bounds, or `curve=` a function or curve
+  *object*), on any number of planes; objects take text in the expression
+  language too. Objects without a colour keep a stable palette slot; one
+  that cannot be drawn is skipped with its reason in `obj.error` and a
+  `pgp.PlotWarning` pointing at the program's own line.
+  `examples/objects.py`; gallery view 54; benchmark cases.
+- **Graphs**: `pgp.Graph`, a named list of objects (plus parameters and
+  function definitions, `graph.Parameter` and `graph.Definition`) built on
+  the objects and drawn with `graph.draw(plane, surface)` or
+  `plane.add(graph)`; `graph.add("y = x^2")` returns a `pgp.Function`, and
+  `graph.append(obj)` takes objects made on their own.
   Items are added from lines of maths (`graph.add("f(x) = a sin(x)")`,
   `"x^2 + y^2 = 9"`, `"P = (1, 2)"`, `"a = 2"`) or with one method per
   kind taking the plane method's arguments, and use each other's names in
   any order; circular definitions and unknown names are reported per item
-  (`item.error`, `graph.errors`, a `GraphWarning` once per error) while the
-  rest still draws. Draggable points are kept by the graph, in step with
-  their points on every plane, can follow another item's curve by name,
-  and are saved where they are. `graph.evaluate(...)`,
+  (`item.error`, `graph.errors`, a `pgp.PlotWarning` once per error) while
+  the rest still draws. Draggable points are kept by the graph, in step
+  with their handles on every plane, can follow another item's curve by
+  name, and are saved where they are. `graph.evaluate(...)`,
   `graph.function(name)`, registered Python functions
   (`Graph(functions=...)`, `graph.register`).
 - **Saving graphs as JSON**: `graph.save(path)` / `Graph.load(path)`,
@@ -95,6 +114,15 @@ follow [semantic versioning](https://semver.org/) once 1.0 is released.
 - `py.typed`, so type checkers use the package's annotations.
 
 ### Changed
+
+- The graph's item classes became the objects (`PlotItem` is now
+  `pgp.Function`, `PointItem` and `DraggableItem` are now `pgp.Point`, and
+  so on), and their `expression` attribute is `func`; `GraphWarning` is
+  now `pgp.PlotWarning`. Invalid names raise a `ValueError` (a
+  `GraphError` is still raised for a name already taken). The JSON format
+  is unchanged.
+- The type alias `Function` of `pygridplot.core.plot.evaluation` is now
+  `FunctionLike`, as `pgp.Function` is the object.
 
 - Log-axis grids are drawn about a third faster: the subdivisions of every
   whole decade on screen are worked out once per frame.

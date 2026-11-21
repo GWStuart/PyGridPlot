@@ -168,7 +168,12 @@ on_circle.curve = (lambda t: radius * np.cos(t), lambda t: radius * np.sin(t),
   version until that part comes into view.
 
 See `examples/draggable.py` for a sine wave shaped by a free point and two
-sliders, and points running round a circle and a spirograph. In a
-[graph](graphs.md#draggable-points), draggable points are kept by the graph
-and used by name in its expressions (`"y = a sin(x - P.x)"`), and their
-positions are saved with it.
+sliders, and points running round a circle and a spirograph.
+
+`plane.draggable` makes the plane's own points. A draggable
+[`pgp.Point`](objects.md#points) object is the same with the conveniences
+of objects: it can be made before the plane, follow a function or curve
+*object* (`pgp.Point(curve=f, draggable=True)`), be switched between fixed
+and draggable, live on several planes at once, and be saved in a
+[graph](graphs.md#draggable-points), whose expressions use it by name
+(`"y = a sin(x - P.x)"`).

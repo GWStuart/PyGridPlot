@@ -8,7 +8,7 @@ every change follows. Each recipe names the files to touch, in order.
 - [A new kind of draggable point](#a-new-kind-of-draggable-point)
 - [A new derivative rule](#a-new-derivative-rule)
 - [A new built-in function](#a-new-built-in-function)
-- [A new kind of graph item](#a-new-kind-of-graph-item)
+- [A new kind of object](#a-new-kind-of-object)
 - [A new marker shape](#a-new-marker-shape)
 - [A new theme option](#a-new-theme-option)
 - [A new primitive](#a-new-primitive)
@@ -122,31 +122,33 @@ deserves a line in the changelog). Test the function in
 NumPy; argument counts are checked for every built-in automatically) and
 add it to the table in [The expression language](../user/expressions.md).
 
-## A new kind of graph item
+## A new kind of object
 
-A graph item mirrors a plotting method of the plane. To add one (say, an
-inequality, once the plane can shade one):
+An object mirrors a drawing method of the plane, and graphs hold the same
+objects. To add one (say, an inequality, once the plane can shade one):
 
-1. **The item**, in the matching module of `graph/items/`: a subclass of
-   `LineItem`, `PointLikeItem` or `StyledItem` (or `Item`, if it is not
-   drawn), with a `kind` (its name in saved files), a constructor taking
-   the plane method's arguments (expressions as `Formula.make(...)`), a
-   property per argument (setters of names and expressions call
-   `self._changed()`), and the hooks `_formulas`, `_runtime`, `_binding`
-   and `_describe` (see the docstring of `Item`). Add it to `ITEM_TYPES`
-   and the exports of `graph/items/__init__.py` and `graph/__init__.py`.
-2. **Drawing**: a branch in `_draw_item` in `graph/graph.py` calling the
-   plane method, and a creator method on `Graph` with the same arguments.
-   If a line of maths should make it, teach `graph/lines.py` to recognise
-   it (and update the table in `Graph.add`).
+1. **The object**, in the matching module of `objects/`: a subclass of
+   `LineObject`, `MarkerObject` or `StyledObject` (or of `CurveObject`, if
+   a draggable point should be able to follow it), with a `kind` (its name
+   in saved graphs), a constructor taking the plane method's arguments
+   (functions and text as `Formula.make(...)`), a property per argument
+   (setters of functions and names call `self._changed()`; everything else
+   is read when drawn), and the hooks `_formulas`, `_runtime`, `_binding`,
+   `_render` and `_describe` (see the docstring of `PlotObject`). Export it
+   from `objects/__init__.py` and `pygridplot/__init__.py`.
+2. **In graphs**: a creator method on `Graph` with the same arguments, and,
+   if a line of maths should make it, a rule in `graph/lines.py` (and the
+   table in `Graph.add`).
 3. **Saving**: a branch in `_Writer.fields` and in `_make_item` in
    `graph/serialize.py`. A new kind is a new version of the format: older
    readers would refuse it, so increment `VERSION` (reading version 1 files
    is unchanged).
-4. **Test it**: drawing pixel for pixel like the plane call
-   (`SCENES` in `tests/graph/test_graph.py`), saving (`every_kind` and the
-   random graphs of `tests/graph/test_serialize.py`), and reading lines.
-5. **Document it** in [Graphs](../user/graphs.md) and in the
+4. **Test it**: drawing pixel for pixel like the plane call (`SCENES` in
+   `tests/objects/test_objects.py` and `tests/graph/test_graph.py`),
+   saving (`every_kind` and the random graphs of
+   `tests/graph/test_serialize.py`), and reading lines.
+5. **Document it** in [Objects](../user/objects.md) and
+   [Graphs](../user/graphs.md), and in the
    [API reference](../user/reference.md) (`SECTIONS` in
    `scripts/build_api_docs.py`).
 
@@ -244,9 +246,9 @@ leave it out. Run the script and commit `docs/user/reference.md`.
   and `loglabels` were split).
 - Names starting with `_` are private to their module and never imported
   elsewhere; if another module needs something, make it public and
-  document it. The one exception is the documented interface between graph
-  items and the rest of `graph/` (`_formulas`, `_runtime`, ...: see
-  `graph/items/base.py`), private to that package.
+  document it. The one exception is the documented interface between
+  objects and their owners (`_formulas`, `_runtime`, `_owner`, ...: see
+  `objects/base.py`), private to `objects/` and `graph/`.
 
 **Documentation.** Every module, class and function has a Google-style
 docstring (`Args:`, `Returns:`, `Raises:`, `Attributes:`), enforced by

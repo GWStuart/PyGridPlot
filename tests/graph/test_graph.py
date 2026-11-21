@@ -11,14 +11,8 @@ import numpy as np
 import pytest
 
 import pygridplot as pgp
-from pygridplot.graph import (
-    DraggableItem,
-    GraphError,
-    GraphWarning,
-    ParameterItem,
-    PlotItem,
-    PointItem,
-)
+from pygridplot import Function, PlotWarning, Point
+from pygridplot.graph import GraphError, Parameter
 
 from .conftest import frame, make_plane, pixels
 
@@ -51,7 +45,7 @@ def test_names_are_unique_and_valid() -> None:
     with pytest.raises(GraphError, match="already taken"):
         graph.plot("x", name="a")
     for bad in ("2a", "sin", "pi", "x", "θ", "a b", ""):
-        with pytest.raises(GraphError):
+        with pytest.raises(ValueError, match="name"):
             graph.plot("x", name=bad)
     item = graph.plot("x", name="b")
     with pytest.raises(GraphError, match="already taken"):
@@ -154,15 +148,15 @@ def test_errors_warn_once_each() -> None:
     graph = pgp.Graph()
     item = graph.add("y = q x")
     plane, surface = make_plane()
-    with pytest.warns(GraphWarning, match="item 0 \\(plot\\): unknown name 'q'"):
+    with pytest.warns(PlotWarning, match="item 0 \\(plot\\): unknown name 'q'"):
         graph.draw(plane, surface)
     with warnings.catch_warnings():
         warnings.simplefilter("error")
         graph.draw(plane, surface)  # the same error: no warning
         item.name = "f"  # recompiles, same error
         graph.draw(plane, surface)
-    item.expression = "r x"
-    with pytest.warns(GraphWarning, match="'f': unknown name 'r'"):
+    item.func = "r x"
+    with pytest.warns(PlotWarning, match="'f': unknown name 'r'"):
         graph.draw(plane, surface)
 
 
@@ -179,7 +173,7 @@ def test_a_drawing_error_is_reported_and_skipped(
         raise ValueError("cannot draw this")
 
     monkeypatch.setattr(plane, "implicit", refuse)
-    with pytest.warns(GraphWarning, match="item 0 \\(implicit\\): cannot draw this"):
+    with pytest.warns(PlotWarning, match="item 0 \\(implicit\\): cannot draw this"):
         graph.draw(plane, surface)
     assert bad.error == "cannot draw this"
     assert graph.errors == {bad: "cannot draw this"}
@@ -428,14 +422,14 @@ def test_changing_an_item_changes_the_drawing() -> None:
     plane, surface = make_plane()
     graph.draw(plane, surface)
     before = pixels(surface)
-    assert isinstance(a, ParameterItem)
+    assert isinstance(a, Parameter)
     a.value = 2
     frame(plane, surface, graph)
     assert pixels(surface) != before
     a.value = 1
     frame(plane, surface, graph)
     assert pixels(surface) == before
-    assert isinstance(plot, PlotItem)
+    assert isinstance(plot, Function)
     plot.color = "red"
     frame(plane, surface, graph)
     assert pixels(surface) != before
@@ -464,17 +458,18 @@ def test_a_graph_draws_on_several_planes() -> None:
 
 def test_items_can_be_made_directly() -> None:
     graph = pgp.Graph()
-    point = graph.append(PointItem(("a", 1)))
-    graph.append(ParameterItem("a", 3), index=0)
+    point = graph.append(Point(("a", 1)))
+    graph.append(Parameter("a", 3), index=0)
     assert graph.items[1] is point
     assert graph.evaluate("a") == 3.0
-    assert isinstance(graph.items[0], ParameterItem)
-    assert not isinstance(point, DraggableItem)
+    assert isinstance(graph.items[0], Parameter)
+    assert not point.draggable
+    assert point.position == (3.0, 1.0)
 
 
 def test_item_reprs() -> None:
     graph = pgp.Graph()
-    assert repr(graph.add("f(x) = x^2")) == "<PlotItem 'f': y = x^2>"
-    assert repr(graph.add("x^2 + y^2 = 1")) == "<ImplicitItem: x^2 + y^2 = 1>"
-    assert repr(graph.add("a = 2")) == "<ParameterItem 'a': a = 2>"
-    assert repr(graph.plot(np.sin)) == "<PlotItem: y = sin>"
+    assert repr(graph.add("f(x) = x^2")) == "<Function 'f': y = x^2>"
+    assert repr(graph.add("x^2 + y^2 = 1")) == "<ImplicitCurve: x^2 + y^2 = 1>"
+    assert repr(graph.add("a = 2")) == "<Parameter 'a': a = 2>"
+    assert repr(graph.plot(np.sin)) == "<Function: y = sin>"

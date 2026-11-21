@@ -8,16 +8,8 @@ from typing import Any
 import pytest
 
 import pygridplot as pgp
-from pygridplot.graph import (
-    DefinitionItem,
-    DraggableItem,
-    ImplicitItem,
-    ParameterItem,
-    ParametricItem,
-    PlotItem,
-    PointItem,
-    PolarItem,
-)
+from pygridplot import Function, ImplicitCurve, ParametricCurve, Point, PolarCurve
+from pygridplot.graph import Definition, Parameter
 from pygridplot.graph.lines import interpret
 
 
@@ -75,14 +67,14 @@ def test_bad_lines(line: str, message: str) -> None:
 def test_add_makes_the_item_of_each_kind() -> None:
     graph = pgp.Graph()
     expected = [
-        ("y = x^2", PlotItem),
-        ("f(x) = x", PlotItem),
-        ("r = 1", PolarItem),
-        ("(cos(t), sin(t))", ParametricItem),
-        ("(1, 2)", PointItem),
-        ("a = 2", ParameterItem),
-        ("g(u, v) = u + v", DefinitionItem),
-        ("x^2 + y^2 = 1", ImplicitItem),
+        ("y = x^2", Function),
+        ("f(x) = x", Function),
+        ("r = 1", PolarCurve),
+        ("(cos(t), sin(t))", ParametricCurve),
+        ("(1, 2)", Point),
+        ("a = 2", Parameter),
+        ("g(u, v) = u + v", Definition),
+        ("x^2 + y^2 = 1", ImplicitCurve),
     ]
     for line, kind in expected:
         assert type(graph.add(line)) is kind
@@ -93,10 +85,10 @@ def test_add_makes_the_item_of_each_kind() -> None:
 def test_add_passes_options_on() -> None:
     graph = pgp.Graph()
     item = graph.add("y = sin(x)", color="red", width=4, domain=(0, 5))
-    assert isinstance(item, PlotItem)
+    assert isinstance(item, Function)
     assert (item.color, item.width, item.domain) == ("red", 4, (0.0, 5.0))
     curve = graph.add("(cos(t), sin(t))", t_range=(0, math.pi))
-    assert isinstance(curve, ParametricItem)
+    assert isinstance(curve, ParametricCurve)
     assert curve.t_range == (0.0, math.pi)
     named = graph.add("y = x", name="line")
     assert named.name == "line"
@@ -112,7 +104,7 @@ def test_an_option_cannot_contradict_the_line() -> None:
 def test_a_point_can_be_made_draggable() -> None:
     graph = pgp.Graph()
     point = graph.add("P = (1, 2)", draggable=True, lock="x")
-    assert isinstance(point, DraggableItem)
+    assert isinstance(point, Point)
     assert (point.name, point.position, point.lock) == ("P", (1.0, 2.0), "x")
     with pytest.raises(pgp.GraphError, match="only a point"):
         graph.add("y = x", draggable=True)

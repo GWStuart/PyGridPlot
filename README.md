@@ -10,9 +10,10 @@ of the Desmos graph view but driven entirely from Python code. It gives you:
 - robust, antialiased plotting of functions (and their exact derivatives),
   parametric, polar and implicit curves, points, polylines and polygons;
 - draggable points: free, locked to an axis, or running along a curve;
-- graphs: lists of plots, curves and points written as maths
-  (`"y = a sin(x - P.x)"`), edited while the program runs and saved as
-  JSON.
+- objects: functions, curves and points made once and changed through
+  their attributes (`f = plane.add(pgp.Function(np.sin))`, `f.color = "red"`);
+- graphs: objects written as maths (`"y = a sin(x - P.x)"`), edited while
+  the program runs and saved as JSON.
 
 PyGridPlot is a *library, not a framework*: your program owns the main loop,
 and the plane is an object you call each frame.
@@ -82,6 +83,18 @@ pgp.show(np.exp, log_y=True, x_range=(0, 10))               # semi-log, quick mo
   user can drag; read `a.x` and `a.y` every frame to drive your plots.
   Points can be free, locked to one axis (sliders) or kept on a parametric
   curve, which they follow through crossings without jumping.
+- **Objects you make once.** Every plotting method has an object that
+  keeps its arguments as attributes, read every frame: `pgp.Function`,
+  `pgp.ParametricCurve`, `pgp.Point`, ... Add them to the plane and draw
+  everything with one call; Python closures make objects follow each
+  other, and functions can be called and differentiated.
+
+  ```python
+  a = plane.add(pgp.Point((1, 2), draggable=True))
+  f = plane.add(pgp.Function(lambda x: a.y * np.sin(x - a.x)))  # follows a
+  f.color = "crimson"                         # change it whenever you like
+  plane.draw(screen)                          # each frame: grid, f, then a
+  ```
 - **Graphs written as maths.** A `pgp.Graph` holds an expression list, as
   a graphing calculator does: `graph.add("f(x) = a sin(x)")`,
   `graph.add("x^2 + y^2 = 9")`, `graph.draggable((1, 2), name="P")`, with
@@ -114,13 +127,15 @@ The [documentation](docs/index.md) has two parts:
 - **[User guide](docs/user/index.md)**: [getting started](docs/user/getting-started.md),
   [the plane](docs/user/the-plane.md), [interaction](docs/user/interaction.md),
   [plotting](docs/user/plotting.md), [draggable points](docs/user/draggable-points.md),
-  [graphs](docs/user/graphs.md), [the expression language](docs/user/expressions.md),
+  [objects](docs/user/objects.md), [graphs](docs/user/graphs.md),
+  [the expression language](docs/user/expressions.md),
   [log axes](docs/user/log-axes.md),
   [styles and themes](docs/user/styles-and-themes.md), [recipes](docs/user/recipes.md),
   and the [API reference](docs/user/reference.md) generated from the code.
 - **[Developer guide](docs/dev/index.md)**: [architecture](docs/dev/architecture.md),
   [the grid](docs/dev/grid.md), [plotting](docs/dev/plotting.md),
-  [draggable points](docs/dev/dragging.md), [graphs and expressions](docs/dev/graphs.md),
+  [draggable points](docs/dev/dragging.md),
+  [objects, graphs and expressions](docs/dev/graphs.md),
   [rendering](docs/dev/rendering.md), [testing and tools](docs/dev/testing.md)
   and [extending PyGridPlot](docs/dev/extending.md).
 
@@ -132,6 +147,8 @@ python examples/curves.py           # animated parametric and polar curves (Spac
 python examples/implicit.py         # implicit curves and contour lines (Space)
 python examples/draggable.py        # draggable points, sliders, points on curves (Space)
 python examples/derivatives.py      # tangents, Taylor polynomials, osculating circles (Space)
+python examples/three_ways.py       # immediate mode, objects and graphs, side by side
+python examples/objects.py          # a picture made of objects (Space, W)
 python examples/graph_editor.py     # type maths, drag points, save and load JSON (F1)
 python examples/shapes.py           # points, polylines, polygons, fill rules
 python examples/log_axes.py         # log-log, semi-log and range-based planes (Space, X, Y)

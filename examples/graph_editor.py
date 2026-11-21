@@ -33,18 +33,15 @@ from typing import Any
 import pygame
 
 import pygridplot as pgp
-from pygridplot.graph import (
-    DefinitionItem,
-    DraggableItem,
-    ImplicitItem,
-    Item,
-    ParameterItem,
-    ParametricItem,
-    PlotItem,
-    PointItem,
-    PolarItem,
-    StyledItem,
+from pygridplot import (
+    Function,
+    ImplicitCurve,
+    ParametricCurve,
+    Point,
+    PolarCurve,
 )
+from pygridplot.graph import Definition, Parameter
+from pygridplot.objects import PlotObject, StyledObject
 from pygridplot.render.fonts import bundled_font_path
 
 SIDEBAR = 380
@@ -78,7 +75,7 @@ def starter() -> pgp.Graph:
     return graph
 
 
-def add_line(graph: pgp.Graph, text: str) -> Item:
+def add_line(graph: pgp.Graph, text: str) -> PlotObject:
     """Add a typed line; a point with numbers becomes a draggable point."""
     try:
         return graph.add(text, draggable=True)
@@ -95,38 +92,40 @@ def show(value: Any) -> str:
     return f"{value:g}"
 
 
-def describe(item: Item) -> str:
+def describe(item: PlotObject) -> str:
     """Write an item as the line of maths that makes it."""
     name = item.name
-    if isinstance(item, PlotItem):
+    if isinstance(item, Function):
         lhs = f"{name}(x)" if name else "y"
-        return f"{lhs} = {show(item.expression)}"
-    if isinstance(item, ParametricItem):
+        return f"{lhs} = {show(item.func)}"
+    if isinstance(item, ParametricCurve):
         pair = f"({show(item.x)}, {show(item.y)})"
         return f"{name} = {pair}" if name else pair
-    if isinstance(item, PolarItem):
+    if isinstance(item, PolarCurve):
         return f"r = {show(item.r)}"
-    if isinstance(item, ImplicitItem):
+    if isinstance(item, ImplicitCurve):
         level = item.level
         levels = (
             ", ".join(f"{v:g}" for v in level)
             if isinstance(level, tuple)
             else f"{level:g}"
         )
-        return f"{show(item.expression)} = {levels}"
-    if isinstance(item, PointItem):
-        x, y = item.position
+        return f"{show(item.func)} = {levels}"
+    if isinstance(item, Point) and not item.draggable:
+        x, y = item.source
         pair = f"({show(x)}, {show(y)})"
         return f"{name} = {pair}" if name else pair
-    if isinstance(item, DraggableItem):
+    if isinstance(item, Point):
         where = f"({item.x:.3g}, {item.y:.3g})" if item.position else "(not drawn yet)"
         label = f"{name} = " if name else ""
-        if isinstance(item.curve, str):
-            return f"{label}{where} on {item.curve}"
+        curve = item.curve
+        if curve is not None:
+            on = curve if isinstance(curve, str) else (curve.name or "a curve")
+            return f"{label}{where} on {on}"
         return f"{label}{where}"
-    if isinstance(item, ParameterItem):
+    if isinstance(item, Parameter):
         return f"{item.name} = {show(item.value)}"
-    if isinstance(item, DefinitionItem):
+    if isinstance(item, Definition):
         return f"{item.name}({', '.join(item.parameters)}) = {item.expression}"
     return f"{item.kind} ({name or 'unnamed'})"
 
@@ -147,7 +146,7 @@ class Editor:
         self.plane = plane
         self.graph = starter()
         self.text = ""
-        self.editing: Item | None = None
+        self.editing: PlotObject | None = None
         self.selected: int | None = None
         self.status = ("", INK)
         self.help = False
@@ -179,7 +178,7 @@ class Editor:
         self.selected = graph.items.index(item)
         self.status = ("", INK)
 
-    def selection(self) -> Item | None:
+    def selection(self) -> PlotObject | None:
         """Return the selected item, if any."""
         items = self.graph.items
         if self.selected is None or not items:
@@ -267,7 +266,7 @@ class Editor:
             self.rows.append((row, index))
             if index == self.selected:
                 pygame.draw.rect(screen, (225, 232, 245), row, border_radius=4)
-            if isinstance(item, StyledItem):
+            if isinstance(item, StyledObject):
                 color = (
                     item.color
                     if item.color is not None
@@ -324,7 +323,7 @@ def main() -> None:
     )
     plane = pgp.Plane(pygame.Rect(SIDEBAR, 0, 1200 - SIDEBAR, 760), x_range=(-8, 8))
     editor = Editor(plane)
-    warnings.simplefilter("ignore", pgp.GraphWarning)  # errors are listed instead
+    warnings.simplefilter("ignore", pgp.PlotWarning)  # errors are listed instead
     clock = pygame.time.Clock()
     running = True
     while running:

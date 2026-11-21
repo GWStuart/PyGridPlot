@@ -20,14 +20,14 @@ from __future__ import annotations
 import pygame
 
 from pygridplot.core.grid.theme import GridTheme
-from pygridplot.core.plot.evaluation import Function
+from pygridplot.core.plot.evaluation import FunctionLike
 from pygridplot.graph import Graph
-from pygridplot.graph.items import LineItem
-from pygridplot.plane import Plane
+from pygridplot.objects import Function, LineObject, StyledObject
+from pygridplot.plane import Drawable, Plane
 
 
 def show(
-    *functions: Function | str | Graph,
+    *functions: FunctionLike | str | Drawable,
     size: tuple[int, int] = (960, 640),
     title: str = "PyGridPlot",
     theme: GridTheme | None = None,
@@ -49,9 +49,10 @@ def show(
     Args:
         *functions: What to draw: functions ``y = f(x)``, lines of maths as
             :meth:`Graph.add <pygridplot.Graph.add>` reads them
-            (``"x^2 + y^2 = 9"``), or whole :class:`~pygridplot.Graph` objects
-            (with their draggable points; a graph with a saved view opens at
-            it, unless view options are given).
+            (``"x^2 + y^2 = 9"``), objects (``pgp.Point((1, 2),
+            draggable=True)``, ...), or whole :class:`~pygridplot.Graph`
+            objects (a graph with a saved view opens at it, unless view
+            options are given).
         size: Initial window size in pixels.
         title: Window title.
         theme: Plane appearance (defaults to :data:`pygridplot.LIGHT`).
@@ -67,15 +68,22 @@ def show(
     Raises:
         ExpressionError: If a line is not valid.
     """
-    combined = Graph()
-    graphs: list[Graph] = []
+    lines = Graph()  # the lines of maths, which may use each other's names
+    shown: list[Drawable] = [lines]
+    slot = 0  # one palette sequence for everything given, in order
     for thing in functions:
-        if isinstance(thing, Graph):
-            graphs.append(thing)
+        if isinstance(thing, Drawable):  # an object (a Function is also callable)
+            shown.append(thing)
+            if isinstance(thing, StyledObject) and thing.palette is None:
+                thing.palette, slot = slot, slot + 1
             continue
-        item = combined.add(thing) if isinstance(thing, str) else combined.plot(thing)
-        if width is not None and isinstance(item, LineItem):
+        item = lines.add(thing) if isinstance(thing, str) else Function(thing)
+        if isinstance(item, StyledObject):
+            item.palette, slot = slot, slot + 1
+        if width is not None and isinstance(item, LineObject):
             item.width = width
+        if item.graph is None:
+            shown.append(item)
     view_given = any(v is not None for v in (x_range, y_range, center, scale))
     owns_pygame = not pygame.get_init()
     pygame.init()
@@ -93,9 +101,12 @@ def show(
             equal_aspect=False if isinstance(scale, tuple) else None,
             theme=theme,
         )
-        saved = next((g for g in graphs if g.view is not None), None)
+        saved = next(
+            (g for g in shown if isinstance(g, Graph) and g.view is not None), None
+        )
         if saved is not None and not view_given and not (log_x or log_y):
             saved.apply_view(plane)
+        plane.add(*shown)
         clock = pygame.time.Clock()
         running = True
         while running:
@@ -105,15 +116,11 @@ def show(
                 ):
                     running = False
                 plane.handle_event(event)
-            plane.draw_grid(screen)
-            combined.draw(plane, screen)
-            for graph in graphs:
-                graph.draw(plane, screen)
+            plane.draw(screen)
             pygame.display.flip()
             clock.tick(fps)
     finally:
-        if plane is not None:
-            for graph in graphs:  # the graphs outlive the window's plane
-                graph.detach(plane)
+        if plane is not None:  # the objects outlive the window's plane
+            plane.clear_objects()
         if owns_pygame:
             pygame.quit()

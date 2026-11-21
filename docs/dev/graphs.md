@@ -1,27 +1,39 @@
-# Graphs and the expression language
+# Objects, graphs and the expression language
 
-Two packages turn PyGridPlot into something a user can type maths into:
+Three packages sit on top of the immediate-mode plane:
 
+- **`objects/`**, the persistent objects: `Function`, `ParametricCurve`,
+  `PolarCurve`, `ImplicitCurve`, `Point`, `Points`, `Polyline`, `Polygon`.
+  Each is made once, keeps its arguments as attributes, and draws itself
+  **through the public plane API** every frame. The plane keeps a list of
+  them (`plane.add`) and draws it (`plane.draw`), knowing them only through
+  a small protocol, so `plane.py` never imports `objects/`.
 - **`core/expr`**, the expression language: text such as
   `"a sin(x - P.x)"` compiled into a NumPy function. It is pure (standard
   library and NumPy, plus `core.plot` for derivatives), like the rest of
-  `core`.
-- **`graph/`**, the retained layer: a `Graph` holds an ordered list of
-  items, compiles their expressions with each other's names, and draws
-  them each frame **through the public plane API**. It sits above
-  `plane.py`, and nothing below it imports it.
+  `core`. Objects accept text anywhere they accept a function.
+- **`graph/`**, named collections of objects: a `Graph` reads lines of
+  maths, compiles its objects' text with each other's names, and saves to
+  JSON. It is built on `objects/`, which never imports it.
 
 ```text
 "y = a sin(x - P.x)"
-   │  lines.interpret              (Graph.add: which kind of item?)
+   │  lines.interpret              (Graph.add: which kind of object?)
    ▼
-PlotItem(Formula("a sin(x - P.x)"))   parsed at once: syntax errors show here
+Function(Formula("a sin(x - P.x)"))   parsed at once: syntax errors show here
    │  namespace.compile_items      (on the first draw after a change)
    ▼
 CompiledExpression  ── bindings: a → its value (live), P → its coordinates
-   │  Graph.draw
+   │  Function.update / render     (called by Graph.draw or Plane.draw)
    ▼
 plane.plot(surface, compiled, style=..., color=palette[slot])
+```
+
+The layering, enforced by `tests/test_architecture.py`:
+
+```text
+graph/  ──>  objects/  ──>  plane.py (public API)  ──>  core/, render/
+   └─────────────────────────────>  core/expr
 ```
 
 ## The expression language
@@ -103,99 +115,140 @@ language is small enough that a hand-written parser stays short, gives
 precise error messages, and makes the jets' exact derivatives work by
 construction.
 
+## The objects
+
+### Formulas
+
+Each object stores its functions and coordinates as `Formula`s
+(`objects/values.py`): what the program gave (a Python function, a number,
+or text) plus the parsed tree of a text. Parsing happens when the value is
+set, so syntax errors are raised at once; names in text are resolved only
+when the object is compiled, because in a graph an object may refer to
+objects added later.
+
+An object describes itself through a few hooks (`objects/base.py`):
+
+- `_formulas()`: its formulas and the variables of each (`x` for a
+  function, `t` for a parametric curve, none for a point's coordinates);
+- `_runtime(make)`: compiles them with a `make` function into what drawing
+  needs (a function, a pair of functions, getters of points);
+- `_binding(runtime)`: what its name stands for in a graph's expressions,
+  if anything (a function is a `FunctionBinding`, a point a
+  `PointBinding`);
+- `_render(plane, surface, runtime)`: draw, with one plane call;
+- `references()`: the names its text uses (a draggable point adds its
+  curve's).
+
+**Who compiles.** `PlotObject._live()` returns the compiled runtime and
+the error. An object on its own compiles itself with
+`values.standalone` (built-in names only) and caches the result until
+`_changed()`; an object in a graph asks its *owner* (`_owner`, typed by
+the `Owner` protocol, which `Graph` implements), which compiles the whole
+graph with names. Setters that change text or names call `_changed()`;
+everything read at draw time (styles, visibility, ranges, levels, a
+number, a Python function, an array of data) just changes the attribute,
+so changing them every frame costs nothing.
+
+### Drawing in two phases
+
+`plane.draw(surface)` draws the grid, then the objects in two phases
+(`Plane._draw_objects`): every object's `update(plane)`, then every
+object's `render(plane, surface)`, then all their draggable handles on top
+(`handles(plane)`). The split matters for points: `update` brings a
+draggable point up to date with this frame's drag, so a function drawn
+*before* the point, but reading `a.y`, already sees the new position. A
+graph is itself a `Drawable` (`update` compiles and updates its objects,
+`render` renders them), so `plane.add(graph)` works, and `graph.draw` is
+the same three steps for one graph. `obj.draw(plane, surface)` does them
+for one object.
+
+`render` never breaks a frame: an object with an error is skipped; an
+exception from a plane call (a `ValueError` for an invalid setting) is
+caught and kept as the object's draw error. `_report` issues a
+`PlotWarning` when an object's error appears or changes, through
+`errors.warn`, which walks the stack to the first frame outside the
+package so that the warning points at the program's `plane.draw` line.
+
+**Colours.** An object's colour is its own, or its **palette slot**'s from
+the plane's theme. `plane.add` and `graph.append` give slots in order and
+never reuse them, so colours stay with objects when others are hidden or
+removed; an object drawn with `obj.draw` and no slot takes the frame's
+next colour, like an immediate call.
+
+Since objects draw with stable functions, the plane's
+[plot cache](plotting.md#reusing-plots-between-frames-memopy) reuses
+unchanged plots between frames as for any program; it checks the
+functions' values, so a moved point or a changed parameter is redrawn and
+everything else is not.
+
+### Points and their handles
+
+A `Point` is fixed (numbers), derived (a function of nothing, or one per
+coordinate, or text) or draggable. Its coordinates are read through
+`_coordinate`, which only goes through the compiled runtime for text;
+numbers and functions are read directly, so `p.x` is cheap and setting a
+number never recompiles.
+
+A draggable point is the model: its numbers are the state that dragging
+changes and that a graph saves. On each plane it is drawn on it keeps a
+**handle**, a `DraggablePoint` made with `plane.draggable(...)`, in
+`Point._handles` (a weak dictionary by plane, so planes are freed when the
+program drops them). `points._sync` runs in `update`:
+
+1. A handle whose point's **constraint** (`_settings()`: lock, curve,
+   bounds) changed is made again; a point turned non-draggable, removed or
+   in error loses its handles.
+2. A handle on a curve gets its curve again every frame (a function's graph
+   spans the visible x range, which changes; a curve's function may have
+   changed). The handle keeps its parameter.
+3. If the point's `(x, y, t)` differs from what was last synchronised, the
+   point was **changed by code** (or on another plane): the handle moves
+   to it, unless it is being dragged, since a drag wins.
+4. The point then takes the handle's state (the drag, or the projection of
+   what code set).
+
+With several planes, a drag on one shows up on the others in step 3, as a
+change "by code".
+
+**Curves.** `Function`, `ParametricCurve` and `PolarCurve` are
+`CurveObject`s: `_curve_spec(view, t)` gives the curve a point follows. A
+function's graph is the curve `(t, f(t))` over the visible x range,
+widened by the range's width on both sides (a decade each way on a log
+axis) and always including `t ± 1`, so the point can be dragged anywhere
+on screen. A point follows a curve object directly, a graph's curve by
+name (resolved by the graph's namespace, `Graph._curve_named`), or a curve
+`(x(t), y(t), t_range)` of its own.
+
 ## The graph
 
-### Items and formulas
-
-Each item (`graph/items/`) stores its expressions as `Formula`s: what the
-user gave (text, a Python function or a number) plus the parsed tree of a
-text. Parsing happens when the value is set, so syntax errors are raised
-at once; names are resolved only when the graph compiles, because items may
-refer to items added later.
-
-An item tells the graph what it needs through a few hooks:
-
-- `_formulas()`: its formulas and the variables of each (`x` for a plot,
-  `t` for a parametric curve, none for a point's coordinates);
-- `_runtime(make)`: compiles them with the graph's `make` into what drawing
-  needs (a function, a pair of functions, a getter of points);
-- `_binding(runtime)`: what its name stands for in other expressions, if
-  anything (a plot is a function, a point a `PointBinding`);
-- `references()`: the names it uses (a draggable point adds its curve's).
-
-Setters that change names or expressions call `_changed()`, which drops the
-graph's compiled namespace; the next draw compiles again. Everything read
-at draw time (styles, visibility, ranges, levels, a parameter's number)
-just changes the attribute.
+A `Graph` owns its objects (`_owner`) and adds what a graphing calculator
+has: names, text compiled with them, errors per object, and saving.
+`Parameter` and `Definition` (`graph/definitions.py`) are the items only a
+graph has: they draw nothing and define names.
 
 ### Compiling a graph
 
 `namespace.compile_items` builds a `Namespace` (the compiled runtime of
-each item, the bindings by name, the errors, the curves of draggable
-points) in four steps:
+each object, the bindings by name, the errors, the curves of draggable
+points that follow one by name) in four steps:
 
-1. Each item's **dependencies** are the names it references that name items
-   of the graph (built-ins and registered functions are not items).
-2. **Kahn's algorithm** orders the items after their dependencies, keeping
-   the graph's order where there is a choice. Items left over are in a
-   cycle or depend on one; `_cycle_message` follows the dependencies to say
-   which (`circular definition: f → g → f`, or `depends on 'f', which has an
-   error`).
-3. Items compile in that order, each with the bindings of the items before
-   it. An item whose dependency failed fails with "depends on ...", so one
-   mistake gives one root error and clear messages downstream.
-4. A name used in an expression that names an item without a binding (a
+1. Each object's **dependencies** are the names it references that name
+   objects of the graph (built-ins and registered functions are not
+   objects).
+2. **Kahn's algorithm** orders the objects after their dependencies,
+   keeping the graph's order where there is a choice. Objects left over are
+   in a cycle or depend on one; `_cycle_message` follows the dependencies to
+   say which (`circular definition: f → g → f`, or `depends on 'f', which
+   has an error`).
+3. Objects compile in that order, each with the bindings of the objects
+   before it. An object whose dependency failed fails with "depends on
+   ...", so one mistake gives one root error and clear messages downstream.
+4. A name used in an expression that names an object without a binding (a
    parametric curve, a polygon) is reported as such, rather than as an
    unknown name.
 
 Compiling a typical graph takes well under a millisecond, so it is done
 whenever anything changed, rather than tracking finer dependencies.
-
-### Drawing
-
-`Graph.draw` makes one plane call per visible item (`_draw_item`), with the
-item's style and its colour: its own, or the theme palette's colour for its
-**palette slot**. Slots are given when items are added and never reused
-until `clear()`, so colours stay with items when others are hidden or
-removed, and follow the plane's theme.
-
-Errors never break a frame: compile errors skip the item; an exception
-from a plane call (a `ValueError` for an invalid setting) is caught and
-recorded for that frame. `_warn` issues a `GraphWarning` for an error the
-first time it appears (or changes), and only from `draw`: reading
-`graph.errors` or `item.error` is silent.
-
-Since the graph draws with stable compiled functions, the plane's
-[plot cache](plotting.md#reusing-plots-between-frames-memopy) reuses unchanged plots between frames as for
-any program; it checks the functions' values, so a changed parameter is
-redrawn and an unchanged one is not.
-
-### Draggable points
-
-A `DraggableItem` owns the point's state (position, `t`), which is what is
-saved; the plane owns a `DraggablePoint` per item, created by the graph the
-first time it draws on that plane. `Graph._bound` maps each plane (weakly)
-to `_Bound(point, settings, synced)` per item, and `_sync` runs before
-drawing:
-
-1. A point whose item's **constraint** (`_settings()`: lock, curve, bounds)
-   changed is made again; an item removed or in error loses its point.
-2. A point on a curve gets its curve again every frame (a function's graph
-   spans the visible x range, which changes; a curve's expression may
-   have changed). The point keeps its parameter.
-3. If the item's `(x, y, t)` differs from `synced`, the item was **changed
-   by code** (or by another plane) since the last frame: the point is
-   moved to it, unless it is being dragged, since a drag wins.
-4. The item then takes the point's state (the drag, or the projection of
-   what code set), and `synced` records it.
-
-With several planes, a drag on one shows up on the others in step 3, as a
-change "by code". `remove` and `detach` take points off planes at once.
-
-A point following a curve by name gets a `CurveSource`: a plot `f`
-becomes the curve `(t, f(t))` over the visible x range, widened by the
-range's width on both sides (a decade each way on a log axis) and always
-including `t ± 1`, so the point can be dragged anywhere on screen.
 
 ### Reading lines
 
@@ -218,6 +271,14 @@ only its changed fields). `dumps` writes it as JSON that is easy to edit by
 hand: objects spread over lines, short lists of values on one line, whole
 numbers without `.0`, Unicode as itself. NaN coordinates (gaps) and the
 infinite ends of bounds are written as `null`.
+
+A `Point` is written as kind `"point"` or, when draggable, `"draggable"`
+(its numeric state, constraint and curve), so version 1 files from before
+the objects existed read the same. Python functions, wherever they are
+(a function, a curve's component, a point's coordinate), are written as
+`{"function": name}` when registered and refused otherwise; a point
+following a curve *object* is written with that object's name, which it
+must have, in the same graph.
 
 Reading is strict. `_Reader.take(key, kind)` checks each value's type, and
 `done()` rejects unknown keys, both with the path of the value in the
@@ -245,6 +306,12 @@ and loading a view is exact.
   bindings, primes, NaN logic, suggestions), and **property tests** that
   compile random expression trees and compare them, and their exact
   derivatives, with the same computation written in NumPy.
+- `tests/objects/`: every object drawing pixel for pixel like the plane
+  call it mirrors, alone and on a plane; attributes changing every frame;
+  functions called, composed and differentiated; palette slots; errors and
+  where their warnings point; fixed, derived and draggable points
+  (dragging seen in the same frame, curve objects, toggling, several
+  planes, no planes kept alive).
 - `tests/graph/`: reading lines, names in any order, cycles and errors,
   palette slots, drawing **pixel for pixel identical** to the equivalent
   plane calls, draggable points (dragging, setting, curves by name,
