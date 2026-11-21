@@ -191,27 +191,6 @@ def scene_derivatives(plane: pgp.Plane, surface: pygame.Surface) -> None:
     plane.points(surface, (a, value), edge_color="white")
 
 
-def scene_graph(plane: pgp.Plane, surface: pygame.Surface) -> None:
-    """Draw a graph written as text: names in any order, points, curves, a slider.
-
-    Args:
-        plane: The plane.
-        surface: The surface to draw on.
-    """
-    graph = pgp.Graph()
-    graph.add("y = f'(P.x)(x - P.x) + P.y", width=1.5)  # uses names defined below
-    graph.add("f(x) = a sin(x) + x / 4")
-    graph.add("a = S.y")
-    graph.add("S = (-6, 1.5)", draggable=True, lock="x", y_range=(0.25, 3))
-    graph.draggable(curve="f", t=1.2, name="P", coordinates="always")
-    graph.add("x^2 / 9 + y^2 / 4 = 1", opacity=0.7)
-    graph.add("r = 1 + a cos(3θ) / 2")
-    graph.add("Q = (P.x + 1, f(P.x + 1))")
-    graph.polygon([(3, -3), (5, -3), ("P.x + 3", "-1")], fill_opacity=0.3)
-    graph.polyline([(-6, 0.25), (-6, 3)], width=4, opacity=0.4)
-    graph.draw(plane, surface)
-
-
 def scene_objects(plane: pgp.Plane, surface: pygame.Surface) -> None:
     """Draw a picture made of objects: points driving a wave, a tangent, a circle.
 
@@ -230,7 +209,9 @@ def scene_objects(plane: pgp.Plane, surface: pygame.Surface) -> None:
     tangent = pgp.Function(
         lambda x: slope(runner.x) * (x - runner.x) + runner.y, width=1.5
     )
-    circle = pgp.ParametricCurve("4 + 1.5cos(t)", "-3 + 1.5sin(t)")
+    circle = pgp.ParametricCurve(
+        lambda t: 4 + 1.5 * np.cos(t), lambda t: -3 + 1.5 * np.sin(t)
+    )
     on_circle = pgp.Point(curve=circle, t=2.2, draggable=True)
     radius = pgp.Polyline([(4, -3), (lambda: on_circle.x, lambda: on_circle.y)])
     plane.add(wave, tangent, circle, radius, crest, height, runner, on_circle)
@@ -246,7 +227,6 @@ SCENES: dict[str, Scene] = {
     "implicit": scene_implicit,
     "draggable": scene_draggable,
     "derivatives": scene_derivatives,
-    "graph": scene_graph,
     "objects": scene_objects,
 }
 
@@ -344,9 +324,7 @@ VIEWS: tuple[GalleryView, ...] = (
         scale=(2e3, 400.0),
         scene="derivatives",
     ),
-    GalleryView("52_graph", scale=60.0, scene="graph"),
-    GalleryView("53_graph_dark", scale=60.0, theme="dark", scene="graph"),
-    GalleryView("54_objects", scale=60.0, scene="objects"),
+    GalleryView("52_objects", scale=60.0, scene="objects"),
 )
 
 

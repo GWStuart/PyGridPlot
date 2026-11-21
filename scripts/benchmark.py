@@ -131,77 +131,38 @@ BIG, SMALL, PEN = 2.5, 0.9, 1.6
 """Wheel sizes of the spirograph (a hypotrochoid) case."""
 
 
-GRAPH_LINES = (
-    "a = 1.5",
-    "f(x) = a sin(x) + x / 4",
-    "y = f'(x)",
-    "y = f'(P.x)(x - P.x) + P.y",
-    "(3cos(t) + cos(3t), 2sin(t))",
-    "r = 1 + cos(3θ) / 2",
-    "x^2 / 9 + y^2 / 4 = 1",
-    "Q = (P.x + 1, f(P.x + 1))",
-)
-"""A typical graph: parameters, plots, a derivative, curves and points."""
-
-
-def graph_for(**options: object) -> pgp.Graph:
-    """Return the graph of :data:`GRAPH_LINES`, with a draggable point P."""
-    graph = pgp.Graph()
-    for line in GRAPH_LINES:
-        graph.add(line)
-    graph.draggable(curve="f", t=1.2, name="P", **options)  # type: ignore[arg-type]
-    return graph
-
-
-def by_hand(plane: pgp.Plane, surface: pygame.Surface) -> None:
-    """Draw what :func:`graph_for` holds with plane calls written in NumPy."""
-    point = by_hand.point  # type: ignore[attr-defined]
-    a = 1.5
-
-    def f(x: np.ndarray) -> np.ndarray:
-        return a * np.sin(x) + x / 4
-
-    df = pgp.derivative(f)
-    plane.plot(surface, f)
-    plane.plot(surface, df)
-    px, py = point.position
-    slope = float(df(np.array([px]))[0])
-    plane.plot(surface, lambda x: slope * (x - px) + py)
-    plane.parametric(
-        surface,
-        lambda t: 3 * np.cos(t) + np.cos(3 * t),
-        lambda t: 2 * np.sin(t),
-        (0, 2 * math.pi),
-    )
-    plane.polar(surface, lambda th: 1 + np.cos(3 * th) / 2)
-    plane.implicit(surface, lambda x, y: x**2 / 9 + y**2 / 4, 1.0)
-    plane.points(surface, [(px + 1, float(f(np.array([px + 1]))[0]))])
-    plane.draw_draggables(surface, point)
-
-
-def graph_case(*, cache: bool = False) -> Case:
-    """Draw the grid and the graph of :data:`GRAPH_LINES`."""
-    plane = plane_for(scale=60.0, cache=cache)
-    graph = graph_for()
-
-    def run(surface: pygame.Surface) -> None:
-        plane.draw_grid(surface)
-        graph.draw(plane, surface)
-
-    return run
+def wave(x: np.ndarray) -> np.ndarray:
+    """The function of the objects cases."""
+    return 1.5 * np.sin(x) + x / 4
 
 
 def by_hand_case() -> Case:
-    """Draw the grid and the same as :func:`graph_case`, by hand."""
+    """Draw a typical picture with plane calls every frame.
+
+    A function, its derivative, the tangent at a draggable point on it, a
+    parametric, a polar and an implicit curve, and a point that follows.
+    :func:`objects_case` draws the same with objects.
+    """
     plane = plane_for(scale=60.0)
-    f = pgp.expression("1.5 sin(x) + x / 4")
-    by_hand.point = plane.draggable(  # type: ignore[attr-defined]
-        curve=(lambda t: t, f, (-30.0, 30.0)), t=1.2
-    )
+    point = plane.draggable(curve=(lambda t: t, wave, (-30.0, 30.0)), t=1.2)
+    slope = pgp.derivative(wave)
 
     def run(surface: pygame.Surface) -> None:
         plane.draw_grid(surface)
-        by_hand(plane, surface)
+        px, py = point.position
+        plane.plot(surface, wave)
+        plane.plot(surface, slope)
+        plane.plot(surface, lambda x: slope(px) * (x - px) + py)
+        plane.parametric(
+            surface,
+            lambda t: 3 * np.cos(t) + np.cos(3 * t),
+            lambda t: 2 * np.sin(t),
+            (0, 2 * math.pi),
+        )
+        plane.polar(surface, lambda th: 1 + np.cos(3 * th) / 2)
+        plane.implicit(surface, lambda x, y: x**2 / 9 + y**2 / 4, 1.0)
+        plane.points(surface, [(px + 1, wave(px + 1))])
+        plane.draw_draggables(surface, point)
 
     return run
 
@@ -209,33 +170,22 @@ def by_hand_case() -> Case:
 def objects_case(*, cache: bool = False) -> Case:
     """Draw the same picture as :func:`by_hand_case`, made of objects."""
     plane = plane_for(scale=60.0, cache=cache)
-    a = 1.5
-    f = pgp.Function(lambda x: a * np.sin(x) + x / 4)
+    f = pgp.Function(wave)
     point = pgp.Point(curve=f, t=1.2, draggable=True)
     slope = f.derivative()
     plane.add(
         f,
         pgp.Function(slope),
         pgp.Function(lambda x: slope(point.x) * (x - point.x) + point.y),
-        pgp.ParametricCurve(lambda t: 3 * np.cos(t) + np.cos(3 * t), "2sin(t)"),
+        pgp.ParametricCurve(
+            lambda t: 3 * np.cos(t) + np.cos(3 * t), lambda t: 2 * np.sin(t)
+        ),
         pgp.PolarCurve(lambda th: 1 + np.cos(3 * th) / 2),
         pgp.ImplicitCurve(lambda x, y: x**2 / 9 + y**2 / 4, 1.0),
         pgp.Point(lambda: (point.x + 1, f(point.x + 1))),
         point,
     )
     return plane.draw
-
-
-def compile_case() -> Case:
-    """Compile the graph of :data:`GRAPH_LINES` again, as after any edit."""
-    graph = graph_for()
-    first = graph.items[1]
-
-    def run(surface: pygame.Surface) -> None:
-        first.func = first.func  # type: ignore[attr-defined]
-        assert not graph.errors  # compiles
-
-    return run
 
 
 def cases() -> dict[str, Case]:
@@ -323,12 +273,9 @@ def cases() -> dict[str, Case]:
             ),
             scale=60.0,
         ),
-        "graph: 8 lines + point": graph_case(),
-        "graph: same, by hand": by_hand_case(),
-        "graph: compile 8 lines": compile_case(),
-        "objects: same, as objects": objects_case(),
+        "picture by hand": by_hand_case(),
+        "picture as objects": objects_case(),
         "cached: idle objects": objects_case(cache=True),
-        "cached: idle graph": graph_case(cache=True),
         "points 2000": plot_case(
             lambda p, s: p.points(s, np.column_stack((xs, np.sin(xs))))
         ),

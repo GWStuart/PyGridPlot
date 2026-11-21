@@ -14,8 +14,6 @@ setting with its parameters and defaults.
 - Derivatives: [`derivative`](#derivative), [`derivatives`](#derivatives)
 - Draggable points: [`DraggablePoint`](#draggablepoint)
 - Objects: [`Function`](#function), [`ParametricCurve`](#parametriccurve), [`PolarCurve`](#polarcurve), [`ImplicitCurve`](#implicitcurve), [`Point`](#point), [`Points`](#points), [`Polyline`](#polyline), [`Polygon`](#polygon), [`PlotWarning`](#plotwarning), [`objects.PlotObject`](#objectsplotobject), [`objects.StyledObject`](#objectsstyledobject), [`objects.LineObject`](#objectslineobject), [`objects.MarkerObject`](#objectsmarkerobject)
-- Graphs: [`Graph`](#graph), [`GraphView`](#graphview), [`GraphError`](#grapherror), [`graph.Parameter`](#graphparameter), [`graph.Definition`](#graphdefinition)
-- Expressions: [`expression`](#expression), [`ExpressionError`](#expressionerror), [`core.expr.CompiledExpression`](#coreexprcompiledexpression)
 - Styles: [`LineStyle`](#linestyle), [`PointStyle`](#pointstyle), [`PolygonStyle`](#polygonstyle)
 - Themes: [`GridTheme`](#gridtheme), [`LIGHT`](#light), [`DARK`](#dark), [`NumberFormat`](#numberformat)
 - Configuration: [`InteractionConfig`](#interactionconfig), [`KeyBindings`](#keybindings), [`SamplingConfig`](#samplingconfig), [`CurveSampling`](#curvesampling), [`ImplicitSampling`](#implicitsampling), [`ViewLimits`](#viewlimits), [`CacheStats`](#cachestats)
@@ -503,7 +501,7 @@ The initial view can be given like a graphing calculator's window settings, `x_r
 
   Keep objects on the plane, to draw every frame with `draw`.
 
-  Objects are the functions, curves and points of `objects` (`pgp.Function(np.sin)`, `pgp.Point((1, 2), draggable=True)`, ...) and whole graphs. They are drawn in the order they were added. An object without a colour gets the plane's next palette slot, so it keeps its colour when others are hidden or removed.
+  Objects are the functions, curves and points of `objects` (`pgp.Function(np.sin)`, `pgp.Point((1, 2), draggable=True)`, ...). They are drawn in the order they were added. An object without a colour gets the plane's next palette slot, so it keeps its colour when others are hidden or removed.
 
   *Parameters:*
 
@@ -515,7 +513,7 @@ The initial view can be given like a graphing calculator's window settings, `x_r
   *Raises:*
 
   - `TypeError`: If something is not an object a plane can draw.
-  - `ValueError`: If an object is already on the plane, or belongs to a graph (add the graph instead).
+  - `ValueError`: If an object is already on the plane.
 
 - **`plane.remove()`**
 
@@ -649,7 +647,7 @@ The initial view can be given like a graphing calculator's window settings, `x_r
 
 ```py
 pgp.show(
-    *functions: FunctionLike | str | Drawable,
+    *functions: FunctionLike | Drawable,
     size: tuple[int, int] = (960, 640),
     title: str = 'PyGridPlot',
     theme: GridTheme | None = None,
@@ -666,11 +664,11 @@ pgp.show(
 
 Open a window, draw what is given and run until the window is closed.
 
-Each function or line gets the next colour of the theme's palette. The view options are the same as `Plane`'s, for example `show(np.exp, log_y=True)` or `show(np.sin, x_range=(0, 10))`.
+Each function or object without a colour gets the next colour of the theme's palette. The view options are the same as `Plane`'s, for example `show(np.exp, log_y=True)` or `show(np.sin, x_range=(0, 10))`.
 
 *Parameters:*
 
-- `*functions`: What to draw: functions `y = f(x)`, lines of maths as `Graph.add` reads them (`"x^2 + y^2 = 9"`), objects (`pgp.Point((1, 2), draggable=True)`, ...), or whole `Graph` objects (a graph with a saved view opens at it, unless view options are given).
+- `*functions`: What to draw: functions `y = f(x)`, or objects (`pgp.ImplicitCurve(...)`, `pgp.Point((1, 2), draggable=True)`, ...).
 - `size`: Initial window size in pixels.
 - `title`: Window title.
 - `theme`: Plane appearance (defaults to `LIGHT`).
@@ -680,12 +678,8 @@ Each function or line gets the next colour of the theme's palette. The view opti
 - `log_y`: Make the y axis logarithmic.
 - `center`: World point initially at the middle of the window.
 - `scale`: Initial pixels per world unit (per decade on a log axis).
-- `width`: Line width in pixels for the functions and lines (default 2.5).
+- `width`: Line width in pixels for the functions (default 2.5).
 - `fps`: Frame-rate cap.
-
-*Raises:*
-
-- `ExpressionError`: If a line is not valid.
 
 ## Derivatives
 
@@ -917,15 +911,14 @@ Create points with `Plane.draggable` rather than directly: the plane then routes
 
 ## Objects
 
-Functions, curves and points made once and changed through their attributes: `plane.add` them and `plane.draw` draws them every frame, or put them in a graph (see [Objects](objects.md)).
+Functions, curves and points made once and changed through their attributes: `plane.add` them and `plane.draw` draws them every frame (see [Objects](objects.md)).
 
 ### Function
 
 ```py
 pgp.Function(
-    func: Expression,
+    func: Callable[[Any], Any],
     *,
-    name: str | None = None,
     domain: tuple[float, float] | None = None,
     color: Any = None,
     width: float | None = None,
@@ -939,12 +932,11 @@ pgp.Function(
 
 The graph of a function, `y = f(x)`, drawn like `Plane.plot`.
 
-The object is itself a function: `f(2.0)` evaluates it, so it can be used in other functions (`pgp.Function(lambda x: f(x) ** 2)`) and differentiated (`pgp.derivative(f)`, or `derivative`). In a graph, a named function can also be used by name: `"f(x - 1)"`, `"f'(x)"`.
+The object is itself a function: `f(2.0)` evaluates it, so it can be used in other functions (`pgp.Function(lambda x: f(x) ** 2)`) and differentiated (`pgp.derivative(f)`, or `derivative`).
 
 *Parameters:*
 
-- `func`: `f`: a Python function of `x` (NumPy or `math`), or text in `x` (`"a sin(x)"`, see the expression language).
-- `name`: The function's name (optional).
+- `func`: `f`: a function of `x`, written with NumPy or `math`.
 - `domain`: Draw only for `x` in `(start, end)`.
 - `color`: Line colour (default: the object's palette colour).
 - `width`: Line width in pixels.
@@ -952,13 +944,13 @@ The object is itself a function: `f(2.0)` evaluates it, so it can be used in oth
 - `style`: A `LineStyle`; the other arguments override its fields.
 - `sampling`: How the function is sampled (see `SamplingConfig`); default: the plane's.
 - `visible`: Whether it is drawn.
-- `palette`: Palette slot (normally chosen by the plane or graph).
+- `palette`: Palette slot (normally chosen by the plane).
 
 #### Members of `Function`
 
-- **`function.func`** (`Expression`, read and write)
+- **`function.func`** (`Callable[[Any], Any]`, read and write)
 
-  `f`: the Python function, or the text in `x`.
+  `f`: the function of `x`.
 
 - **`function.domain`** (`tuple[float, float] | None`, read and write)
 
@@ -974,7 +966,7 @@ The object is itself a function: `f(2.0)` evaluates it, so it can be used in oth
   function.derivative(n: int = 1) -> Derivative
   ```
 
-  Return the `n`-th derivative (exact for NumPy functions and text).
+  Return the `n`-th derivative (exact for functions written with NumPy).
 
   It follows the function: changing `func` changes it too.
 
@@ -990,11 +982,10 @@ Also has the members of [`LineObject`](#objectslineobject), [`StyledObject`](#ob
 
 ```py
 pgp.ParametricCurve(
-    x: Expression | float,
-    y: Expression | float,
+    x: Component,
+    y: Component,
     t_range: tuple[float, float] = (0.0, 6.283185307179586),
     *,
-    name: str | None = None,
     color: Any = None,
     width: float | None = None,
     opacity: float | None = None,
@@ -1011,27 +1002,26 @@ Calling it gives the point at a parameter: `c(0.5)` is `(x, y)`.
 
 *Parameters:*
 
-- `x`: `x(t)`: a Python function of `t`, text in `t`, or a number.
+- `x`: `x(t)`: a function of `t`, or a number.
 - `y`: `y(t)`: likewise.
 - `t_range`: `(t_min, t_max)`; one full turn by default.
-- `name`: The curve's name (optional).
 - `color`: Line colour (default: the object's palette colour).
 - `width`: Line width in pixels.
 - `opacity`: Line opacity.
 - `style`: A `LineStyle`.
 - `sampling`: How the curve is sampled (see `CurveSampling`).
 - `visible`: Whether it is drawn.
-- `palette`: Palette slot (normally chosen by the plane or graph).
+- `palette`: Palette slot (normally chosen by the plane).
 
 #### Members of `ParametricCurve`
 
-- **`parametricCurve.x`** (`Expression | float`, read and write)
+- **`parametricCurve.x`** (`Component`, read and write)
 
-  `x(t)`: a function, text or a number.
+  `x(t)`: a function of `t`, or a number.
 
-- **`parametricCurve.y`** (`Expression | float`, read and write)
+- **`parametricCurve.y`** (`Component`, read and write)
 
-  `y(t)`: a function, text or a number.
+  `y(t)`: a function of `t`, or a number.
 
 - **`parametricCurve.t_range`** (`tuple[float, float]`, read and write)
 
@@ -1047,10 +1037,9 @@ Also has the members of [`LineObject`](#objectslineobject), [`StyledObject`](#ob
 
 ```py
 pgp.PolarCurve(
-    r: Expression | float,
+    r: Component,
     theta_range: tuple[float, float] = (0.0, 6.283185307179586),
     *,
-    name: str | None = None,
     color: Any = None,
     width: float | None = None,
     opacity: float | None = None,
@@ -1063,26 +1052,25 @@ pgp.PolarCurve(
 
 A polar curve `r = r(θ)`, drawn like `Plane.polar`.
 
-Calling it gives the radius at an angle: `R(math.pi)`. In text, the angle is written `θ` or `theta`.
+Calling it gives the radius at an angle: `R(math.pi)`.
 
 *Parameters:*
 
-- `r`: `r(θ)`: a Python function of `θ`, text in `θ`, or a number.
+- `r`: `r(θ)`: a function of the angle, or a number (a circle).
 - `theta_range`: `(θ_min, θ_max)`; one full turn by default.
-- `name`: The curve's name (optional).
 - `color`: Line colour (default: the object's palette colour).
 - `width`: Line width in pixels.
 - `opacity`: Line opacity.
 - `style`: A `LineStyle`.
 - `sampling`: How the curve is sampled (see `CurveSampling`).
 - `visible`: Whether it is drawn.
-- `palette`: Palette slot (normally chosen by the plane or graph).
+- `palette`: Palette slot (normally chosen by the plane).
 
 #### Members of `PolarCurve`
 
-- **`polarCurve.r`** (`Expression | float`, read and write)
+- **`polarCurve.r`** (`Component`, read and write)
 
-  `r(θ)`: a function, text or a number.
+  `r(θ)`: a function of the angle, or a number.
 
 - **`polarCurve.theta_range`** (`tuple[float, float]`, read and write)
 
@@ -1098,10 +1086,9 @@ Also has the members of [`LineObject`](#objectslineobject), [`StyledObject`](#ob
 
 ```py
 pgp.ImplicitCurve(
-    func: Expression,
+    func: Callable[[Any, Any], Any],
     level: float | Sequence[float] = 0.0,
     *,
-    name: str | None = None,
     color: Any = None,
     width: float | None = None,
     opacity: float | None = None,
@@ -1114,26 +1101,25 @@ pgp.ImplicitCurve(
 
 An implicit curve `F(x, y) = level`, drawn like `Plane.implicit`.
 
-Calling it evaluates `F`: `F(1.0, 2.0)`. A named implicit curve in a graph also defines `F(x, y)` for other expressions.
+Calling it evaluates `F`: `F(1.0, 2.0)`.
 
 *Parameters:*
 
-- `func`: `F`: a Python function of `x` and `y`, or text in both.
+- `func`: `F`: a function of `x` and `y`.
 - `level`: The value of `F` on the curve, or several values (contour lines).
-- `name`: `F`'s name (optional).
 - `color`: Line colour (default: the object's palette colour).
 - `width`: Line width in pixels.
 - `opacity`: Line opacity.
 - `style`: A `LineStyle`.
 - `sampling`: How the curve is found (see `ImplicitSampling`).
 - `visible`: Whether it is drawn.
-- `palette`: Palette slot (normally chosen by the plane or graph).
+- `palette`: Palette slot (normally chosen by the plane).
 
 #### Members of `ImplicitCurve`
 
-- **`implicitCurve.func`** (`Expression`, read and write)
+- **`implicitCurve.func`** (`Callable[[Any, Any], Any]`, read and write)
 
-  `F`: the Python function, or the text in `x` and `y`.
+  `F`: the function of `x` and `y`.
 
 - **`implicitCurve.level`** (`float | tuple[float, ...]`, read and write)
 
@@ -1157,7 +1143,6 @@ pgp.Point(
     t: float | None = None,
     x_range: Range | None = None,
     y_range: Range | None = None,
-    name: str | None = None,
     color: Any = None,
     radius: float | None = None,
     marker: Any = None,
@@ -1174,18 +1159,17 @@ pgp.Point(
 
 A point: fixed, following other objects, or dragged with the mouse.
 
-Read its position at any time as `x`, `y` or `position` (numbers, also for derived and dragged points), and use it in other objects: `pgp.Function(lambda x: a.y * np.sin(x - a.x))` follows `a` as it moves. In a graph, a named point is `P.x` and `P.y` in expressions.
+Read its position at any time as `x`, `y` or `position` (numbers, also for derived and dragged points), and use it in other objects: `pgp.Function(lambda x: a.y * np.sin(x - a.x))` follows `a` as it moves.
 
 *Parameters:*
 
-- `position`: `(x, y)`: numbers; or, for a point that follows others, coordinates that are functions of nothing or text, or one function returning `(x, y)`. A draggable point needs numbers, and may leave it out on a curve.
+- `position`: `(x, y)`: numbers; or, for a point that follows others, coordinates that are functions of nothing, or one function returning `(x, y)`. A draggable point needs numbers, and may leave it out on a curve.
 - `draggable`: Whether the user can drag it.
 - `lock`: `"x"` keeps x fixed, `"y"` keeps y fixed (draggable only).
-- `curve`: Keep a draggable point on a curve: a `Function`, `ParametricCurve` or `PolarCurve` object, a graph's curve by name, or `(x(t), y(t), t_range)`.
+- `curve`: Keep a draggable point on a curve: a `Function`, `ParametricCurve` or `PolarCurve` object, or `(x(t), y(t), t_range)`.
 - `t`: Starting parameter on the curve.
 - `x_range`: Bounds for x of a draggable point.
 - `y_range`: Bounds for y of a draggable point.
-- `name`: The point's name (optional).
 - `color`: Fill colour (default: the object's palette colour).
 - `radius`: Marker size in pixels.
 - `marker`: Marker shape.
@@ -1196,7 +1180,7 @@ Read its position at any time as `x`, `y` or `position` (numbers, also for deriv
 - `coordinates`: Show a draggable point's coordinates `"hover"`, `"always"` or `"never"`.
 - `enabled`: Whether a draggable point can be dragged (it is drawn either way).
 - `visible`: Whether it is drawn (a hidden point cannot be dragged).
-- `palette`: Palette slot (normally chosen by the plane or graph).
+- `palette`: Palette slot (normally chosen by the plane).
 
 *Raises:*
 
@@ -1216,11 +1200,7 @@ Read its position at any time as `x`, `y` or `position` (numbers, also for deriv
 
   The current position as numbers (`None` before a curve point is placed).
 
-  Setting it accepts what the constructor does: numbers, functions or text (numbers only for a draggable point, which goes to the nearest allowed position when next drawn).
-
-- **`point.source`** (`Any`, read only)
-
-  The position as given: a pair, or a function returning one.
+  Setting it accepts what the constructor does: numbers, or functions for a point that follows others (numbers only for a draggable point, which goes to the nearest allowed position when next drawn).
 
 - **`point.t`** (`float | None`, read and write)
 
@@ -1236,7 +1216,7 @@ Read its position at any time as `x`, `y` or `position` (numbers, also for deriv
 
   Whether the user can drag the point.
 
-  Turning it on needs a numeric position (or a curve); turning it off takes its handles off every plane, keeping the position.
+  Turning it on needs a position of numbers (or a curve); turning it off takes its handles off every plane, keeping the position.
 
 - **`point.lock`** (`Lock | None`, read and write)
 
@@ -1244,7 +1224,7 @@ Read its position at any time as `x`, `y` or `position` (numbers, also for deriv
 
 - **`point.curve`** (`CurveTarget | None`, read and write)
 
-  The curve followed: an object, a name, or `(x, y, t_range)` as given.
+  The curve followed: a curve object, or `(x, y, t_range)` as given.
 
 - **`point.x_range`** (`Range | None`, read and write)
 
@@ -1286,14 +1266,6 @@ Read its position at any time as `x`, `y` or `position` (numbers, also for deriv
 
   Take the point's handle off `plane`.
 
-- **`point.references()`**
-
-  ```py
-  point.references() -> set[str]
-  ```
-
-  Return the names of other objects this point refers to (its curve's).
-
 Also has the members of [`MarkerObject`](#objectsmarkerobject), [`StyledObject`](#objectsstyledobject), [`PlotObject`](#objectsplotobject).
 
 ### Points
@@ -1302,7 +1274,6 @@ Also has the members of [`MarkerObject`](#objectsmarkerobject), [`StyledObject`]
 pgp.Points(
     points: Any,
     *,
-    name: str | None = None,
     color: Any = None,
     radius: float | None = None,
     marker: Any = None,
@@ -1319,8 +1290,7 @@ Several points, drawn like `Plane.points`.
 
 *Parameters:*
 
-- `points`: `(x, y)` pairs or an `(N, 2)` array; each coordinate a number, a function of nothing, or text without variables.
-- `name`: The object's name (optional).
+- `points`: `(x, y)` pairs or an `(N, 2)` array; each coordinate a number or a function of nothing.
 - `color`: Fill colour (default: the object's palette colour).
 - `radius`: Marker size in pixels.
 - `marker`: Marker shape.
@@ -1329,7 +1299,7 @@ Several points, drawn like `Plane.points`.
 - `opacity`: Opacity.
 - `style`: A `PointStyle`.
 - `visible`: Whether it is drawn.
-- `palette`: Palette slot (normally chosen by the plane or graph).
+- `palette`: Palette slot (normally chosen by the plane).
 
 Also has the members of [`MarkerObject`](#objectsmarkerobject), [`StyledObject`](#objectsstyledobject), [`PlotObject`](#objectsplotobject).
 
@@ -1340,7 +1310,6 @@ pgp.Polyline(
     points: Any,
     *,
     closed: bool = False,
-    name: str | None = None,
     color: Any = None,
     width: float | None = None,
     opacity: float | None = None,
@@ -1354,15 +1323,14 @@ Points joined by straight lines, drawn like `Plane.polyline`.
 
 *Parameters:*
 
-- `points`: The vertices: `(x, y)` pairs or an `(N, 2)` array; each coordinate a number, a function of nothing, or text.
+- `points`: The vertices: `(x, y)` pairs or an `(N, 2)` array; each coordinate a number or a function of nothing.
 - `closed`: Join the last point back to the first.
-- `name`: The object's name (optional).
 - `color`: Line colour (default: the object's palette colour).
 - `width`: Line width in pixels.
 - `opacity`: Line opacity.
 - `style`: A `LineStyle`.
 - `visible`: Whether it is drawn.
-- `palette`: Palette slot (normally chosen by the plane or graph).
+- `palette`: Palette slot (normally chosen by the plane).
 
 #### Members of `Polyline`
 
@@ -1378,7 +1346,6 @@ Also has the members of [`LineObject`](#objectslineobject), [`StyledObject`](#ob
 pgp.Polygon(
     points: Any,
     *,
-    name: str | None = None,
     color: Any = None,
     width: float | None = None,
     opacity: float | None = None,
@@ -1396,8 +1363,7 @@ A filled polygon with an outline, drawn like `Plane.polygon`.
 
 *Parameters:*
 
-- `points`: The vertices: `(x, y)` pairs or an `(N, 2)` array; each coordinate a number, a function of nothing, or text.
-- `name`: The object's name (optional).
+- `points`: The vertices: `(x, y)` pairs or an `(N, 2)` array; each coordinate a number or a function of nothing.
 - `color`: Outline (and fill) colour (default: the palette colour).
 - `width`: Outline thickness in pixels (0 for none).
 - `opacity`: Outline opacity.
@@ -1407,7 +1373,7 @@ A filled polygon with an outline, drawn like `Plane.polygon`.
 - `fill_rule`: `"nonzero"` or `"evenodd"`.
 - `style`: A `PolygonStyle`.
 - `visible`: Whether it is drawn.
-- `palette`: Palette slot (normally chosen by the plane or graph).
+- `palette`: Palette slot (normally chosen by the plane).
 
 #### Members of `Polygon`
 
@@ -1436,50 +1402,24 @@ An object could not be drawn, and was skipped (see its `error`).
 ### objects.PlotObject
 
 ```py
-pgp.objects.PlotObject(*, name: str | None = None, visible: bool = True)
+pgp.objects.PlotObject(*, visible: bool = True)
 ```
 
-Something to draw (or, in a graph, a name defined for other objects).
+Something to draw, made once and changed through its attributes.
 
-Objects are made once and changed through their attributes; every attribute is read when the object is drawn. Draw them by adding them to a plane (`plane.add(obj)`, then `plane.draw(screen)` every frame), by putting them in a `Graph`, or one at a time with `draw`.
-
-Subclasses describe themselves through a few hooks: `_formulas()` (their formulas, with the variables of each), `_runtime(make)` (compile them with `make` into what drawing needs), `_binding(runtime)` (what their name stands for in a graph's expressions, if anything), `_render(plane, surface, runtime)` (draw) and `_describe()` (for `repr`). Setters that change names or expressions call `_changed()`.
-
-*Attributes:*
-
-- `kind`: The kind of object, as written in saved graphs (`"plot"`, ...).
+Every attribute is read when the object is drawn. Draw objects by adding them to a plane (`plane.add(obj)`, then `plane.draw(screen)` every frame), or one at a time with `draw`.
 
 #### Members of `PlotObject`
 
-- **`plotObject.name`** (`str | None`, read and write)
-
-  The object's name (`None` if unnamed).
-
-  In a graph, other objects' expressions refer to it by this name. Renaming does not rewrite expressions that used the old name.
-
 - **`plotObject.visible`** (`bool`, read and write)
 
-  Whether the object is drawn (a hidden object in a graph keeps its name).
-
-- **`plotObject.graph`** (`Owner | None`, read only)
-
-  The `Graph` the object belongs to, if any.
+  Whether the object is drawn.
 
 - **`plotObject.error`** (`str | None`, read only)
 
-  Why the object cannot be drawn, or `None` if it can.
+  Why the object could not be drawn the last time, or `None`.
 
-  For example `"unknown name 'b'"` or `"circular definition: f → g → f"`. Errors in expressions are always up to date; the rare errors found only when drawing (an invalid setting for a plane) are those of the last time the object was drawn.
-
-- **`plotObject.references()`**
-
-  ```py
-  plotObject.references() -> set[str]
-  ```
-
-  Return the names of other objects this object's expressions use.
-
-  *Returns:* The names used in its text, besides variables and built-ins (only meaningful in a graph).
+  For example an invalid setting for the plane (an object is never stopped by its own functions: as for the plane's methods, a function that raises or returns NaN leaves a gap).
 
 - **`plotObject.update()`**
 
@@ -1489,7 +1429,7 @@ Subclasses describe themselves through a few hooks: `_formulas()` (their formula
 
   Prepare to draw on a plane: the first half of `draw`.
 
-  A plane (or graph) updates every object before rendering any, so that an object reading a draggable point sees where it was dragged this frame. Programs normally call `draw`, or let the plane do it.
+  A plane updates every object before rendering any, so that an object reading a draggable point sees where it was dragged this frame. Programs normally call `draw`, or let the plane do it.
 
   *Parameters:*
 
@@ -1503,7 +1443,7 @@ Subclasses describe themselves through a few hooks: `_formulas()` (their formula
 
   Draw onto a plane: the second half of `draw`.
 
-  A hidden object or one with an error draws nothing; an error is reported with a `PlotWarning` the first time it appears.
+  A hidden object draws nothing. If the plane refuses to draw it, the error is kept in `error` and reported with a `PlotWarning` the first time it appears.
 
   *Parameters:*
 
@@ -1559,7 +1499,6 @@ pgp.objects.StyledObject(
     style: Any = None,
     overrides: dict[str, Any] | None = None,
     palette: int | None = None,
-    name: str | None = None,
     visible: bool = True,
     default: Any = None,
 )
@@ -1567,7 +1506,7 @@ pgp.objects.StyledObject(
 
 An object drawn with a style: a line, a point or a polygon style.
 
-An object without a colour takes the colour of its *palette slot* from the plane's theme. A plane or graph gives each object it is given the next slot, so colours stay with their objects when others are hidden or removed, and follow the theme; an object drawn without one takes the next colour of the frame, like the plane's drawing methods.
+An object without a colour takes the colour of its *palette slot* from the plane's theme. A plane gives each object added to it the next slot, so colours stay with their objects when others are hidden or removed, and follow the theme; an object drawn without one takes the next colour of the frame, like the plane's drawing methods.
 
 #### Members of `StyledObject`
 
@@ -1597,7 +1536,6 @@ pgp.objects.LineObject(
     style: Any = None,
     overrides: dict[str, Any] | None = None,
     palette: int | None = None,
-    name: str | None = None,
     visible: bool = True,
     default: Any = None,
 )
@@ -1621,7 +1559,6 @@ pgp.objects.MarkerObject(
     style: Any = None,
     overrides: dict[str, Any] | None = None,
     palette: int | None = None,
-    name: str | None = None,
     visible: bool = True,
     default: Any = None,
 )
@@ -1648,855 +1585,6 @@ An object drawn as markers, with a `PointStyle`.
   The outline's thickness, in pixels.
 
 Also has the members of [`StyledObject`](#objectsstyledobject), [`PlotObject`](#objectsplotobject).
-
-## Graphs
-
-Named lists of objects, with lines of maths, names usable in any order and saving as JSON (see the [graphs guide](graphs.md)). `Parameter` and `Definition` are the items only a graph has.
-
-### Graph
-
-```py
-pgp.Graph(
-    *,
-    functions: Mapping[str, Callable[..., Any]] | None = None,
-    view: GraphView | None = None,
-)
-```
-
-An ordered list of named objects: functions, curves, points, parameters, ...
-
-Add objects with `add` (one line of maths, `"y = x^2"`), with the method for each kind (`plot`, `parametric`, `polar`, `implicit`, `point`, `points`, `polyline`, `polygon`, `draggable`, `parameter`, `define`), which take the same arguments as the plane's methods, or with `append` for an object made on its own (`graph.append(pgp.Function(np.sin))`). Each is returned, and can be changed afterwards; `graph["name"]` finds a named one.
-
-Expressions are text in the expression language (`"a sin(x - P.x)"`, see `core.expr`) and may use the names of other items, in any order, and Python functions registered with `register` (or `functions=`). Python functions can also be given directly in place of an expression's text; such a graph can be drawn but only saved if the functions are registered.
-
-`draw` draws the graph onto a plane (or add it to one: `plane.add(graph)`); `save` and `load` (or `to_json` and `from_json`) keep it in a file.
-
-*Parameters:*
-
-- `functions`: Python functions that expressions can call, by name.
-- `view`: What the graph is meant to be seen at (see `GraphView`).
-
-#### Members of `Graph`
-
-- **`graph.items`** (`tuple[PlotObject, ...]`, read only)
-
-  The items, in drawing order.
-
-- **`graph.get()`**
-
-  ```py
-  graph.get(name: str, default: PlotObject | None = None) -> PlotObject | None
-  ```
-
-  Return the item with a name, or `default`.
-
-  *Parameters:*
-
-  - `name`: The name.
-  - `default`: What to return if no item has it.
-
-  *Returns:* The item, or `default`.
-
-- **`graph.append()`**
-
-  ```py
-  graph.append(item: ItemT, *, index: int | None = None) -> ItemT
-  ```
-
-  Add an object made on its own (or taken from another graph).
-
-  *Parameters:*
-
-  - `item`: The object.
-  - `index`: Its position (default: last).
-
-  *Returns:* The object.
-
-  *Raises:*
-
-  - `GraphError`: If it already belongs to a graph, or its name is taken.
-
-- **`graph.remove()`**
-
-  ```py
-  graph.remove(item: PlotObject | str) -> PlotObject
-  ```
-
-  Remove an item (by itself or by name).
-
-  A draggable point's handles are taken off every plane at once.
-
-  *Parameters:*
-
-  - `item`: The item or its name.
-
-  *Returns:* The removed item.
-
-  *Raises:*
-
-  - `KeyError`: If the item is not in the graph.
-
-- **`graph.clear()`**
-
-  ```py
-  graph.clear()
-  ```
-
-  Remove every item (registered functions and the view are kept).
-
-- **`graph.move()`**
-
-  ```py
-  graph.move(item: PlotObject | str, index: int)
-  ```
-
-  Move an item to another position (changing what is drawn on top).
-
-  *Parameters:*
-
-  - `item`: The item or its name.
-  - `index`: Its new position in `items`.
-
-  *Raises:*
-
-  - `KeyError`: If the item is not in the graph.
-
-- **`graph.names`** (`tuple[str, ...]`, read only)
-
-  The names of the named items, in order.
-
-- **`graph.functions`** (`Mapping[str, Callable[..., Any]]`, read only)
-
-  The registered Python functions, by name (see `register`).
-
-- **`graph.register()`**
-
-  ```py
-  graph.register(name: str, func: Callable[..., Any])
-  ```
-
-  Let expressions call a Python function by name.
-
-  The function takes NumPy arrays (or numbers) like any function given to a plane. A saved graph records the name only, so loading it needs the function again (`Graph.load(path, functions={...})`).
-
-  *Parameters:*
-
-  - `name`: The name expressions use.
-  - `func`: The function.
-
-  *Raises:*
-
-  - `GraphError`: If the name is invalid, or taken by an item.
-  - `TypeError`: If `func` is not callable.
-
-- **`graph.unregister()`**
-
-  ```py
-  graph.unregister(name: str)
-  ```
-
-  Forget a registered Python function.
-
-  *Parameters:*
-
-  - `name`: Its name.
-
-  *Raises:*
-
-  - `KeyError`: If no function is registered under it.
-
-- **`graph.add()`**
-
-  ```py
-  graph.add(text: str, **options: Any) -> PlotObject
-  ```
-
-  Add an object from one line of maths, as a graphing calculator reads it.
-
-  ==============================  ====================================== Line                            PlotObject ==============================  ====================================== `y = x^2` or `x^2`          a plot `f(x) = x^2`                  a plot named `f` `r = 1 + cos(θ)`              a polar curve `(cos(t), sin(t))`            a parametric curve (it uses `t`) `C = (cos(t), sin(t))`        a parametric curve named `C` `(1, 2)` or `P = (a, 2a)`   a point (named `P`) `a = 2`                       a parameter `g(u, v) = u v`               a definition `x^2 + y^2 = 9`, `x = 3`    an implicit curve (other equations) ==============================  ======================================
-
-  The objects are those of `objects` (`Function`, `ParametricCurve`, ..., `Point`), plus `Parameter` and `Definition`.
-
-  *Parameters:*
-
-  - `text`: The line.
-  - `**options`: Further arguments for the object, as for the method that creates it: styles (`color="red"`), `t_range`, `domain`, `name`, ... A point with `draggable=True` becomes a draggable point (its coordinates must then be numbers), which also accepts `lock`, `curve`, and so on.
-
-  *Returns:* The new object.
-
-  *Raises:*
-
-  - `ExpressionError`: If the line is not valid.
-  - `GraphError`: If the name is taken.
-
-- **`graph.plot()`**
-
-  ```py
-  graph.plot(
-      expression: Expression,
-      *,
-      name: str | None = None,
-      domain: tuple[float, float] | None = None,
-      color: Any = None,
-      width: float | None = None,
-      opacity: float | None = None,
-      style: LineStyle | None = None,
-      sampling: SamplingConfig | None = None,
-      visible: bool = True,
-  ) -> Function
-  ```
-
-  Add the graph of a function, `y = f(x)` (a `Function`).
-
-  *Returns:* The new item.
-
-- **`graph.parametric()`**
-
-  ```py
-  graph.parametric(
-      x: Expression | float,
-      y: Expression | float,
-      t_range: tuple[float, float] = (0.0, 6.283185307179586),
-      *,
-      name: str | None = None,
-      color: Any = None,
-      width: float | None = None,
-      opacity: float | None = None,
-      style: LineStyle | None = None,
-      sampling: CurveSampling | None = None,
-      visible: bool = True,
-  ) -> ParametricCurve
-  ```
-
-  Add a curve `(x(t), y(t))` (a `ParametricCurve`).
-
-  *Returns:* The new item.
-
-- **`graph.polar()`**
-
-  ```py
-  graph.polar(
-      r: Expression | float,
-      theta_range: tuple[float, float] = (0.0, 6.283185307179586),
-      *,
-      name: str | None = None,
-      color: Any = None,
-      width: float | None = None,
-      opacity: float | None = None,
-      style: LineStyle | None = None,
-      sampling: CurveSampling | None = None,
-      visible: bool = True,
-  ) -> PolarCurve
-  ```
-
-  Add a polar curve `r = r(θ)` (a `PolarCurve`).
-
-  *Returns:* The new item.
-
-- **`graph.implicit()`**
-
-  ```py
-  graph.implicit(
-      expression: Expression,
-      level: float | Sequence[float] = 0.0,
-      *,
-      name: str | None = None,
-      color: Any = None,
-      width: float | None = None,
-      opacity: float | None = None,
-      style: LineStyle | None = None,
-      sampling: ImplicitSampling | None = None,
-      visible: bool = True,
-  ) -> ImplicitCurve
-  ```
-
-  Add a curve `F(x, y) = level` (a `ImplicitCurve`).
-
-  *Returns:* The new item.
-
-- **`graph.point()`**
-
-  ```py
-  graph.point(
-      position: Any = None,
-      *,
-      draggable: bool = False,
-      name: str | None = None,
-      lock: Lock | None = None,
-      curve: CurveTarget | None = None,
-      t: float | None = None,
-      x_range: Range | None = None,
-      y_range: Range | None = None,
-      color: Any = None,
-      radius: float | None = None,
-      marker: Any = None,
-      edge_color: Any = None,
-      edge_width: float | None = None,
-      opacity: float | None = None,
-      style: PointStyle | None = None,
-      coordinates: Coordinates = 'hover',
-      enabled: bool = True,
-      visible: bool = True,
-  ) -> Point
-  ```
-
-  Add a fixed, derived or draggable point (a `Point`).
-
-  *Returns:* The new point.
-
-- **`graph.points()`**
-
-  ```py
-  graph.points(
-      points: Any,
-      *,
-      name: str | None = None,
-      color: Any = None,
-      radius: float | None = None,
-      marker: Any = None,
-      edge_color: Any = None,
-      edge_width: float | None = None,
-      opacity: float | None = None,
-      style: PointStyle | None = None,
-      visible: bool = True,
-  ) -> Points
-  ```
-
-  Add several points (a `Points`).
-
-  *Returns:* The new item.
-
-- **`graph.polyline()`**
-
-  ```py
-  graph.polyline(
-      points: Any,
-      *,
-      closed: bool = False,
-      name: str | None = None,
-      color: Any = None,
-      width: float | None = None,
-      opacity: float | None = None,
-      style: LineStyle | None = None,
-      visible: bool = True,
-  ) -> Polyline
-  ```
-
-  Add vertices joined by straight lines (a `Polyline`).
-
-  *Returns:* The new item.
-
-- **`graph.polygon()`**
-
-  ```py
-  graph.polygon(
-      points: Any,
-      *,
-      name: str | None = None,
-      color: Any = None,
-      width: float | None = None,
-      opacity: float | None = None,
-      fill: bool | None = None,
-      fill_color: Any = None,
-      fill_opacity: float | None = None,
-      fill_rule: Any = None,
-      style: PolygonStyle | None = None,
-      visible: bool = True,
-  ) -> Polygon
-  ```
-
-  Add a filled polygon (a `Polygon`).
-
-  *Returns:* The new item.
-
-- **`graph.draggable()`**
-
-  ```py
-  graph.draggable(position: tuple[float, float] | None = None, **options: Any) -> Point
-  ```
-
-  Add a point the user can drag: `point` with `draggable=True`.
-
-  *Parameters:*
-
-  - `position`: Where it starts (needed unless it follows a curve).
-  - `**options`: As for `point`: `name`, `lock`, `curve` (an object, a curve of the graph by name, or `(x(t), y(t), t_range)`), `t`, bounds, style, ...
-
-  *Returns:* The new point.
-
-- **`graph.parameter()`**
-
-  ```py
-  graph.parameter(name: str, value: float | str) -> Parameter
-  ```
-
-  Add a named value (see `Parameter`).
-
-  *Returns:* The new item.
-
-- **`graph.define()`**
-
-  ```py
-  graph.define(signature: str, expression: str) -> Definition
-  ```
-
-  Add a function for other objects, not drawn (see `Definition`).
-
-  *Parameters:*
-
-  - `signature`: Its name and parameters, as in `"g(u, v)"`.
-  - `expression`: Its value, in the parameters.
-
-  *Returns:* The new item.
-
-- **`graph.evaluate()`**
-
-  ```py
-  graph.evaluate(expression: str, **variables: Any) -> Any
-  ```
-
-  Evaluate an expression with the graph's names.
-
-  For example `graph.evaluate("f(2) + a")`, or with variables, `graph.evaluate("f(x)", x=np.linspace(0, 1, 5))`.
-
-  *Parameters:*
-
-  - `expression`: The expression.
-  - `**variables`: Values for its variables (numbers or arrays).
-
-  *Returns:* The value: a float for numbers, an array for arrays.
-
-  *Raises:*
-
-  - `ExpressionError`: If the expression is not valid, or uses a name that is not defined (or has an error).
-
-- **`graph.function()`**
-
-  ```py
-  graph.function(name: str) -> Callable[..., Any]
-  ```
-
-  Return a named function (a plot, polar or implicit curve, a definition).
-
-  The function works on numbers and arrays, like any function of the graph, and can be plotted or differentiated directly.
-
-  *Parameters:*
-
-  - `name`: Its name.
-
-  *Returns:* The function.
-
-  *Raises:*
-
-  - `GraphError`: If no function has the name, or it has an error.
-
-- **`graph.errors`** (`dict[PlotObject, str]`, read only)
-
-  The objects that cannot be drawn, in order, with the reason for each.
-
-  Errors in expressions (an unknown name, a circular definition, ...) are found without drawing; the rare errors found only when drawing (an invalid setting for a plane) are those of the last `draw`.
-
-- **`graph.capture_view()`**
-
-  ```py
-  graph.capture_view(plane: Plane) -> GraphView
-  ```
-
-  Remember what a plane shows as the graph's `view` (saved with it).
-
-  *Parameters:*
-
-  - `plane`: The plane.
-
-  *Returns:* The view.
-
-- **`graph.apply_view()`**
-
-  ```py
-  graph.apply_view(plane: Plane)
-  ```
-
-  Show the graph's `view` on a plane (nothing if it has none).
-
-  *Parameters:*
-
-  - `plane`: The plane.
-
-- **`graph.draw()`**
-
-  ```py
-  graph.draw(plane: Plane, surface: pygame.Surface)
-  ```
-
-  Draw every visible object onto a plane, in order, draggable points on top.
-
-  Call it every frame, after `Plane.draw_grid`, or add the graph to the plane (`plane.add(graph)`) and let `Plane.draw` do it. Objects with an error are skipped (see `errors`), with a `PlotWarning` the first time each error appears.
-
-  *Parameters:*
-
-  - `plane`: The plane to draw on.
-  - `surface`: The surface (usually the display).
-
-- **`graph.update()`**
-
-  ```py
-  graph.update(plane: Plane)
-  ```
-
-  Compile if anything changed, and update every object (half of `draw`).
-
-  *Parameters:*
-
-  - `plane`: The plane about to be drawn on.
-
-- **`graph.render()`**
-
-  ```py
-  graph.render(plane: Plane, surface: pygame.Surface)
-  ```
-
-  Draw every object, in order (the second half of `draw`).
-
-  *Parameters:*
-
-  - `plane`: The plane.
-  - `surface`: The surface.
-
-- **`graph.handles()`**
-
-  ```py
-  graph.handles(plane: Plane) -> tuple[DraggablePoint, ...]
-  ```
-
-  Return the handles of the graph's draggable points on a plane.
-
-  *Parameters:*
-
-  - `plane`: The plane.
-
-  *Returns:* The handles of the visible draggable points, to draw last.
-
-- **`graph.detach()`**
-
-  ```py
-  graph.detach(plane: Plane)
-  ```
-
-  Take the graph's draggable points off a plane it will no longer draw on.
-
-  *Parameters:*
-
-  - `plane`: The plane.
-
-- **`graph.to_dict()`**
-
-  ```py
-  graph.to_dict() -> dict[str, Any]
-  ```
-
-  Return the graph as plain data (dicts, lists, strings, numbers).
-
-  *Returns:* The data, ready for `json.dumps`.
-
-  *Raises:*
-
-  - `GraphError`: If an item uses a Python function that is not registered (see `register`).
-
-- **`graph.to_json()`**
-
-  ```py
-  graph.to_json(*, indent: int | None = 2) -> str
-  ```
-
-  Return the graph as JSON text (see `to_dict`).
-
-  *Parameters:*
-
-  - `indent`: Indentation (`None` for one line).
-
-  *Returns:* The JSON text.
-
-- **`graph.save()`**
-
-  ```py
-  graph.save(path: str | PathLike[str])
-  ```
-
-  Save the graph to a JSON file (UTF-8).
-
-  *Parameters:*
-
-  - `path`: The file.
-
-- **`graph.from_dict()`**
-
-  ```py
-  graph.from_dict(
-      data: Mapping[str, Any],
-      *,
-      functions: Mapping[str, Callable[..., Any]] | None = None,
-  ) -> Graph
-  ```
-
-  Make a graph from data made by `to_dict`.
-
-  *Parameters:*
-
-  - `data`: The data.
-  - `functions`: The Python functions the graph was saved with.
-
-  *Returns:* The graph.
-
-  *Raises:*
-
-  - `GraphError`: If the data is not a valid saved graph, or needs functions that are not given.
-
-- **`graph.from_json()`**
-
-  ```py
-  graph.from_json(
-      text: str,
-      *,
-      functions: Mapping[str, Callable[..., Any]] | None = None,
-  ) -> Graph
-  ```
-
-  Make a graph from JSON text made by `to_json`.
-
-  *Parameters:*
-
-  - `text`: The JSON text.
-  - `functions`: The Python functions the graph was saved with.
-
-  *Returns:* The graph.
-
-  *Raises:*
-
-  - `GraphError`: If the text is not a valid saved graph.
-
-- **`graph.load()`**
-
-  ```py
-  graph.load(
-      path: str | PathLike[str],
-      *,
-      functions: Mapping[str, Callable[..., Any]] | None = None,
-  ) -> Graph
-  ```
-
-  Load a graph saved with `save`.
-
-  *Parameters:*
-
-  - `path`: The file.
-  - `functions`: The Python functions the graph was saved with.
-
-  *Returns:* The graph.
-
-  *Raises:*
-
-  - `GraphError`: If the file is not a valid saved graph.
-  - `OSError`: If the file cannot be read.
-
-### GraphView
-
-```py
-pgp.GraphView(
-    x_range: tuple[float, float],
-    y_range: tuple[float, float],
-    log_x: bool = False,
-    log_y: bool = False,
-    equal_aspect: bool | None = None,
-)
-```
-
-A view to show a graph at, saved with it.
-
-Ranges rather than a centre and scale are kept, so a graph opened in a window of another size shows the same part of the plane.
-
-*Attributes:*
-
-- `x_range`: `(x_min, x_max)`.
-- `y_range`: `(y_min, y_max)`.
-- `log_x`: Whether the x axis is logarithmic.
-- `log_y`: Whether the y axis is logarithmic.
-- `equal_aspect`: Whether both axes keep the same scale (`None` to leave the plane's setting alone). With equal aspect, the plane shows at least both ranges.
-
-#### Members of `GraphView`
-
-- **`graphView.of()`**
-
-  ```py
-  graphView.of(plane: Plane) -> GraphView
-  ```
-
-  Return what a plane shows now.
-
-  Applying the result to a plane of the same size gives exactly this view again (see `View.fitted_ranges`).
-
-  *Parameters:*
-
-  - `plane`: The plane.
-
-  *Returns:* Its visible ranges and kinds of axes.
-
-- **`graphView.apply()`**
-
-  ```py
-  graphView.apply(plane: Plane)
-  ```
-
-  Make a plane show this view.
-
-  *Parameters:*
-
-  - `plane`: The plane.
-
-### GraphError
-
-An invalid operation on a graph, or an invalid saved graph.
-
-Raised for a name used twice, an object that is not in the graph, a graph that cannot be saved (an object uses a Python function that was not registered by name), or a file that is not a valid saved graph. Errors in saved graphs say where the problem is, as in `items[2].style.width: expected a number`.
-
-Objects that cannot be *drawn* (an unknown name in an expression, a circular definition) are not errors of this kind: they are skipped, with their reason in their `error` attribute and a `PlotWarning`.
-
-### graph.Parameter
-
-```py
-pgp.graph.Parameter(name: str, value: float | str)
-```
-
-A named value that other objects of the graph use: `a = 2`.
-
-The value is a number, or an expression of other names (`"2 b"`). Change it at any time (`graph["a"].value = 3`): everything using it follows. A number can be changed every frame without recompiling.
-
-*Parameters:*
-
-- `name`: The parameter's name.
-- `value`: A number, or an expression without variables.
-
-#### Members of `Parameter`
-
-- **`parameter.name`** (`str`, read and write)
-
-  The parameter's name.
-
-- **`parameter.value`** (`Coordinate`, read and write)
-
-  The value as given: a number or an expression.
-
-Also has the members of [`PlotObject`](#objectsplotobject).
-
-### graph.Definition
-
-```py
-pgp.graph.Definition(name: str, parameters: Sequence[str], expression: str)
-```
-
-A function defined for other objects, not drawn: `g(u, v) = u v + 1`.
-
-*Parameters:*
-
-- `name`: The function's name.
-- `parameters`: The names of its arguments.
-- `expression`: Its value, as text in the parameters.
-
-#### Members of `Definition`
-
-- **`definition.name`** (`str`, read and write)
-
-  The function's name.
-
-- **`definition.parameters`** (`tuple[str, ...]`, read and write)
-
-  The names of the function's arguments.
-
-- **`definition.expression`** (`str`, read and write)
-
-  The function's value, as text in its parameters.
-
-Also has the members of [`PlotObject`](#objectsplotobject).
-
-## Expressions
-
-Maths as text, compiled to NumPy functions (see the [expression language](expressions.md)).
-
-### expression
-
-```py
-pgp.expression(text: str, *variables: str, **names: Any) -> CompiledExpression
-```
-
-Compile an expression into a NumPy function of its variables.
-
-The result can be plotted (`plane.plot(screen, expression("x^2"))`), called on numbers or arrays, and differentiated exactly with `derivative`. See `core.expr` for the language: `2x`, `a sin(x)`, `x^2`, `sqrt`, `ln`, `if`, `pi`, and so on.
-
-*Parameters:*
-
-- `text`: The expression, such as `"a sin(x - 1)"`.
-- `*variables`: The function's arguments, in order. By default, those of `x`, `y`, `t`, `θ` and `theta` that the expression uses (`x` alone if it uses none).
-- `**names`: Values for the other names: numbers (`a=2`), functions (`f=np.sinc`, called as `f(x)`) or points (`P=(1, 2)`, used as `P.x` and `P.y`).
-
-*Returns:* The function.
-
-*Raises:*
-
-- `ExpressionError`: If the text is not a valid expression, or uses a name that is not given.
-- `TypeError`: If a value in `names` is not a number, function or point.
-
-### ExpressionError
-
-```py
-pgp.ExpressionError(message: str, text: str = '', position: int | None = None)
-```
-
-An expression is not valid: a syntax error, an unknown name, a bad call.
-
-The message says what is wrong; when the expression's text and the position of the problem are known, `str` also shows the text with a caret under the problem:
-
-```py
-unknown name 'sinx' (did you mean sin(x)?)
-  y = sinx + 1
-      ^
-```
-
-*Parameters:*
-
-- `message`: What is wrong.
-- `text`: The expression's text, if known.
-- `position`: Index of the problem in `text`, if known.
-
-*Attributes:*
-
-- `message`: What is wrong.
-- `text`: The expression's text (empty if unknown).
-- `position`: Index of the problem in `text` (`None` if unknown).
-
-### core.expr.CompiledExpression
-
-```py
-pgp.core.expr.CompiledExpression(
-    text: str,
-    variables: tuple[str, ...],
-    run: _Run,
-    constant: bool,
-)
-```
-
-An expression compiled into a function of its variables.
-
-Call it with one value (a number or an array) per variable; the result has the shape of the arguments (a constant expression is broadcast to it), with NaN wherever the expression is undefined. NumPy's warnings are silenced, as undefined values are expected.
-
-*Attributes:*
-
-- `text`: The expression's text.
-- `variables`: The names of its variables, in calling order.
-
-#### Members of `CompiledExpression`
-
-- **`compiledExpression.constant`** (`bool`, read only)
-
-  Whether the value never changes (no variables, parameters or points).
 
 ## Styles
 
@@ -3365,18 +2453,6 @@ A mutable camera that maps the world plane onto a screen rectangle.
   *Raises:*
 
   - `ValueError`: If a range is empty, reversed or not finite, or not positive on a log axis.
-
-- **`view.fitted_ranges()`**
-
-  ```py
-  view.fitted_ranges() -> tuple[tuple[float, float], tuple[float, float]]
-  ```
-
-  Return the world ranges that `fit` turns back into this view.
-
-  They are what the view is guaranteed to show, centred on its centre: `bounds` less up to a pixel at the edges. Fitting them again on a view of the same size gives the same centre and scale (up to rounding), so a view can be saved as ranges and restored exactly, and still shows the same region in a window of another size.
-
-  *Returns:* `(x_range, y_range)`.
 
 - **`view.set_log()`**
 

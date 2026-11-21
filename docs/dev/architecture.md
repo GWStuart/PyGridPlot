@@ -10,9 +10,8 @@
    come for free. The only state kept between frames is small and explicit:
    the view, the easing springs, snap hysteresis, the colour cycle's
    position, the framing (home view, pending fits) and caches. The retained
-   layers, [objects](graphs.md#the-objects) and [graphs](graphs.md#the-graph),
-   sit *on top* of the immediate API and draw through it, so nothing below
-   them knows they exist.
+   layer, the [objects](objects.md), sits *on top* of the immediate API and
+   draws through it, so nothing below it knows it exists.
 3. **Pure maths, thin backend.** All geometry, sampling, layout and
    formatting lives in `pygridplot.core`, which never imports pygame. Code
    there describes *what* to draw as backend-neutral **primitives** in
@@ -38,8 +37,6 @@
         │
    pygridplot (__init__.py: the public API)
         │
-   graph/                  named lists of objects, text, JSON (uses objects/)
-        │
    objects/                persistent functions, curves, points (use plane.py's API)
         │
    plane.py ── interaction.py ── dragging.py ── quick.py     pygame-specific integration
@@ -49,8 +46,7 @@
      └──────────────┴── core/  pure maths: never imports anything above it
                          ├── grid/     the adaptive grid and its labels
                          ├── plot/     plotted objects -> primitives
-                         ├── handles/  draggable points (uses grid/ and plot/)
-                         └── expr/     the expression language (uses plot/ for derivatives)
+                         └── handles/  draggable points (uses grid/ and plot/)
 ```
 
 `core` may import only the standard library, NumPy, contourpy (a small,
@@ -67,16 +63,14 @@ Within `core` there are two more rules, also enforced by
   ...) never import `core.grid` or `core.plot`. They are shared by both.
 - **`core.grid` and `core.plot` never import each other.** Each can change or
   grow without touching the other. `core.handles` (draggable points) builds
-  on both, `core.expr` (the expression language) on `core.plot` alone (for
-  exact derivatives), and nothing in `core` imports either. Anything both
-  grid and plot need (such as the label text and marker vocabulary in
-  `primitives.py`) belongs in a foundation module.
+  on both, and nothing in `core` imports it. Anything both grid and plot
+  need (such as the label text and marker vocabulary in `primitives.py`)
+  belongs in a foundation module.
 
 Above the plane, `pygridplot.objects` uses only the public plane API (the
-same calls a program makes) and `core`, and `pygridplot.graph` builds on
-the objects. The plane keeps objects through a small protocol of its own
-(`Drawable`), so the plane, the renderer and `core` never import either,
-and objects never import graphs; the architecture tests check both.
+same calls a program makes) and `core`. The plane keeps objects through a
+small protocol of its own (`Drawable`), so the plane, the renderer and
+`core` never import them; the architecture tests check this.
 
 The boundary between `core` and a renderer is deliberately small:
 
@@ -91,27 +85,19 @@ The boundary between `core` and a renderer is deliberately small:
 
 ```text
 src/pygridplot/
-├── __init__.py          The public API: Plane, styles, themes, configs, View, Graph, show
+├── __init__.py          The public API: Plane, styles, themes, configs, View, objects, show
 ├── plane.py             Plane: the façade tying view, theme, controls and renderer together
 ├── interaction.py       pygame events -> pan/zoom (anchored drag, eased wheel and keys)
 ├── dragging.py          pygame events -> draggable points (hit test, drag, hover, cursor)
 ├── quick.py             show(): a ready-made main loop
 ├── py.typed             Marks the package as typed (PEP 561)
 ├── objects/             Persistent objects, drawn through the plane's API
-│   ├── base.py          PlotObject (two-phase drawing, errors), StyledObject, Owner
-│   ├── values.py        Formula (a function, a number or text), argument checks
+│   ├── base.py          PlotObject (two-phase drawing, errors), StyledObject
+│   ├── values.py        Argument checks: functions, numbers, coordinates
 │   ├── curves.py        Function, ParametricCurve, PolarCurve, ImplicitCurve
 │   ├── points.py        Point: fixed, derived or draggable; handles kept in step
 │   ├── shapes.py        Points, Polyline, Polygon
 │   └── errors.py        PlotWarning, and warning at the program's own call
-├── graph/               Named lists of objects, with text and saving
-│   ├── graph.py         Graph: the list, names, registered functions, drawing, saving
-│   ├── definitions.py   Parameter, Definition: the items only a graph has
-│   ├── namespace.py     Compiling objects: dependency order, cycles, errors, bindings
-│   ├── lines.py         Reading "y = x^2" and friends into an object (Graph.add)
-│   ├── view.py          GraphView: the ranges a graph is shown at
-│   ├── serialize.py     JSON: writing, strict reading, the format's version
-│   └── errors.py        GraphError
 ├── core/                PURE: stdlib + NumPy (+ contourpy) only
 │   ├── coords.py        ScreenRect, Bounds, Axis, ColorLike
 │   ├── pixels.py        The pixel-snapping conventions (single source of truth)
@@ -143,19 +129,12 @@ src/pygridplot/
 │   │   ├── geometry.py      Point input; clipping polylines and polygons
 │   │   ├── memo.py          PlotCache: reusing unchanged plots between frames, exactly
 │   │   └── builders.py      One function per kind of plot -> clipped primitives
-│   ├── handles/         Draggable points
-│   │   ├── point.py         DraggablePoint: position, constraint, style, state
-│   │   ├── constraints.py   Free, locked and on-curve movement, with bounds
-│   │   ├── tracking.py      Following a curve with the cursor, branch by branch
-│   │   ├── labels.py        The coordinate label: rounded to a pixel, placed
-│   │   └── drawing.py       Markers, hover ring and label as primitives
-│   └── expr/            The expression language: text -> NumPy functions
-│       ├── lexer.py         Text -> tokens (numbers, names with primes, operators)
-│       ├── parser.py        Tokens -> syntax trees with source spans; the grammar
-│       ├── builtins.py      The built-in constants and functions; NaN-aware logic
-│       ├── compiler.py      Trees -> closures over ufuncs; bindings, folding, suggestions
-│       ├── function.py      expression(): text to a function in one call
-│       └── errors.py        ExpressionError, with a caret under the mistake
+│   └── handles/         Draggable points
+│       ├── point.py         DraggablePoint: position, constraint, style, state
+│       ├── constraints.py   Free, locked and on-curve movement, with bounds
+│       ├── tracking.py      Following a curve with the cursor, branch by branch
+│       ├── labels.py        The coordinate label: rounded to a pixel, placed
+│       └── drawing.py       Markers, hover ring and label as primitives
 ├── render/              The pygame backend
 │   ├── base.py          The Renderer protocol (what any backend must provide)
 │   ├── pygame_renderer.py   PygameRenderer: draws every primitive type
@@ -223,9 +202,9 @@ drags the point. Everything else goes on to
 ### `plane.draw(surface)` with objects
 
 `draw_grid` first, then the objects added with `plane.add`, in two phases
-(see [Drawing in two phases](graphs.md#drawing-in-two-phases)): every
-object's `update` (a draggable point catches up with this frame's drag; a
-graph compiles if anything changed), then every object's `render` (one of
+(see [Drawing in two phases](objects.md#drawing-in-two-phases)): every
+object's `update` (a draggable point catches up with this frame's drag),
+then every object's `render` (one of
 the plotting methods above per visible object), then all the draggable
 handles on top with `draw_draggables`. From the plane's point of view the
 objects are a program like any other.
@@ -266,7 +245,6 @@ the default view puts grid lines exactly on pixels.
 | Fonts, label surfaces, marker stamps | renderer caches | Speed only; `clear_caches()` frees them. |
 | Objects and their palette slots | `Plane._objects`, each object | What to draw every frame, and its colour. |
 | A draggable `Point`'s handles | `Point._handles` (weak, by plane) | Keeping the point and the plane's handle in step. |
-| Objects by name, compiled namespace | `Graph` | Names, text compiled with them, and saving. |
 
 Everything else is a pure function of these and the user's calls, which is
 what makes the property tests possible.

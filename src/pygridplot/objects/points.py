@@ -4,13 +4,12 @@ A :class:`Point` is one marker. Its position is
 
 * **numbers**: ``Point((1, 2))``; set ``p.x = 3`` or ``p.position = (3, 4)``
   at any time;
-* **derived**: ``Point(lambda: (q.x, f(q.x)))``, or per coordinate (a
-  number, a function of nothing, or text without variables:
-  ``Point(("a", "2a"))`` in a graph), evaluated whenever it is drawn or
+* **derived**: ``Point(lambda: (q.x, f(q.x)))``, or one coordinate at a
+  time (``Point((lambda: q.x, 2))``), evaluated whenever it is drawn or
   read, so the point follows what it uses;
 * or **dragged**: ``Point((1, 2), draggable=True)``, free, locked to an
-  axis, bounded, or kept on a curve (another object, a graph's curve by
-  name, or ``(x(t), y(t), t_range)``).
+  axis, bounded, or kept on a curve (a curve object, or
+  ``(x(t), y(t), t_range)``).
 
 A draggable point is the *model*; on each plane it is drawn on it keeps a
 :class:`~pygridplot.DraggablePoint` *handle*, which the plane drags. The
@@ -24,9 +23,8 @@ import math
 import weakref
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, ClassVar, TypeAlias
+from typing import TYPE_CHECKING, Any, TypeAlias
 
-from pygridplot.core.expr import Binding, PointBinding
 from pygridplot.core.handles.constraints import Lock, Range, check_bounds
 from pygridplot.core.handles.point import (
     COORDINATE_MODES,
@@ -38,17 +36,15 @@ from pygridplot.core.plot.style import PointStyle
 from pygridplot.objects.base import MarkerObject
 from pygridplot.objects.curves import CurveObject, CurveSpec, curve_start
 from pygridplot.objects.values import (
-    Expression,
-    Formula,
-    Maker,
+    Component,
+    Coordinate,
     as_float,
     call_quietly,
-    check_name,
     component,
     coordinate,
+    current,
     finite,
     finite_range,
-    getter,
     show,
     two,
 )
@@ -59,14 +55,14 @@ if TYPE_CHECKING:
     from pygridplot.plane import Plane
 
 CurveTarget: TypeAlias = (
-    "str | CurveObject"
-    " | tuple[Expression | float, Expression | float, tuple[float, float]]"
+    "CurveObject | tuple[Component, Component, tuple[float, float]]"
 )
-"""What a draggable point follows: a curve object, a graph's curve by name, or
-``(x(t), y(t), t_range)``."""
+"""What a draggable point follows: a curve object, or ``(x(t), y(t), t_range)``."""
 
-PositionLike: TypeAlias = "tuple[Any, Any] | Callable[[], tuple[float, float]]"
-"""A position: two coordinates (numbers, functions of nothing or text), or a
+PositionLike: TypeAlias = (
+    "tuple[Coordinate, Coordinate] | Callable[[], tuple[float, float]]"
+)
+"""A position: two coordinates (numbers or functions of nothing), or a
 function of nothing returning both."""
 
 
@@ -76,23 +72,21 @@ class Point(MarkerObject):
     Read its position at any time as :attr:`x`, :attr:`y` or
     :attr:`position` (numbers, also for derived and dragged points), and use
     it in other objects: ``pgp.Function(lambda x: a.y * np.sin(x - a.x))``
-    follows ``a`` as it moves. In a graph, a named point is ``P.x`` and
-    ``P.y`` in expressions.
+    follows ``a`` as it moves.
 
     Args:
         position: ``(x, y)``: numbers; or, for a point that follows others,
-            coordinates that are functions of nothing or text, or one
-            function returning ``(x, y)``. A draggable point needs numbers,
-            and may leave it out on a curve.
+            coordinates that are functions of nothing, or one function
+            returning ``(x, y)``. A draggable point needs numbers, and may
+            leave it out on a curve.
         draggable: Whether the user can drag it.
         lock: ``"x"`` keeps x fixed, ``"y"`` keeps y fixed (draggable only).
         curve: Keep a draggable point on a curve: a :class:`Function`,
-            :class:`ParametricCurve` or :class:`PolarCurve` object, a graph's
-            curve by name, or ``(x(t), y(t), t_range)``.
+            :class:`ParametricCurve` or :class:`PolarCurve` object, or
+            ``(x(t), y(t), t_range)``.
         t: Starting parameter on the curve.
         x_range: Bounds for x of a draggable point.
         y_range: Bounds for y of a draggable point.
-        name: The point's name (optional).
         color: Fill colour (default: the object's palette colour).
         radius: Marker size in pixels.
         marker: Marker shape.
@@ -106,14 +100,12 @@ class Point(MarkerObject):
         enabled: Whether a draggable point can be dragged (it is drawn either
             way).
         visible: Whether it is drawn (a hidden point cannot be dragged).
-        palette: Palette slot (normally chosen by the plane or graph).
+        palette: Palette slot (normally chosen by the plane).
 
     Raises:
         ValueError: For constraints on a point that is not draggable, or
             constraints that conflict (``lock`` with ``curve``).
     """
-
-    kind: ClassVar[str] = "point"
 
     def __init__(
         self,
@@ -125,7 +117,6 @@ class Point(MarkerObject):
         t: float | None = None,
         x_range: Range | None = None,
         y_range: Range | None = None,
-        name: str | None = None,
         color: Any = None,
         radius: float | None = None,
         marker: Any = None,
@@ -149,7 +140,6 @@ class Point(MarkerObject):
                 "opacity": opacity,
             },
             palette=palette,
-            name=name,
             visible=visible,
             default=DEFAULT_DRAGGABLE_STYLE if draggable else None,
         )
@@ -166,22 +156,21 @@ class Point(MarkerObject):
                 "pass draggable=True"
             )
             raise ValueError(msg)
-        self._curve_name: str | None = None
         self._curve_object: CurveObject | None = None
-        self._curve: tuple[Formula, Formula, tuple[float, float]] | None = None
+        self._curve: tuple[Component, Component, tuple[float, float]] | None = None
         self._lock: Lock | None = None
         self._x_range: Range | None = None
         self._y_range: Range | None = None
         self._configure(lock, curve, x_range, y_range)
         self._whole: Callable[[], Any] | None = None
-        self._coords: tuple[Formula, Formula] = (Formula(math.nan, None),) * 2
+        self._coords: tuple[Coordinate, Coordinate] = (math.nan, math.nan)
         self._placed = position is not None
         if position is None:
             if not (self._draggable and self._on_curve):
                 msg = "a point needs a position (a draggable one, unless on a curve)"
                 raise ValueError(msg)
         else:
-            self._set_position(position)
+            self.position = position
         self._t = None if t is None else finite(t, "t")
         self.coordinates = coordinates
         self._enabled = bool(enabled)
@@ -196,8 +185,8 @@ class Point(MarkerObject):
         return self._coordinate(0)
 
     @x.setter
-    def x(self, x: Any) -> None:
-        self._set_position((x, self._source_of(1)))
+    def x(self, x: Coordinate) -> None:
+        self.position = (x, self._given(1))
 
     @property
     def y(self) -> float:
@@ -205,16 +194,16 @@ class Point(MarkerObject):
         return self._coordinate(1)
 
     @y.setter
-    def y(self, y: Any) -> None:
-        self._set_position((self._source_of(0), y))
+    def y(self, y: Coordinate) -> None:
+        self.position = (self._given(0), y)
 
     @property
     def position(self) -> tuple[float, float] | None:
         """The current position as numbers (``None`` before a curve point is placed).
 
-        Setting it accepts what the constructor does: numbers, functions or
-        text (numbers only for a draggable point, which goes to the nearest
-        allowed position when next drawn).
+        Setting it accepts what the constructor does: numbers, or functions
+        for a point that follows others (numbers only for a draggable point,
+        which goes to the nearest allowed position when next drawn).
         """
         if not self._placed:
             return None
@@ -222,16 +211,24 @@ class Point(MarkerObject):
 
     @position.setter
     def position(self, position: PositionLike) -> None:
-        self._set_position(position)
-
-    @property
-    def source(self) -> Any:
-        """The position as given: a pair, or a function returning one."""
-        if self._whole is not None:
-            return self._whole
-        if not self._placed:
-            return None
-        return (self._coords[0].source, self._coords[1].source)
+        if callable(position):
+            if self._draggable:
+                msg = "a draggable point's position must be numbers"
+                raise ValueError(msg)
+            self._whole = position
+            self._coords = (math.nan, math.nan)
+        else:
+            x, y = two(position, "position")
+            coords = (
+                coordinate(x, "the x of position"),
+                coordinate(y, "the y of position"),
+            )
+            if self._draggable and any(callable(c) for c in coords):
+                msg = "a draggable point's position must be numbers"
+                raise ValueError(msg)
+            self._whole = None
+            self._coords = coords
+        self._placed = True
 
     @property
     def t(self) -> float | None:
@@ -258,8 +255,8 @@ class Point(MarkerObject):
     def draggable(self) -> bool:
         """Whether the user can drag the point.
 
-        Turning it on needs a numeric position (or a curve); turning it off
-        takes its handles off every plane, keeping the position.
+        Turning it on needs a position of numbers (or a curve); turning it
+        off takes its handles off every plane, keeping the position.
         """
         return self._draggable
 
@@ -285,15 +282,10 @@ class Point(MarkerObject):
 
     @property
     def curve(self) -> CurveTarget | None:
-        """The curve followed: an object, a name, or ``(x, y, t_range)`` as given."""
+        """The curve followed: a curve object, or ``(x, y, t_range)`` as given."""
         if self._curve_object is not None:
             return self._curve_object
-        if self._curve_name is not None:
-            return self._curve_name
-        if self._curve is not None:
-            x, y, t_range = self._curve
-            return (x.source, y.source, t_range)
-        return None
+        return self._curve
 
     @curve.setter
     def curve(self, curve: CurveTarget | None) -> None:
@@ -301,7 +293,6 @@ class Point(MarkerObject):
         self._configure(self._lock, curve, self._x_range, self._y_range)
         if curve is None:
             self._t = None
-        self._changed()
 
     @property
     def x_range(self) -> Range | None:
@@ -351,12 +342,8 @@ class Point(MarkerObject):
         if not self._draggable:
             self.detach(plane)
             return
-        runtime, error = self._live()
-        if error is not None:
-            self.detach(plane)
-            return
         try:
-            _sync(self, plane, self._curve_source(runtime))
+            _sync(self, plane, self._curve_source())
         except (TypeError, ValueError) as failure:
             self.detach(plane)
             self._draw_error = str(failure)
@@ -386,57 +373,27 @@ class Point(MarkerObject):
             entry.point.remove()
         self._handles.clear()
 
-    def _render(self, plane: Plane, surface: pygame.Surface, runtime: Any) -> None:
+    def _render(self, plane: Plane, surface: pygame.Surface) -> None:
         if self._draggable:
             return  # drawn as a handle, on top (see handles)
-        x, y = runtime[0]
-        plane.points(surface, [(x(), y())], style=self.style, color=self._color(plane))
-
-    # --- For the owner -----------------------------------------------------
-    def references(self) -> set[str]:
-        """Return the names of other objects this point refers to (its curve's)."""
-        names = super().references()
-        if self._curve_name is not None:
-            names.add(self._curve_name)
-        return names
-
-    def _formulas(self) -> list[tuple[Formula, tuple[str, ...]]]:
-        formulas: list[tuple[Formula, tuple[str, ...]]] = [
-            (f, ()) for f in self._coords
-        ]
-        if self._curve is not None:
-            x, y, _ = self._curve
-            formulas += [(x, ("t",)), (y, ("t",))]
-        return formulas
-
-    def _runtime(self, make: Maker) -> Any:
-        getters = tuple(
-            getter(make(f, ())) if f.is_text else self._live_getter(index)
-            for index, f in enumerate(self._coords)
+        plane.points(
+            surface, [(self.x, self.y)], style=self.style, color=self._color(plane)
         )
-        curve = None
-        if self._curve is not None:
-            x, y, t_range = self._curve
-            curve = (make(x, ("t",)), make(y, ("t",)), t_range)
-        return (getters, curve)
-
-    def _binding(self, runtime: Any) -> Binding | None:
-        return PointBinding(lambda: (self.x, self.y))
 
     def _describe(self) -> str:
         if not self._placed:
-            target = self._curve_name or "a curve"
-            return f"on {target}"
+            return "on a curve"
         if self._whole is not None:
             return f"({show(self._whole)})"
         x, y = self._coords
         if self._numeric:
-            return f"({x.source:.6g}, {y.source:.6g})"
+            return f"({current(x):.6g}, {current(y):.6g})"
         return f"({show(x)}, {show(y)})"
 
+    # --- For the sync -------------------------------------------------------
     def _set_state(self, position: tuple[float, float], t: float | None) -> None:
-        """Record where the handle put the point (by the sync, after dragging)."""
-        self._coords = (Formula(position[0], None), Formula(position[1], None))
+        """Record where the handle put the point (after dragging)."""
+        self._coords = (position[0], position[1])
         self._placed = True
         if t is not None:
             self._t = t
@@ -445,9 +402,8 @@ class Point(MarkerObject):
         """Return what a handle is made with (made again if this changes)."""
         return (
             self._lock,
-            self._curve_name,
             self._curve_object,
-            self._curve is not None,
+            self._curve,
             self._x_range,
             self._y_range,
         )
@@ -455,69 +411,28 @@ class Point(MarkerObject):
     # --- Internals ----------------------------------------------------------
     @property
     def _on_curve(self) -> bool:
-        return (
-            self._curve is not None
-            or self._curve_name is not None
-            or self._curve_object is not None
-        )
+        return self._curve is not None or self._curve_object is not None
 
     @property
     def _numeric(self) -> bool:
         """Whether the position is plain numbers (or not placed yet)."""
-        return self._whole is None and not any(
-            f.is_text or callable(f.source) for f in self._coords
-        )
+        return self._whole is None and not any(callable(c) for c in self._coords)
 
     def _coordinate(self, index: int) -> float:
-        """Return a coordinate's current value (only text needs compiling)."""
+        """Return a coordinate's current value."""
         if self._whole is not None:
-            return _pick(self._whole, index)
-        formula = self._coords[index]
-        if not formula.is_text:
-            source = formula.source
-            if callable(source):
-                return as_float(call_quietly(source))
-            return float(source)
-        runtime, error = self._live()
-        if error is not None or runtime is None:
-            return math.nan
-        return float(runtime[0][index]())
+            value = call_quietly(self._whole)
+            try:
+                return as_float(value[index])
+            except (TypeError, IndexError, KeyError):
+                return math.nan
+        return current(self._coords[index])
 
-    def _source_of(self, index: int) -> Any:
+    def _given(self, index: int) -> Coordinate:
         """Return one coordinate as given (a number for a whole-position function)."""
         if self._whole is not None:
             return self._coordinate(index)
-        return self._coords[index].source
-
-    def _live_getter(self, index: int) -> Callable[[], float]:
-        """Read a coordinate that is not text as it is when called."""
-        return lambda: self._coordinate(index)
-
-    def _set_position(self, position: PositionLike) -> None:
-        """Set the position from what a program gave."""
-        was_text = any(f.is_text for f in self._coords)
-        if callable(position) and not isinstance(position, tuple):
-            if self._draggable:
-                msg = "a draggable point's position must be numbers"
-                raise ValueError(msg)
-            self._whole = position
-            self._coords = (Formula(math.nan, None),) * 2
-        else:
-            x, y = two(position, "position")
-            coords = (
-                coordinate(x, "the x of position"),
-                coordinate(y, "the y of position"),
-            )
-            if self._draggable and any(f.is_text or callable(f.source) for f in coords):
-                msg = "a draggable point's position must be numbers"
-                raise ValueError(msg)
-            self._whole = None
-            self._coords = coords
-        self._placed = True
-        if was_text or any(f.is_text for f in self._coords):
-            self._changed()  # text is compiled; numbers and functions are read live
-        else:
-            self._own = None
+        return self._coords[index]
 
     def _require_draggable(self, what: str) -> None:
         if not self._draggable:
@@ -539,20 +454,14 @@ class Point(MarkerObject):
             raise ValueError(msg)
         bounds_x = check_bounds("x_range", x_range)  # type: ignore[arg-type]
         bounds_y = check_bounds("y_range", y_range)  # type: ignore[arg-type]
-        name: str | None = None
         target: CurveObject | None = None
-        spec: tuple[Formula, Formula, tuple[float, float]] | None = None
-        if isinstance(curve, str):
-            name = check_name(curve, "a curve's name")
-        elif isinstance(curve, CurveObject):
+        spec: tuple[Component, Component, tuple[float, float]] | None = None
+        if isinstance(curve, CurveObject):
             target = curve
         elif curve is not None:
             parts = tuple(curve) if isinstance(curve, (tuple, list)) else ()
             if len(parts) != 3:
-                msg = (
-                    "curve must be a curve object, a curve's name or "
-                    f"(x, y, t_range), got {curve!r}"
-                )
+                msg = f"curve must be a curve object or (x, y, t_range), got {curve!r}"
                 raise ValueError(msg)
             x, y, t_range = parts
             spec = (
@@ -561,35 +470,18 @@ class Point(MarkerObject):
                 finite_range(t_range, "t_range"),
             )
         self._lock = lock  # narrowed by the check above
-        self._curve_name, self._curve_object, self._curve = name, target, spec
+        self._curve_object, self._curve = target, spec
         self._x_range, self._y_range = bounds_x, bounds_y
 
-    def _curve_source(self, runtime: Any) -> _Source | None:
+    def _curve_source(self) -> _Source | None:
         """Return how to build the curve the point follows, if any."""
         if self._curve is not None:
-            fx, fy, t_range = runtime[1]
-            return _Source(lambda view, t: (fx, fy, t_range), False)
+            curve = self._curve
+            return _Source(lambda view, t: curve, False)
         target = self._curve_object
-        if self._curve_name is not None:
-            if self._owner is None:
-                msg = (
-                    f"the curve {self._curve_name!r} is given by name, which needs "
-                    "the point to be in a graph (give the curve object instead)"
-                )
-                raise ValueError(msg)
-            target = self._owner._curve_named(self)
         if target is None:
             return None
         return _Source(target._curve_spec, target.curve_from_zero)
-
-
-def _pick(whole: Callable[[], Any], index: int) -> float:
-    """Return one coordinate of a whole-position function's current value."""
-    value = call_quietly(whole)
-    try:
-        return as_float(value[index])
-    except (TypeError, IndexError, KeyError):
-        return math.nan
 
 
 # ----------------------------------------------------------------------

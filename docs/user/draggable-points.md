@@ -174,6 +174,4 @@ sliders, and points running round a circle and a spirograph.
 [`pgp.Point`](objects.md#points) object is the same with the conveniences
 of objects: it can be made before the plane, follow a function or curve
 *object* (`pgp.Point(curve=f, draggable=True)`), be switched between fixed
-and draggable, live on several planes at once, and be saved in a
-[graph](graphs.md#draggable-points), whose expressions use it by name
-(`"y = a sin(x - P.x)"`).
+and draggable, and live on several planes at once.

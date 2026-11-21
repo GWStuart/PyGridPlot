@@ -7,7 +7,6 @@ every change follows. Each recipe names the files to touch, in order.
 - [A new kind of axis](#a-new-kind-of-axis)
 - [A new kind of draggable point](#a-new-kind-of-draggable-point)
 - [A new derivative rule](#a-new-derivative-rule)
-- [A new built-in function](#a-new-built-in-function)
 - [A new kind of object](#a-new-kind-of-object)
 - [A new marker shape](#a-new-marker-shape)
 - [A new theme option](#a-new-theme-option)
@@ -103,52 +102,22 @@ Test the rule in `tests/core/plot/test_jets.py` against the derivatives
 worked out by hand, at several orders. A NumPy *function* (not a ufunc)
 goes in `_FUNCTIONS`, handled through `__array_function__`.
 
-## A new built-in function
-
-The functions of the [expression language](../user/expressions.md) are the
-`FUNCTIONS` table in `core/expr/builtins.py`: a name, a `Builtin(func,
-min_args, max_args, usage)` (`max_args=None` for any number). The function
-takes and returns arrays and must be made of NumPy ufuncs (or `np.where`)
-so that undefined values give NaN rather than errors and derivatives stay
-exact: a ufunc without a [derivative rule](#a-new-derivative-rule) falls
-back to finite differences. Functions that are not ufuncs (as `gamma`) can
-be vectorised, at a cost in speed. Write `usage` as it appears in error
-messages (`"hypot(x, y)"`).
-
-Adding a name to `FUNCTIONS` also reserves it: no parameter or item can
-take it, so a graph saved with that name for an item stops loading (that
-deserves a line in the changelog). Test the function in
-`tests/core/expr/test_compiler.py` (`BUILTIN_CASES` compares it with
-NumPy; argument counts are checked for every built-in automatically) and
-add it to the table in [The expression language](../user/expressions.md).
-
 ## A new kind of object
 
-An object mirrors a drawing method of the plane, and graphs hold the same
-objects. To add one (say, an inequality, once the plane can shade one):
+An object mirrors a drawing method of the plane. To add one (say, an
+inequality, once the plane can shade one):
 
 1. **The object**, in the matching module of `objects/`: a subclass of
    `LineObject`, `MarkerObject` or `StyledObject` (or of `CurveObject`, if
-   a draggable point should be able to follow it), with a `kind` (its name
-   in saved graphs), a constructor taking the plane method's arguments
-   (functions and text as `Formula.make(...)`), a property per argument
-   (setters of functions and names call `self._changed()`; everything else
-   is read when drawn), and the hooks `_formulas`, `_runtime`, `_binding`,
-   `_render` and `_describe` (see the docstring of `PlotObject`). Export it
-   from `objects/__init__.py` and `pygridplot/__init__.py`.
-2. **In graphs**: a creator method on `Graph` with the same arguments, and,
-   if a line of maths should make it, a rule in `graph/lines.py` (and the
-   table in `Graph.add`).
-3. **Saving**: a branch in `_Writer.fields` and in `_make_item` in
-   `graph/serialize.py`. A new kind is a new version of the format: older
-   readers would refuse it, so increment `VERSION` (reading version 1 files
-   is unchanged).
-4. **Test it**: drawing pixel for pixel like the plane call (`SCENES` in
-   `tests/objects/test_objects.py` and `tests/graph/test_graph.py`),
-   saving (`every_kind` and the random graphs of
-   `tests/graph/test_serialize.py`), and reading lines.
-5. **Document it** in [Objects](../user/objects.md) and
-   [Graphs](../user/graphs.md), and in the
+   a draggable point should be able to follow it), with a constructor
+   taking the plane method's arguments, a property per argument (validated
+   with the helpers of `objects/values.py`; everything is read when the
+   object is drawn), `_render` (one call of the plane method) and
+   `_describe` (see the docstring of `PlotObject`). Export it from
+   `objects/__init__.py` and `pygridplot/__init__.py`.
+2. **Test it**: drawing pixel for pixel like the plane call (`SCENES` in
+   `tests/objects/test_objects.py`), and its attributes.
+3. **Document it** in [Objects](../user/objects.md) and in the
    [API reference](../user/reference.md) (`SECTIONS` in
    `scripts/build_api_docs.py`).
 
@@ -246,9 +215,7 @@ leave it out. Run the script and commit `docs/user/reference.md`.
   and `loglabels` were split).
 - Names starting with `_` are private to their module and never imported
   elsewhere; if another module needs something, make it public and
-  document it. The one exception is the documented interface between
-  objects and their owners (`_formulas`, `_runtime`, `_owner`, ...: see
-  `objects/base.py`), private to `objects/` and `graph/`.
+  document it.
 
 **Documentation.** Every module, class and function has a Google-style
 docstring (`Args:`, `Returns:`, `Raises:`, `Attributes:`), enforced by

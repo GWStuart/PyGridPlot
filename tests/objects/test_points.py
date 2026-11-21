@@ -12,7 +12,7 @@ import pytest
 
 import pygridplot as pgp
 
-from ..graph.conftest import drag, make_plane, mouse, pixels
+from .helpers import drag, make_plane, mouse, pixels
 
 
 def screen(plane: pgp.Plane, point: pgp.Point) -> tuple[float, float]:
@@ -34,7 +34,7 @@ def move_away(plane: pgp.Plane) -> None:
 
 def test_a_fixed_point() -> None:
     p = pgp.Point((1, 2))
-    assert (p.x, p.y, p.position, p.source) == (1.0, 2.0, (1.0, 2.0), (1.0, 2.0))
+    assert (p.x, p.y, p.position) == (1.0, 2.0, (1.0, 2.0))
     p.x = 3
     assert p.position == (3.0, 2.0)
     p.position = (-1, 0.5)
@@ -48,14 +48,13 @@ def test_derived_points_follow_what_they_use() -> None:
     f = pgp.Function(lambda x: x**2)
     whole = pgp.Point(lambda: (q.x, f(q.x)))
     parts = pgp.Point((lambda: q.y, 5))
-    text = pgp.Point(("1 + 1", "sqrt(9)"))
     assert whole.position == (1.0, 1.0)
     assert parts.position == (2.0, 5.0)
-    assert text.position == (2.0, 3.0)
     q.position = (3, -1)
     assert whole.position == (3.0, 9.0)
     assert parts.position == (-1.0, 5.0)
-    assert callable(whole.source)
+    parts.x = 7  # a number replaces the function
+    assert parts.position == (7.0, 5.0)
 
 
 def test_a_derived_point_that_fails_is_undefined() -> None:
@@ -144,7 +143,7 @@ def test_constraints_need_a_draggable_point() -> None:
 
 def test_a_point_on_a_function_object() -> None:
     plane, surface = make_plane()
-    f = pgp.Function("x^2 / 4")
+    f = pgp.Function(lambda x: x**2 / 4)
     p = pgp.Point(curve=f, t=2, draggable=True)
     plane.add(f, p)
     plane.draw(surface)
@@ -155,7 +154,7 @@ def test_a_point_on_a_function_object() -> None:
     assert p.t is not None
     assert p.t < 2
     assert p.position == pytest.approx((p.t, p.t**2 / 4))
-    f.func = "x^3 / 8"  # it follows the changed function
+    f.func = lambda x: x**3 / 8  # it follows the changed function
     plane.draw(surface)
     assert p.position == pytest.approx((p.t, p.t**3 / 8))
 
@@ -166,7 +165,7 @@ def test_a_point_on_a_parametric_or_polar_object_or_its_own_curve() -> None:
     rose = pgp.PolarCurve(lambda th: 1 + 0 * th)
     on_circle = pgp.Point(curve=circle, t=math.pi / 2, draggable=True)
     on_rose = pgp.Point(curve=rose, draggable=True)
-    own = pgp.Point(curve=("t", "t^2", (-1, 1)), t=0.5, draggable=True)
+    own = pgp.Point(curve=(lambda t: t, lambda t: t**2, (-1, 1)), t=0.5, draggable=True)
     plane.add(on_circle, on_rose, own)  # the curves need not be drawn
     plane.draw(surface)
     assert on_circle.position == pytest.approx((0.0, 2.0), abs=1e-12)
@@ -177,26 +176,11 @@ def test_a_point_on_a_parametric_or_polar_object_or_its_own_curve() -> None:
     assert own.position == pytest.approx((-1.0, 1.0))
 
 
-def test_a_curve_by_name_needs_a_graph() -> None:
-    plane, surface = make_plane()
-    p = plane.add(pgp.Point(curve="f", draggable=True))
-    with pytest.warns(pgp.PlotWarning, match="needs the point to be in a graph"):
-        plane.draw(surface)
-    assert plane.draggables == ()
-    assert p.error is not None
-
-
-def test_a_curve_with_an_error_stops_the_point() -> None:
-    plane, surface = make_plane()
-    f = pgp.Function("q x")
-    p = plane.add(pgp.Point(curve=f, draggable=True))
-    with pytest.warns(pgp.PlotWarning, match="has an error"):
-        plane.draw(surface)
-    assert p.error is not None
-    f.func = "x"
-    plane.draw(surface)
-    assert p.error is None
-    assert p.position == pytest.approx((0.0, 0.0))
+def test_a_curve_needs_a_curve_object_or_functions() -> None:
+    with pytest.raises(ValueError, match="curve object or"):
+        pgp.Point(curve="f", draggable=True)  # type: ignore[arg-type]
+    with pytest.raises(ValueError, match="curve object or"):
+        pgp.Point(curve=pgp.ImplicitCurve(np.hypot), draggable=True)  # type: ignore[arg-type]
 
 
 def test_hidden_or_disabled_points_cannot_be_grabbed() -> None:

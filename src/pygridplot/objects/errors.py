@@ -1,9 +1,8 @@
 """The warning issued when an object cannot be drawn.
 
-An object with an error (an unknown name in its expression, a curve that
-cannot be followed, an invalid setting for the plane) is skipped, and the
-rest of the picture still draws: a frame never breaks because of one
-object. :class:`PlotWarning` says so once, when the error appears or
+An object the plane refuses to draw (an invalid setting, say) is skipped,
+and the rest of the picture still draws: a frame never breaks because of
+one object. :class:`PlotWarning` says so once, when the error appears or
 changes, and the object's ``error`` attribute always holds it.
 """
 
@@ -26,8 +25,8 @@ def warn(message: str) -> None:
     """Issue a :class:`PlotWarning`, attributed to the program's own call.
 
     The warning points at the first frame outside PyGridPlot (the program's
-    ``plane.draw(...)`` or ``graph.draw(...)``), however deep inside the
-    library it was found, so the message shows the line to look at.
+    ``plane.draw(...)``), however deep inside the library it was found, so
+    the message shows the line to look at.
 
     Args:
         message: The warning's text.

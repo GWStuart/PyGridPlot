@@ -1,7 +1,7 @@
-"""Fixtures for the object tests: the same headless setup as the graph tests."""
+"""Fixtures for the object tests: pygame initialised headless, a fresh cursor."""
 
 from __future__ import annotations
 
-from tests.graph.conftest import display, fresh_cursor
+from tests.objects.helpers import display, fresh_cursor
 
 __all__ = ["display", "fresh_cursor"]

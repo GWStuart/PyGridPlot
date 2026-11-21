@@ -13,7 +13,7 @@ Docstrings are Google style, with the Sphinx-style markup used in the code
 Markdown here.
 
 Names in :data:`SECTIONS` are attributes of the package (``Plane``) or
-dotted paths below it (``graph.PlotItem`` for ``pygridplot.graph.PlotItem``),
+dotted paths below it (``objects.PlotObject`` for ``pygridplot.objects.PlotObject``),
 for classes that programs use without importing them from the top level.
 A class' inherited members are documented with the base class, which its
 entry links to.
@@ -59,8 +59,8 @@ SECTIONS: list[tuple[str, str, list[str]]] = [
     (
         "Objects",
         "Functions, curves and points made once and changed through their "
-        "attributes: `plane.add` them and `plane.draw` draws them every frame, "
-        "or put them in a graph (see [Objects](objects.md)).",
+        "attributes: `plane.add` them and `plane.draw` draws them every frame "
+        "(see [Objects](objects.md)).",
         [
             "Function",
             "ParametricCurve",
@@ -76,19 +76,6 @@ SECTIONS: list[tuple[str, str, list[str]]] = [
             "objects.LineObject",
             "objects.MarkerObject",
         ],
-    ),
-    (
-        "Graphs",
-        "Named lists of objects, with lines of maths, names usable in any order "
-        "and saving as JSON (see the [graphs guide](graphs.md)). `Parameter` "
-        "and `Definition` are the items only a graph has.",
-        ["Graph", "GraphView", "GraphError", "graph.Parameter", "graph.Definition"],
-    ),
-    (
-        "Expressions",
-        "Maths as text, compiled to NumPy functions (see the "
-        "[expression language](expressions.md)).",
-        ["expression", "ExpressionError", "core.expr.CompiledExpression"],
     ),
     (
         "Styles",
@@ -255,7 +242,7 @@ def document_class(name: str, cls: type) -> str:
 
 
 def last_part(name: str) -> str:
-    """Return a dotted name's last part (``graph.PlotItem`` -> ``PlotItem``)."""
+    """Return a dotted name's last part (``objects.PlotObject`` -> ``PlotObject``)."""
     return name.rsplit(".", 1)[-1]
 
 

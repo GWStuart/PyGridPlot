@@ -107,9 +107,9 @@ pgp.show(np.exp, lambda x: x**3, log_y=True, x_range=(0, 10))
 ```
 
 `show` opens a resizable window, plots the functions in palette colours and
-runs until the window is closed or Escape is pressed. It also takes lines
-of maths (`pgp.show("y = x^2", "x^2 + y^2 = 9")`), objects and graphs. It takes the same
-view options as `Plane` (`x_range`, `y_range`, `log_x`, `log_y`, `center`,
+runs until the window is closed or Escape is pressed. It also takes
+objects (`pgp.show(pgp.ImplicitCurve(lambda x, y: x**2 + y**2, 9))`). It
+takes the same view options as `Plane` (`x_range`, `y_range`, `log_x`, `log_y`, `center`,
 `scale`), plus `size`, `title`, `theme`, `width` and `fps`; see the
 [reference](reference.md#show).
 
@@ -119,7 +119,6 @@ view options as `Plane` (`x_range`, `y_range`, `log_x`, `log_y`, `center`,
   see [Setting up the view](the-plane.md#setting-up-the-view).
 - To plot your own functions and data, see [Plotting](plotting.md), or
   [Objects](objects.md) to keep them as objects.
-- For maths typed as text, with names and saving, see [Graphs](graphs.md).
 - For log scales, see [Logarithmic axes](log-axes.md).
 - To change colours, line widths or the look of the grid, see
   [Styles and themes](styles-and-themes.md).

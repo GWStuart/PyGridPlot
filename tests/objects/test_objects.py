@@ -8,13 +8,12 @@ from collections.abc import Callable
 from typing import Any
 
 import numpy as np
-import pygame
 import pytest
 
 import pygridplot as pgp
 from pygridplot.objects import PlotObject
 
-from ..graph.conftest import make_plane, pixels
+from .helpers import make_plane, pixels
 
 # --- Drawing like the plane's methods -----------------------------------------
 
@@ -25,13 +24,17 @@ SCENES: list[tuple[str, Callable[[], list[Any]], Callable[[pgp.Plane, Any], None
         lambda p, s: p.plot(s, lambda x: 2 * np.sin(x) + 1, width=4),
     ),
     (
-        "function with a domain, as text",
-        lambda: [pgp.Function("x^2 / 4", domain=(-2, 3), opacity=0.5)],
+        "function with a domain",
+        lambda: [pgp.Function(lambda x: x**2 / 4, domain=(-2, 3), opacity=0.5)],
         lambda p, s: p.plot(s, lambda x: x**2 / 4, domain=(-2, 3), opacity=0.5),
     ),
     (
         "parametric",
-        lambda: [pgp.ParametricCurve(lambda t: 2 * np.cos(3 * t), "2sin(2t)")],
+        lambda: [
+            pgp.ParametricCurve(
+                lambda t: 2 * np.cos(3 * t), lambda t: 2 * np.sin(2 * t)
+            )
+        ],
         lambda p, s: p.parametric(
             s,
             lambda t: 2 * np.cos(3 * t),
@@ -136,6 +139,17 @@ def test_data_can_change_every_frame() -> None:
         assert pixels(surface) == pixels(expected)
 
 
+def test_coordinates_can_be_functions() -> None:
+    a = pgp.Point((1, 2))
+    plane, surface = make_plane()
+    plane.add(pgp.Polyline([(0, 0), (lambda: a.x, lambda: a.y)], color="black"))
+    a.position = (2, -1)
+    plane.draw(surface)
+    expected_plane, expected = make_plane()
+    expected_plane.polyline(expected, [(0, 0), (2, -1)], color="black")
+    assert pixels(surface) == pixels(expected)
+
+
 def test_closures_make_objects_depend_on_each_other() -> None:
     a = pgp.Point((1, 2))
     f = pgp.Function(lambda x: a.y * np.sin(x - a.x))
@@ -148,7 +162,7 @@ def test_closures_make_objects_depend_on_each_other() -> None:
 
 
 def test_functions_can_be_called_composed_and_differentiated() -> None:
-    f = pgp.Function("x^3 / 3")
+    f = pgp.Function(lambda x: x**3 / 3)
     g = pgp.Function(lambda x: f(x) * 3)
     xs = np.linspace(-2, 2, 9)
     np.testing.assert_allclose(f(xs), xs**3 / 3)
@@ -156,27 +170,19 @@ def test_functions_can_be_called_composed_and_differentiated() -> None:
     np.testing.assert_allclose(f.derivative()(xs), xs**2)
     np.testing.assert_allclose(pgp.derivative(g, 2)(xs), 6 * xs)
     derivative = f.derivative()
-    f.func = "x^2"  # the derivative follows the function
+    f.func = lambda x: x**2  # the derivative follows the function
     np.testing.assert_allclose(derivative(xs), 2 * xs)
 
 
 def test_curves_can_be_called() -> None:
-    c = pgp.ParametricCurve(np.cos, "sin(t)")
+    c = pgp.ParametricCurve(np.cos, np.sin)
     assert c(0.0) == (1.0, 0.0)
-    r = pgp.PolarCurve("2 + cos(θ)")
+    r = pgp.PolarCurve(lambda th: 2 + np.cos(th))
     assert r(0.0) == 3.0
     assert pgp.PolarCurve(2)(np.zeros(3)).tolist() == [2.0, 2.0, 2.0]
-    F = pgp.ImplicitCurve("x^2 + y^2")  # noqa: N806 - the usual name
+    assert pgp.ParametricCurve(1, np.sin)(0.0) == (1.0, 0.0)
+    F = pgp.ImplicitCurve(lambda x, y: x**2 + y**2)  # noqa: N806 - the usual name
     assert F(3.0, 4.0) == 25.0
-
-
-def test_text_on_its_own_knows_only_built_in_names() -> None:
-    f = pgp.Function("a x")
-    assert f.error == "unknown name 'a'"
-    with pytest.raises(ValueError, match="unknown name 'a'"):
-        f(1.0)
-    with pytest.raises(pgp.ExpressionError):
-        pgp.Function("x +* 2")  # syntax errors at once
 
 
 # --- The plane's list of objects -------------------------------------------------
@@ -192,10 +198,6 @@ def test_adding_and_removing() -> None:
         plane.add(f)
     with pytest.raises(TypeError, match="not an object a plane can draw"):
         plane.add(np.sin)  # type: ignore[arg-type]
-    graph = pgp.Graph()
-    h = graph.plot("x")
-    with pytest.raises(ValueError, match="belongs to a graph"):
-        plane.add(h)
     plane.remove(f)
     assert plane.objects == (g,)
     with pytest.raises(ValueError, match="not on this plane"):
@@ -222,30 +224,36 @@ def test_palette_slots_stay_with_their_objects() -> None:
     assert plane.objects[-1].palette == 3  # type: ignore[attr-defined]
 
 
-def test_a_graph_can_be_added_to_a_plane() -> None:
-    graph = pgp.Graph()
-    graph.add("a = 2")
-    graph.draggable((1, 1), name="P")
-    graph.add("y = a sin(x - P.x) + P.y")
+def test_a_program_can_add_its_own_drawable() -> None:
+    """Anything with update, render, handles and detach can be added."""
+
+    class Grid:
+        def __init__(self) -> None:
+            self.calls: list[str] = []
+
+        def update(self, plane: pgp.Plane) -> None:
+            self.calls.append("update")
+
+        def render(self, plane: pgp.Plane, surface: Any) -> None:
+            self.calls.append("render")
+            plane.points(surface, [(0, 0)], color="black")
+
+        def handles(self, plane: pgp.Plane) -> tuple[pgp.DraggablePoint, ...]:
+            return ()
+
+        def detach(self, plane: pgp.Plane) -> None:
+            self.calls.append("detach")
+
     plane, surface = make_plane()
-    plane.add(graph, pgp.Function(np.cos, color="black"))
+    mine = plane.add(Grid())
     plane.draw(surface)
-    # The same by hand: the graph, the cosine, then the graph's point on top.
-    expected_plane, expected = make_plane()
-    graph.update(expected_plane)
-    graph.render(expected_plane, expected)
-    expected_plane.plot(expected, np.cos, color="black")
-    expected_plane.draw_draggables(expected, *graph.handles(expected_plane))
-    assert pixels(surface) == pixels(expected)
-    graph.detach(expected_plane)
-    assert len(plane.draggables) == 1
-    plane.remove(graph)
-    assert plane.draggables == ()
+    plane.remove(mine)
+    assert mine.calls == ["update", "render", "detach"]
 
 
 def test_unchanged_objects_are_reused_between_frames() -> None:
     plane, surface = make_plane()
-    plane.add(pgp.Function(np.sin), pgp.ImplicitCurve("x^2 + y^2", 4))
+    plane.add(pgp.Function(np.sin), pgp.ImplicitCurve(lambda x, y: x**2 + y**2, 4))
     plane.draw(surface)
     hits = plane.cache_stats.hits
     plane.draw(surface)
@@ -266,56 +274,66 @@ def test_an_object_on_two_planes() -> None:
 # --- Errors ---------------------------------------------------------------------
 
 
-def test_an_object_with_an_error_is_skipped_and_warned_about_once() -> None:
+def test_drawing_errors_are_recorded_and_warned_about_once(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     plane, surface = make_plane()
-    bad = plane.add(pgp.Function("q x"))
-    good = plane.add(pgp.Function(np.sin))
-    with pytest.warns(pgp.PlotWarning, match="unknown name 'q'") as caught:
+    f = plane.add(pgp.Function(np.sin))
+    g = plane.add(pgp.Function(np.cos))
+    drawn: list[object] = []
+    plot = plane.plot
+
+    def refuse_sin(surface_: Any, func: Any, **kwargs: Any) -> None:
+        if func is np.sin:
+            raise ValueError("cannot draw this")
+        drawn.append(func)
+        plot(surface_, func, **kwargs)
+
+    monkeypatch.setattr(plane, "plot", refuse_sin)
+    with pytest.warns(pgp.PlotWarning, match="cannot draw this") as caught:
         plane.draw(surface)
     assert caught[0].filename == __file__  # points at the program's call
+    assert f.error == "cannot draw this"
+    assert g.error is None
+    assert drawn == [np.cos]  # the rest still drew
     with warnings.catch_warnings():
         warnings.simplefilter("error")
         plane.draw(surface)  # the same error: no second warning
-    assert bad.error == "unknown name 'q'"
-    assert good.error is None
-    bad.func = "2x"
-    plane.draw(surface)
-    assert bad.error is None
-
-
-def test_drawing_errors_are_recorded(monkeypatch: pytest.MonkeyPatch) -> None:
-    plane, surface = make_plane()
-    f = plane.add(pgp.Function(np.sin))
-
-    def refuse(*args: object, **kwargs: object) -> None:
-        raise ValueError("cannot draw this")
-
-    monkeypatch.setattr(plane, "plot", refuse)
-    with pytest.warns(pgp.PlotWarning, match="cannot draw this"):
-        plane.draw(surface)
-    assert f.error == "cannot draw this"
     monkeypatch.undo()
     plane.draw(surface)
     assert f.error is None
 
 
+def test_errors_inside_functions_leave_gaps() -> None:
+    def broken(x: Any) -> Any:
+        raise ZeroDivisionError
+
+    plane, surface = make_plane()
+    f = plane.add(pgp.Function(broken))
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        plane.draw(surface)
+    assert f.error is None
+
+
 def test_settings_are_checked() -> None:
-    with pytest.raises(ValueError, match="name"):
-        pgp.Function(np.sin, name="2f")
     with pytest.raises(TypeError, match="LineStyle"):
         pgp.Function(np.sin, style=pgp.PointStyle())  # type: ignore[arg-type]
-    with pytest.raises(TypeError, match="text or a function"):
+    with pytest.raises(TypeError, match="must be a function"):
         pgp.Function(2)  # type: ignore[arg-type]
+    with pytest.raises(TypeError, match="must be a function"):
+        pgp.ImplicitCurve("x^2 + y^2")  # type: ignore[arg-type]
     with pytest.raises(ValueError, match="domain"):
         pgp.Function(np.sin, domain=(2, 1))
     with pytest.raises(ValueError, match="infinite"):
         pgp.Points([(0, math.inf)])
+    with pytest.raises(TypeError, match="numbers or functions"):
+        pgp.Points([(0, "1")])
 
 
 def test_reprs() -> None:
-    assert repr(pgp.Function("x^2", name="f")) == "<Function 'f': y = x^2>"
+    assert repr(pgp.Function(np.sin)) == "<Function: y = sin>"
     assert repr(pgp.ParametricCurve(np.cos, np.sin)) == "<ParametricCurve: (cos, sin)>"
     assert repr(pgp.Point((1, 2))) == "<Point: (1, 2)>"
     assert repr(pgp.Polygon([(0, 0), (1, 0), (0, 1)])) == "<Polygon: 3 vertices>"
     assert isinstance(pgp.Points([]), PlotObject)
-    pygame.event.clear()

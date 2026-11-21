@@ -6,9 +6,8 @@ parametric, polar and implicit curves, points, polylines and polygons, and
 lets the user drag points around. Everything can be drawn in immediate
 mode (``plane.plot(screen, f)`` each frame) or kept as objects with
 changeable attributes (``f = plane.add(pgp.Function(np.sin))``, then
-``plane.draw(screen)``); a :class:`Graph` keeps objects written as maths
-(``"y = a sin(x - P.x)"``) and saves them as JSON. It stays out of your
-way: your program owns the main loop.
+``plane.draw(screen)``). It stays out of your way: your program owns the
+main loop.
 
 Everything a program needs is importable from here: :class:`Plane` (the
 plane itself), the style classes (:class:`LineStyle`, :class:`PointStyle`,
@@ -21,12 +20,9 @@ the :class:`View` with its :class:`ViewState`, :class:`DraggablePoint`
 :func:`derivatives` (exact derivatives of any order), the objects
 (:class:`Function`, :class:`ParametricCurve`, :class:`PolarCurve`,
 :class:`ImplicitCurve`, :class:`Point`, :class:`Points`,
-:class:`Polyline`, :class:`Polygon`, with :class:`PlotWarning`),
-:class:`Graph` with its :class:`GraphView` and :class:`GraphError`,
-:func:`expression` (maths as text to a function) and
-:class:`ExpressionError`, and :func:`show`. The objects' base classes are
-in ``pygridplot.objects``, the graph-only items in ``pygridplot.graph``;
-the other subpackages (``pygridplot.core``, ``pygridplot.render``) are the
+:class:`Polyline`, :class:`Polygon`, with :class:`PlotWarning`), and
+:func:`show`. The objects' base classes are in ``pygridplot.objects``; the
+other subpackages (``pygridplot.core``, ``pygridplot.render``) are the
 implementation; see ``docs/dev/index.md``.
 
 Typical use::
@@ -50,7 +46,6 @@ Typical use::
 Or, for a quick look: ``pgp.show(np.sin, np.cos)``.
 """
 
-from pygridplot.core.expr import ExpressionError, expression
 from pygridplot.core.grid.formatting import NumberFormat
 from pygridplot.core.grid.theme import DARK, LIGHT, GridTheme
 from pygridplot.core.handles.point import DraggablePoint
@@ -61,7 +56,6 @@ from pygridplot.core.plot.memo import CacheStats
 from pygridplot.core.plot.sampling import SamplingConfig
 from pygridplot.core.plot.style import LineStyle, PointStyle, PolygonStyle
 from pygridplot.core.view import View, ViewLimits, ViewState
-from pygridplot.graph import Graph, GraphError, GraphView
 from pygridplot.interaction import InteractionConfig, KeyBindings
 from pygridplot.objects import (
     Function,
@@ -85,11 +79,7 @@ __all__ = [
     "CacheStats",
     "CurveSampling",
     "DraggablePoint",
-    "ExpressionError",
     "Function",
-    "Graph",
-    "GraphError",
-    "GraphView",
     "GridTheme",
     "ImplicitCurve",
     "ImplicitSampling",
@@ -114,6 +104,5 @@ __all__ = [
     "__version__",
     "derivative",
     "derivatives",
-    "expression",
     "show",
 ]

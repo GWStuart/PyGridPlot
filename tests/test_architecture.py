@@ -51,7 +51,6 @@ ALLOWED_SUBPACKAGES: dict[str | None, set[str]] = {
     "grid": {"grid"},
     "plot": {"plot"},
     "handles": {"handles", "grid", "plot"},
-    "expr": {"expr", "plot"},
 }
 """Which ``core`` subpackages each part of ``core`` may import."""
 
@@ -65,8 +64,8 @@ def test_core_layers_stay_apart(path: Path) -> None:
     The foundation modules (``core/*.py``) are shared by everything, so they
     must not depend on any subpackage; the grid and plotting are
     independent, so either can change or grow without touching the other;
-    draggable points (``handles``) build on both, and the expression language
-    (``expr``) on plotting (for derivatives), while nothing depends on them.
+    and draggable points (``handles``) build on both, while neither depends
+    on them.
     """
     relative = path.relative_to(CORE)
     own = relative.parts[0] if len(relative.parts) > 1 else None
@@ -81,14 +80,12 @@ def test_core_layers_stay_apart(path: Path) -> None:
 
 PACKAGE = ROOT / "src" / "pygridplot"
 LAYERS_ABOVE_THE_PLANE: dict[str, set[str]] = {
-    "objects": {"objects", "graph", "__init__.py", "quick.py"},
-    "graph": {"graph", "__init__.py", "quick.py"},
+    "objects": {"objects", "__init__.py", "quick.py"},
 }
 """For each layer built on the plane, the parts of the package that may use it.
 
-Objects are drawn through the plane's public API, and graphs are built on
-objects; nothing below a layer (``core``, ``render``, the plane) imports it,
-and objects never import graphs.
+Objects are drawn through the plane's public API: nothing below them
+(``core``, ``render``, the plane) imports them.
 """
 
 

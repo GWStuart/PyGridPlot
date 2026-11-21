@@ -21,46 +21,14 @@ follow [semantic versioning](https://semver.org/) once 1.0 is released.
   `pgp.derivative(f)`); a `Point` is fixed, derived from other objects (a
   function of nothing, per coordinate or whole) or draggable
   (`draggable=True`, with `lock`, bounds, or `curve=` a function or curve
-  *object*), on any number of planes; objects take text in the expression
-  language too. Objects without a colour keep a stable palette slot; one
-  that cannot be drawn is skipped with its reason in `obj.error` and a
-  `pgp.PlotWarning` pointing at the program's own line.
-  `examples/objects.py`; gallery view 54; benchmark cases.
-- **Graphs**: `pgp.Graph`, a named list of objects (plus parameters and
-  function definitions, `graph.Parameter` and `graph.Definition`) built on
-  the objects and drawn with `graph.draw(plane, surface)` or
-  `plane.add(graph)`; `graph.add("y = x^2")` returns a `pgp.Function`, and
-  `graph.append(obj)` takes objects made on their own.
-  Items are added from lines of maths (`graph.add("f(x) = a sin(x)")`,
-  `"x^2 + y^2 = 9"`, `"P = (1, 2)"`, `"a = 2"`) or with one method per
-  kind taking the plane method's arguments, and use each other's names in
-  any order; circular definitions and unknown names are reported per item
-  (`item.error`, `graph.errors`, a `pgp.PlotWarning` once per error) while
-  the rest still draws. Draggable points are kept by the graph, in step
-  with their handles on every plane, can follow another item's curve by
-  name, and are saved where they are. `graph.evaluate(...)`,
-  `graph.function(name)`, registered Python functions
-  (`Graph(functions=...)`, `graph.register`).
-- **Saving graphs as JSON**: `graph.save(path)` / `Graph.load(path)`,
-  `to_json` / `from_json`, `to_dict` / `from_dict`. A versioned, readable
-  format listing only non-default settings; strict reading with errors
-  that say where a hand-written file is wrong (`GraphError`); views saved
-  with `graph.capture_view(plane)` and restored exactly with
-  `graph.apply_view(plane)` (`pgp.GraphView`).
-- **The expression language**: a small, safe parser and compiler (no
-  `eval`) from text to NumPy functions: implicit multiplication (`2x`,
-  `a sin(x)`), `^`, Unicode operators and superscripts, 38 built-in
-  functions, constants, comparisons and NaN-aware conditions (`if`, `and`,
-  `or`, `not`), exact derivatives with primes (`f'(x)`), points (`P.x`),
-  and error messages with a caret and suggestions (`sinx`: did you mean
-  `sin(x)`?). `pgp.expression(text, ...)` compiles one into a function;
-  `pgp.ExpressionError`.
-- `pgp.show` also draws lines of maths and graphs:
-  `pgp.show("y = x^2", graph)`.
-- `View.fitted_ranges()`: the ranges `View.fit` maps back to exactly the
-  same view.
-- `examples/graph_editor.py`: a small expression list to type into, with
-  saving and loading; gallery views 52 and 53; graph benchmark cases.
+  *object*), on any number of planes. Objects without a colour keep a
+  stable palette slot; one that the plane refuses to draw is skipped with
+  its reason in `obj.error` and a `pgp.PlotWarning` pointing at the
+  program's own line. Any class with `update`, `render`, `handles` and
+  `detach` can be added to a plane too. `examples/objects.py`,
+  `examples/two_ways.py` (immediate mode and objects side by side);
+  gallery view 52; benchmark cases.
+
 
 - **Reusing unchanged plots**: plotting calls whose view, style, inputs and
   function values are unchanged since the previous frame reuse their
@@ -115,12 +83,6 @@ follow [semantic versioning](https://semver.org/) once 1.0 is released.
 
 ### Changed
 
-- The graph's item classes became the objects (`PlotItem` is now
-  `pgp.Function`, `PointItem` and `DraggableItem` are now `pgp.Point`, and
-  so on), and their `expression` attribute is `func`; `GraphWarning` is
-  now `pgp.PlotWarning`. Invalid names raise a `ValueError` (a
-  `GraphError` is still raised for a name already taken). The JSON format
-  is unchanged.
 - The type alias `Function` of `pygridplot.core.plot.evaluation` is now
   `FunctionLike`, as `pgp.Function` is the object.
 

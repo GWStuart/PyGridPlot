@@ -1,4 +1,4 @@
-"""A ready-made main loop for quickly looking at functions and graphs.
+"""A ready-made main loop for quickly looking at functions and objects.
 
 :func:`show` opens a resizable window with an interactive
 :class:`~pygridplot.Plane`, draws what it is given, and runs until the
@@ -8,8 +8,7 @@ window is closed (or Escape is pressed)::
     import pygridplot as pgp
 
     pgp.show(np.sin, lambda x: x**2 / 4)
-    pgp.show("y = x^2", "x^2 + y^2 = 9", "r = 1 + cos(θ)")
-    pgp.show(graph)                    # a Graph, with its draggable points
+    pgp.show(pgp.ImplicitCurve(lambda x, y: x**2 + y**2, 9), np.cos)
 
 It is meant for quick experiments. For animation or interaction, write your
 own loop as shown in :mod:`pygridplot.plane`.
@@ -21,13 +20,12 @@ import pygame
 
 from pygridplot.core.grid.theme import GridTheme
 from pygridplot.core.plot.evaluation import FunctionLike
-from pygridplot.graph import Graph
-from pygridplot.objects import Function, LineObject, StyledObject
+from pygridplot.objects import Function, StyledObject
 from pygridplot.plane import Drawable, Plane
 
 
 def show(
-    *functions: FunctionLike | str | Drawable,
+    *functions: FunctionLike | Drawable,
     size: tuple[int, int] = (960, 640),
     title: str = "PyGridPlot",
     theme: GridTheme | None = None,
@@ -42,17 +40,15 @@ def show(
 ) -> None:
     """Open a window, draw what is given and run until the window is closed.
 
-    Each function or line gets the next colour of the theme's palette. The
+    Each function or object without a colour gets the next colour of the
+    theme's palette. The
     view options are the same as :class:`~pygridplot.Plane`'s, for example
     ``show(np.exp, log_y=True)`` or ``show(np.sin, x_range=(0, 10))``.
 
     Args:
-        *functions: What to draw: functions ``y = f(x)``, lines of maths as
-            :meth:`Graph.add <pygridplot.Graph.add>` reads them
-            (``"x^2 + y^2 = 9"``), objects (``pgp.Point((1, 2),
-            draggable=True)``, ...), or whole :class:`~pygridplot.Graph`
-            objects (a graph with a saved view opens at it, unless view
-            options are given).
+        *functions: What to draw: functions ``y = f(x)``, or objects
+            (``pgp.ImplicitCurve(...)``, ``pgp.Point((1, 2),
+            draggable=True)``, ...).
         size: Initial window size in pixels.
         title: Window title.
         theme: Plane appearance (defaults to :data:`pygridplot.LIGHT`).
@@ -62,29 +58,19 @@ def show(
         log_y: Make the y axis logarithmic.
         center: World point initially at the middle of the window.
         scale: Initial pixels per world unit (per decade on a log axis).
-        width: Line width in pixels for the functions and lines (default 2.5).
+        width: Line width in pixels for the functions (default 2.5).
         fps: Frame-rate cap.
-
-    Raises:
-        ExpressionError: If a line is not valid.
     """
-    lines = Graph()  # the lines of maths, which may use each other's names
-    shown: list[Drawable] = [lines]
-    slot = 0  # one palette sequence for everything given, in order
+    shown: list[Drawable] = []
     for thing in functions:
         if isinstance(thing, Drawable):  # an object (a Function is also callable)
             shown.append(thing)
-            if isinstance(thing, StyledObject) and thing.palette is None:
-                thing.palette, slot = slot, slot + 1
             continue
-        item = lines.add(thing) if isinstance(thing, str) else Function(thing)
-        if isinstance(item, StyledObject):
-            item.palette, slot = slot, slot + 1
-        if width is not None and isinstance(item, LineObject):
-            item.width = width
-        if item.graph is None:
-            shown.append(item)
-    view_given = any(v is not None for v in (x_range, y_range, center, scale))
+        shown.append(Function(thing, width=width))
+    slot = 0  # one palette sequence for everything given, in order
+    for obj in shown:
+        if isinstance(obj, StyledObject) and obj.palette is None:
+            obj.palette, slot = slot, slot + 1
     owns_pygame = not pygame.get_init()
     pygame.init()
     plane: Plane | None = None
@@ -101,12 +87,8 @@ def show(
             equal_aspect=False if isinstance(scale, tuple) else None,
             theme=theme,
         )
-        saved = next(
-            (g for g in shown if isinstance(g, Graph) and g.view is not None), None
-        )
-        if saved is not None and not view_given and not (log_x or log_y):
-            saved.apply_view(plane)
-        plane.add(*shown)
+        if shown:
+            plane.add(*shown)
         clock = pygame.time.Clock()
         running = True
         while running:

@@ -9,12 +9,11 @@ functions they draw (``f(2.0)``, ``pgp.derivative(f)``).
 from __future__ import annotations
 
 import math
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from typing import TYPE_CHECKING, Any, ClassVar, TypeAlias
 
 import numpy as np
 
-from pygridplot.core.expr import Binding, FunctionBinding
 from pygridplot.core.plot.curves import CurveSampling
 from pygridplot.core.plot.derivatives import Derivative, derivative
 from pygridplot.core.plot.implicit import ImplicitSampling
@@ -23,11 +22,10 @@ from pygridplot.core.plot.style import LineStyle
 from pygridplot.objects.base import LineObject
 from pygridplot.objects.values import (
     FULL_TURN,
-    Expression,
-    Formula,
-    Maker,
+    Component,
     component,
     finite_range,
+    function,
     is_number,
     optional_setting,
     show,
@@ -51,11 +49,7 @@ class CurveObject(LineObject):
     graph, at ``x = 0``) rather than at the start of the range."""
 
     def _curve_spec(self, view: View, t: float | None) -> CurveSpec:
-        """Return the curve to follow, for a view and the point's parameter.
-
-        Raises:
-            ValueError: If the curve has an error.
-        """
+        """Return the curve to follow, for a view and the point's parameter."""
         raise NotImplementedError
 
 
@@ -74,14 +68,10 @@ class Function(CurveObject):
 
     The object is itself a function: ``f(2.0)`` evaluates it, so it can be
     used in other functions (``pgp.Function(lambda x: f(x) ** 2)``) and
-    differentiated (``pgp.derivative(f)``, or :meth:`derivative`). In a
-    graph, a named function can also be used by name: ``"f(x - 1)"``,
-    ``"f'(x)"``.
+    differentiated (``pgp.derivative(f)``, or :meth:`derivative`).
 
     Args:
-        func: ``f``: a Python function of ``x`` (NumPy or ``math``), or text
-            in ``x`` (``"a sin(x)"``, see the expression language).
-        name: The function's name (optional).
+        func: ``f``: a function of ``x``, written with NumPy or ``math``.
         domain: Draw only for ``x`` in ``(start, end)``.
         color: Line colour (default: the object's palette colour).
         width: Line width in pixels.
@@ -91,17 +81,15 @@ class Function(CurveObject):
         sampling: How the function is sampled (see
             :class:`~pygridplot.SamplingConfig`); default: the plane's.
         visible: Whether it is drawn.
-        palette: Palette slot (normally chosen by the plane or graph).
+        palette: Palette slot (normally chosen by the plane).
     """
 
-    kind: ClassVar[str] = "plot"
     curve_from_zero: ClassVar[bool] = True
 
     def __init__(
         self,
-        func: Expression,
+        func: Callable[[Any], Any],
         *,
-        name: str | None = None,
         domain: tuple[float, float] | None = None,
         color: Any = None,
         width: float | None = None,
@@ -115,24 +103,20 @@ class Function(CurveObject):
             style=style,
             overrides={"color": color, "width": width, "opacity": opacity},
             palette=palette,
-            name=name,
             visible=visible,
         )
-        self._func = Formula.make(func, "a function", functions=True)
-        self._domain = None if domain is None else finite_range(domain, "domain")
-        self._sampling: SamplingConfig | None = optional_setting(
-            sampling, SamplingConfig, "sampling"
-        )
+        self.func = func
+        self.domain = domain
+        self.sampling = sampling
 
     @property
-    def func(self) -> Expression:
-        """``f``: the Python function, or the text in ``x``."""
-        return self._func.source  # type: ignore[return-value]
+    def func(self) -> Callable[[Any], Any]:
+        """``f``: the function of ``x``."""
+        return self._func
 
     @func.setter
-    def func(self, func: Expression) -> None:
-        self._func = Formula.make(func, "a function", functions=True)
-        self._changed()
+    def func(self, func: Callable[[Any], Any]) -> None:
+        self._func = function(func, "func")
 
     @property
     def domain(self) -> tuple[float, float] | None:
@@ -150,18 +134,16 @@ class Function(CurveObject):
 
     @sampling.setter
     def sampling(self, sampling: SamplingConfig | None) -> None:
-        self._sampling = optional_setting(sampling, SamplingConfig, "sampling")
+        self._sampling: SamplingConfig | None = optional_setting(
+            sampling, SamplingConfig, "sampling"
+        )
 
     def __call__(self, x: Any) -> Any:
-        """Evaluate the function at ``x`` (a number or an array).
-
-        Raises:
-            ValueError: If the function has an error (see :attr:`error`).
-        """
-        return self._working()(x)
+        """Evaluate the function at ``x`` (a number or an array)."""
+        return self._func(x)
 
     def derivative(self, n: int = 1) -> Derivative:
-        """Return the ``n``-th derivative (exact for NumPy functions and text).
+        """Return the ``n``-th derivative (exact for functions written with NumPy).
 
         It follows the function: changing :attr:`func` changes it too.
 
@@ -173,19 +155,10 @@ class Function(CurveObject):
         """
         return derivative(self, n)
 
-    def _formulas(self) -> list[tuple[Formula, tuple[str, ...]]]:
-        return [(self._func, ("x",))]
-
-    def _runtime(self, make: Maker) -> Any:
-        return make(self._func, ("x",))
-
-    def _binding(self, runtime: Any) -> Binding | None:
-        return FunctionBinding(runtime, 1)
-
-    def _render(self, plane: Plane, surface: pygame.Surface, runtime: Any) -> None:
+    def _render(self, plane: Plane, surface: pygame.Surface) -> None:
         plane.plot(
             surface,
-            runtime,
+            self._func,
             style=self.style,
             color=self._color(plane),
             domain=self._domain,
@@ -199,9 +172,8 @@ class Function(CurveObject):
         again on both sides (and always the point's own parameter), so the
         point can be dragged anywhere on screen.
         """
-        runtime = self._working()
         if self._domain is not None:
-            return (_identity, runtime, self._domain)
+            return (_identity, self._func, self._domain)
         bounds = view.bounds
         if view.log_x:
             low, high = bounds.x_min / 10.0, bounds.x_max * 10.0
@@ -210,7 +182,7 @@ class Function(CurveObject):
             low, high = bounds.x_min - width, bounds.x_max + width
         if t is not None and math.isfinite(t):
             low, high = min(low, t - 1.0), max(high, t + 1.0)
-        return (_identity, runtime, (low, high))
+        return (_identity, self._func, (low, high))
 
     def _describe(self) -> str:
         return f"y = {show(self._func)}"
@@ -222,10 +194,9 @@ class ParametricCurve(CurveObject):
     Calling it gives the point at a parameter: ``c(0.5)`` is ``(x, y)``.
 
     Args:
-        x: ``x(t)``: a Python function of ``t``, text in ``t``, or a number.
+        x: ``x(t)``: a function of ``t``, or a number.
         y: ``y(t)``: likewise.
         t_range: ``(t_min, t_max)``; one full turn by default.
-        name: The curve's name (optional).
         color: Line colour (default: the object's palette colour).
         width: Line width in pixels.
         opacity: Line opacity.
@@ -233,18 +204,15 @@ class ParametricCurve(CurveObject):
         sampling: How the curve is sampled (see
             :class:`~pygridplot.CurveSampling`).
         visible: Whether it is drawn.
-        palette: Palette slot (normally chosen by the plane or graph).
+        palette: Palette slot (normally chosen by the plane).
     """
-
-    kind: ClassVar[str] = "parametric"
 
     def __init__(
         self,
-        x: Expression | float,
-        y: Expression | float,
+        x: Component,
+        y: Component,
         t_range: tuple[float, float] = FULL_TURN,
         *,
-        name: str | None = None,
         color: Any = None,
         width: float | None = None,
         opacity: float | None = None,
@@ -257,35 +225,30 @@ class ParametricCurve(CurveObject):
             style=style,
             overrides={"color": color, "width": width, "opacity": opacity},
             palette=palette,
-            name=name,
             visible=visible,
         )
-        self._x = component(x, "x(t)")
-        self._y = component(y, "y(t)")
-        self._t_range = finite_range(t_range, "t_range")
-        self._sampling: CurveSampling | None = optional_setting(
-            sampling, CurveSampling, "sampling"
-        )
+        self.x = x
+        self.y = y
+        self.t_range = t_range
+        self.sampling = sampling
 
     @property
-    def x(self) -> Expression | float:
-        """``x(t)``: a function, text or a number."""
-        return self._x.source
+    def x(self) -> Component:
+        """``x(t)``: a function of ``t``, or a number."""
+        return self._x
 
     @x.setter
-    def x(self, x: Expression | float) -> None:
+    def x(self, x: Component) -> None:
         self._x = component(x, "x(t)")
-        self._changed()
 
     @property
-    def y(self) -> Expression | float:
-        """``y(t)``: a function, text or a number."""
-        return self._y.source
+    def y(self) -> Component:
+        """``y(t)``: a function of ``t``, or a number."""
+        return self._y
 
     @y.setter
-    def y(self, y: Expression | float) -> None:
+    def y(self, y: Component) -> None:
         self._y = component(y, "y(t)")
-        self._changed()
 
     @property
     def t_range(self) -> tuple[float, float]:
@@ -303,29 +266,19 @@ class ParametricCurve(CurveObject):
 
     @sampling.setter
     def sampling(self, sampling: CurveSampling | None) -> None:
-        self._sampling = optional_setting(sampling, CurveSampling, "sampling")
+        self._sampling: CurveSampling | None = optional_setting(
+            sampling, CurveSampling, "sampling"
+        )
 
     def __call__(self, t: Any) -> tuple[Any, Any]:
-        """Return the point ``(x(t), y(t))`` (numbers, or arrays for an array ``t``).
+        """Return the point ``(x(t), y(t))`` (numbers, or arrays for an array ``t``)."""
+        return (_value(self._x, t), _value(self._y, t))
 
-        Raises:
-            ValueError: If the curve has an error (see :attr:`error`).
-        """
-        fx, fy = self._working()
-        return (_value(fx, t), _value(fy, t))
-
-    def _formulas(self) -> list[tuple[Formula, tuple[str, ...]]]:
-        return [(self._x, ("t",)), (self._y, ("t",))]
-
-    def _runtime(self, make: Maker) -> Any:
-        return (make(self._x, ("t",)), make(self._y, ("t",)))
-
-    def _render(self, plane: Plane, surface: pygame.Surface, runtime: Any) -> None:
-        fx, fy = runtime
+    def _render(self, plane: Plane, surface: pygame.Surface) -> None:
         plane.parametric(
             surface,
-            fx,
-            fy,
+            self._x,
+            self._y,
             self._t_range,
             style=self.style,
             color=self._color(plane),
@@ -333,8 +286,7 @@ class ParametricCurve(CurveObject):
         )
 
     def _curve_spec(self, view: View, t: float | None) -> CurveSpec:
-        fx, fy = self._working()
-        return (fx, fy, self._t_range)
+        return (self._x, self._y, self._t_range)
 
     def _describe(self) -> str:
         return f"({show(self._x)}, {show(self._y)})"
@@ -343,13 +295,11 @@ class ParametricCurve(CurveObject):
 class PolarCurve(CurveObject):
     """A polar curve ``r = r(θ)``, drawn like :meth:`Plane.polar`.
 
-    Calling it gives the radius at an angle: ``R(math.pi)``. In text, the
-    angle is written ``θ`` or ``theta``.
+    Calling it gives the radius at an angle: ``R(math.pi)``.
 
     Args:
-        r: ``r(θ)``: a Python function of ``θ``, text in ``θ``, or a number.
+        r: ``r(θ)``: a function of the angle, or a number (a circle).
         theta_range: ``(θ_min, θ_max)``; one full turn by default.
-        name: The curve's name (optional).
         color: Line colour (default: the object's palette colour).
         width: Line width in pixels.
         opacity: Line opacity.
@@ -357,18 +307,14 @@ class PolarCurve(CurveObject):
         sampling: How the curve is sampled (see
             :class:`~pygridplot.CurveSampling`).
         visible: Whether it is drawn.
-        palette: Palette slot (normally chosen by the plane or graph).
+        palette: Palette slot (normally chosen by the plane).
     """
-
-    kind: ClassVar[str] = "polar"
-    VARIABLES: ClassVar[tuple[str, ...]] = ("θ", "theta")
 
     def __init__(
         self,
-        r: Expression | float,
+        r: Component,
         theta_range: tuple[float, float] = FULL_TURN,
         *,
-        name: str | None = None,
         color: Any = None,
         width: float | None = None,
         opacity: float | None = None,
@@ -381,24 +327,20 @@ class PolarCurve(CurveObject):
             style=style,
             overrides={"color": color, "width": width, "opacity": opacity},
             palette=palette,
-            name=name,
             visible=visible,
         )
-        self._r = component(r, "r(θ)")
-        self._theta_range = finite_range(theta_range, "theta_range")
-        self._sampling: CurveSampling | None = optional_setting(
-            sampling, CurveSampling, "sampling"
-        )
+        self.r = r
+        self.theta_range = theta_range
+        self.sampling = sampling
 
     @property
-    def r(self) -> Expression | float:
-        """``r(θ)``: a function, text or a number."""
-        return self._r.source
+    def r(self) -> Component:
+        """``r(θ)``: a function of the angle, or a number."""
+        return self._r
 
     @r.setter
-    def r(self, r: Expression | float) -> None:
+    def r(self, r: Component) -> None:
         self._r = component(r, "r(θ)")
-        self._changed()
 
     @property
     def theta_range(self) -> tuple[float, float]:
@@ -416,35 +358,18 @@ class PolarCurve(CurveObject):
 
     @sampling.setter
     def sampling(self, sampling: CurveSampling | None) -> None:
-        self._sampling = optional_setting(sampling, CurveSampling, "sampling")
+        self._sampling: CurveSampling | None = optional_setting(
+            sampling, CurveSampling, "sampling"
+        )
 
     def __call__(self, theta: Any) -> Any:
-        """Return the radius at the angle ``theta`` (a number or an array).
+        """Return the radius at the angle ``theta`` (a number or an array)."""
+        return _value(self._r, theta)
 
-        Raises:
-            ValueError: If the curve has an error (see :attr:`error`).
-        """
-        return _value(self._working(), theta)
-
-    def _formulas(self) -> list[tuple[Formula, tuple[str, ...]]]:
-        return [(self._r, self.VARIABLES)]
-
-    def _runtime(self, make: Maker) -> Any:
-        compiled = make(self._r, self.VARIABLES)
-        if not callable(compiled) or not self._r.is_text:
-            return compiled  # a number, or a Python function of θ
-        return lambda theta: compiled(theta, theta)
-
-    def _binding(self, runtime: Any) -> Binding | None:
-        if callable(runtime):
-            return FunctionBinding(runtime, 1)
-        value = float(runtime)
-        return FunctionBinding(lambda theta: np.full(np.shape(theta), value), 1)
-
-    def _render(self, plane: Plane, surface: pygame.Surface, runtime: Any) -> None:
+    def _render(self, plane: Plane, surface: pygame.Surface) -> None:
         plane.polar(
             surface,
-            runtime,
+            self._r,
             self._theta_range,
             style=self.style,
             color=self._color(plane),
@@ -452,7 +377,7 @@ class PolarCurve(CurveObject):
         )
 
     def _curve_spec(self, view: View, t: float | None) -> CurveSpec:
-        radius = self._working()
+        radius = self._r
 
         def x(theta: Any) -> Any:
             return np.multiply(_value(radius, theta), np.cos(theta))
@@ -469,14 +394,12 @@ class PolarCurve(CurveObject):
 class ImplicitCurve(LineObject):
     """An implicit curve ``F(x, y) = level``, drawn like :meth:`Plane.implicit`.
 
-    Calling it evaluates ``F``: ``F(1.0, 2.0)``. A named implicit curve in a
-    graph also defines ``F(x, y)`` for other expressions.
+    Calling it evaluates ``F``: ``F(1.0, 2.0)``.
 
     Args:
-        func: ``F``: a Python function of ``x`` and ``y``, or text in both.
+        func: ``F``: a function of ``x`` and ``y``.
         level: The value of ``F`` on the curve, or several values (contour
             lines).
-        name: ``F``'s name (optional).
         color: Line colour (default: the object's palette colour).
         width: Line width in pixels.
         opacity: Line opacity.
@@ -484,17 +407,14 @@ class ImplicitCurve(LineObject):
         sampling: How the curve is found (see
             :class:`~pygridplot.ImplicitSampling`).
         visible: Whether it is drawn.
-        palette: Palette slot (normally chosen by the plane or graph).
+        palette: Palette slot (normally chosen by the plane).
     """
-
-    kind: ClassVar[str] = "implicit"
 
     def __init__(
         self,
-        func: Expression,
+        func: Callable[[Any, Any], Any],
         level: float | Sequence[float] = 0.0,
         *,
-        name: str | None = None,
         color: Any = None,
         width: float | None = None,
         opacity: float | None = None,
@@ -507,24 +427,20 @@ class ImplicitCurve(LineObject):
             style=style,
             overrides={"color": color, "width": width, "opacity": opacity},
             palette=palette,
-            name=name,
             visible=visible,
         )
-        self._func = Formula.make(func, "an implicit curve's function", functions=True)
-        self._level = _levels(level)
-        self._sampling: ImplicitSampling | None = optional_setting(
-            sampling, ImplicitSampling, "sampling"
-        )
+        self.func = func
+        self.level = level
+        self.sampling = sampling
 
     @property
-    def func(self) -> Expression:
-        """``F``: the Python function, or the text in ``x`` and ``y``."""
-        return self._func.source  # type: ignore[return-value]
+    def func(self) -> Callable[[Any, Any], Any]:
+        """``F``: the function of ``x`` and ``y``."""
+        return self._func
 
     @func.setter
-    def func(self, func: Expression) -> None:
-        self._func = Formula.make(func, "an implicit curve's function", functions=True)
-        self._changed()
+    def func(self, func: Callable[[Any, Any], Any]) -> None:
+        self._func = function(func, "func")
 
     @property
     def level(self) -> float | tuple[float, ...]:
@@ -542,29 +458,18 @@ class ImplicitCurve(LineObject):
 
     @sampling.setter
     def sampling(self, sampling: ImplicitSampling | None) -> None:
-        self._sampling = optional_setting(sampling, ImplicitSampling, "sampling")
+        self._sampling: ImplicitSampling | None = optional_setting(
+            sampling, ImplicitSampling, "sampling"
+        )
 
     def __call__(self, x: Any, y: Any) -> Any:
-        """Evaluate ``F(x, y)`` (numbers or arrays).
+        """Evaluate ``F(x, y)`` (numbers or arrays)."""
+        return self._func(x, y)
 
-        Raises:
-            ValueError: If the curve has an error (see :attr:`error`).
-        """
-        return self._working()(x, y)
-
-    def _formulas(self) -> list[tuple[Formula, tuple[str, ...]]]:
-        return [(self._func, ("x", "y"))]
-
-    def _runtime(self, make: Maker) -> Any:
-        return make(self._func, ("x", "y"))
-
-    def _binding(self, runtime: Any) -> Binding | None:
-        return FunctionBinding(runtime, 2)
-
-    def _render(self, plane: Plane, surface: pygame.Surface, runtime: Any) -> None:
+    def _render(self, plane: Plane, surface: pygame.Surface) -> None:
         plane.implicit(
             surface,
-            runtime,
+            self._func,
             self._level,
             style=self.style,
             color=self._color(plane),
@@ -581,11 +486,11 @@ class ImplicitCurve(LineObject):
         return f"{show(self._func)} = {shown}"
 
 
-def _value(compiled: Any, at: Any) -> Any:
+def _value(value: Component, at: Any) -> Any:
     """Evaluate a component that may be a number (spread over ``at``'s shape)."""
-    if callable(compiled):
-        return compiled(at)
-    return np.full(np.shape(at), float(compiled)) if np.ndim(at) else float(compiled)
+    if callable(value):
+        return value(at)
+    return np.full(np.shape(at), float(value)) if np.ndim(at) else float(value)
 
 
 def _levels(level: object) -> float | tuple[float, ...]:

@@ -1,4 +1,4 @@
-"""Helpers for the graph tests: headless planes, synthetic drags, pixel checks."""
+"""Helpers for the object tests: headless planes, synthetic drags, pixel checks."""
 
 from __future__ import annotations
 
@@ -15,7 +15,7 @@ SIZE = (400, 300)
 
 @pytest.fixture(autouse=True, scope="module")
 def display() -> Iterator[None]:
-    """Initialise pygame (dummy drivers) once for each module of graph tests."""
+    """Initialise pygame (dummy drivers) once for each module of object tests."""
     pygame.init()
     pygame.display.set_mode((64, 48))
     yield
@@ -58,13 +58,6 @@ def drag(
         plane.handle_event(mouse(pygame.MOUSEMOTION, move))
     plane.handle_event(mouse(pygame.MOUSEBUTTONUP, moves[-1] if moves else start))
     return used
-
-
-def frame(plane: pgp.Plane, surface: pygame.Surface, *graphs: pgp.Graph) -> None:
-    """Draw one frame: the grid, then each graph."""
-    plane.draw_grid(surface)
-    for graph in graphs:
-        graph.draw(plane, surface)
 
 
 def pixels(surface: pygame.Surface) -> bytes:

@@ -1,42 +1,27 @@
-"""What every object shares: a name, visibility, errors, drawing and styles.
+"""What every object shares: visibility, drawing, errors and styles.
 
-* :class:`PlotObject`: the base of every object: a name, visibility, the
-  error that stops it being drawn, and drawing in two phases
-  (:meth:`~PlotObject.update`, then :meth:`~PlotObject.render`).
+* :class:`PlotObject`: the base of every object: visibility, drawing in two
+  phases (:meth:`~PlotObject.update`, then :meth:`~PlotObject.render`), and
+  the error that stopped it being drawn.
 * :class:`StyledObject` and its kinds (:class:`LineObject`,
   :class:`MarkerObject`): objects drawn with a style, with a palette slot
   for their default colour.
 
-**Owners.** An object may belong to an *owner*, a
-:class:`~pygridplot.Graph`, which compiles its text with the names of the
-other objects. The owner's interface is the :class:`Owner` protocol below,
-so this package never imports the graph package that builds on it.
-
-**The objects' interface to their owner.** Besides their public
-attributes, objects have a few methods starting with ``_`` that the graph
-package uses and programs do not: ``_formulas``, ``_runtime``,
-``_binding`` and ``_describe`` (what an object compiles and stands for, see
-:class:`PlotObject`), ``_changed`` (it tells the owner to compile again),
-and ``_owner``, which the owner sets. They are private to the two packages,
-not to this module: a new kind of object implements them.
+A kind of object implements ``_render`` (draw itself with one of the
+plane's methods) and ``_describe`` (a short description for ``repr``); the
+base classes do the rest.
 """
 
 from __future__ import annotations
 
 from dataclasses import replace
-from typing import TYPE_CHECKING, Any, ClassVar, Protocol
+from typing import TYPE_CHECKING, Any, ClassVar
 
 import numpy as np
 
-from pygridplot.core.expr import Binding, ExpressionError
 from pygridplot.core.handles.point import DraggablePoint
-from pygridplot.core.plot.style import (
-    LineStyle,
-    PointStyle,
-    with_overrides,
-)
+from pygridplot.core.plot.style import LineStyle, PointStyle, with_overrides
 from pygridplot.objects.errors import warn
-from pygridplot.objects.values import Formula, Maker, check_name, standalone
 
 if TYPE_CHECKING:
     import pygame
@@ -44,84 +29,22 @@ if TYPE_CHECKING:
     from pygridplot.plane import Plane
 
 
-class Owner(Protocol):
-    """What holds objects by name and compiles their text: a ``Graph``."""
-
-    @property
-    def items(self) -> tuple[PlotObject, ...]:
-        """The objects, in order."""
-        ...
-
-    def _invalidate(self) -> None:
-        """Forget compiled expressions (names or expressions changed)."""
-        ...
-
-    def _rename(self, obj: PlotObject, name: str | None) -> None:
-        """Check that an object may take a name (raise if not)."""
-        ...
-
-    def _resolve(self, obj: PlotObject) -> tuple[Any, str | None]:
-        """Return an object's compiled runtime and its error, compiling if needed."""
-        ...
-
-    def _curve_named(self, obj: PlotObject) -> Any:
-        """Return the object whose curve a draggable point follows by name."""
-        ...
-
-
 class PlotObject:
-    """Something to draw (or, in a graph, a name defined for other objects).
+    """Something to draw, made once and changed through its attributes.
 
-    Objects are made once and changed through their attributes; every
-    attribute is read when the object is drawn. Draw them by adding them to
-    a plane (``plane.add(obj)``, then ``plane.draw(screen)`` every frame), by
-    putting them in a :class:`~pygridplot.Graph`, or one at a time with
-    :meth:`draw`.
-
-    Subclasses describe themselves through a few hooks: ``_formulas()``
-    (their formulas, with the variables of each), ``_runtime(make)``
-    (compile them with ``make`` into what drawing needs), ``_binding(runtime)``
-    (what their name stands for in a graph's expressions, if anything),
-    ``_render(plane, surface, runtime)`` (draw) and ``_describe()`` (for
-    ``repr``). Setters that change names or expressions call ``_changed()``.
-
-    Attributes:
-        kind: The kind of object, as written in saved graphs (``"plot"``, ...).
+    Every attribute is read when the object is drawn. Draw objects by adding
+    them to a plane (``plane.add(obj)``, then ``plane.draw(screen)`` every
+    frame), or one at a time with :meth:`draw`.
     """
 
-    kind: ClassVar[str] = "object"
-    drawn: ClassVar[bool] = True
-    """Whether the object draws anything (parameters and definitions do not)."""
-
-    def __init__(self, *, name: str | None = None, visible: bool = True) -> None:
-        self._owner: Owner | None = None
-        self._name = None if name is None else check_name(name)
+    def __init__(self, *, visible: bool = True) -> None:
         self._visible = bool(visible)
-        self._own: tuple[Any, str | None] | None = None
         self._draw_error: str | None = None
         self._reported: str | None = None
 
-    # --- Attributes -------------------------------------------------------
-    @property
-    def name(self) -> str | None:
-        """The object's name (``None`` if unnamed).
-
-        In a graph, other objects' expressions refer to it by this name.
-        Renaming does not rewrite expressions that used the old name.
-        """
-        return self._name
-
-    @name.setter
-    def name(self, name: str | None) -> None:
-        new = None if name is None else check_name(name)
-        if self._owner is not None:
-            self._owner._rename(self, new)
-        self._name = new
-        self._changed()
-
     @property
     def visible(self) -> bool:
-        """Whether the object is drawn (a hidden object in a graph keeps its name)."""
+        """Whether the object is drawn."""
         return self._visible
 
     @visible.setter
@@ -129,42 +52,22 @@ class PlotObject:
         self._visible = bool(visible)
 
     @property
-    def graph(self) -> Owner | None:
-        """The :class:`~pygridplot.Graph` the object belongs to, if any."""
-        return self._owner
-
-    @property
     def error(self) -> str | None:
-        """Why the object cannot be drawn, or ``None`` if it can.
+        """Why the object could not be drawn the last time, or ``None``.
 
-        For example ``"unknown name 'b'"`` or ``"circular definition: f → g
-        → f"``. Errors in expressions are always up to date; the rare errors
-        found only when drawing (an invalid setting for a plane) are those
-        of the last time the object was drawn.
+        For example an invalid setting for the plane (an object is never
+        stopped by its own functions: as for the plane's methods, a function
+        that raises or returns NaN leaves a gap).
         """
-        _, error = self._live()
-        return error if error is not None else self._draw_error
-
-    def references(self) -> set[str]:
-        """Return the names of other objects this object's expressions use.
-
-        Returns:
-            The names used in its text, besides variables and built-ins
-            (only meaningful in a graph).
-        """
-        names: set[str] = set()
-        for formula, variables in self._formulas():
-            names |= formula.names(variables)
-        return names
+        return self._draw_error
 
     # --- Drawing ------------------------------------------------------------
     def update(self, plane: Plane) -> None:
         """Prepare to draw on a plane: the first half of :meth:`draw`.
 
-        A plane (or graph) updates every object before rendering any, so
-        that an object reading a draggable point sees where it was dragged
-        this frame. Programs normally call :meth:`draw`, or let the plane do
-        it.
+        A plane updates every object before rendering any, so that an object
+        reading a draggable point sees where it was dragged this frame.
+        Programs normally call :meth:`draw`, or let the plane do it.
 
         Args:
             plane: The plane about to be drawn on.
@@ -174,22 +77,22 @@ class PlotObject:
     def render(self, plane: Plane, surface: pygame.Surface) -> None:
         """Draw onto a plane: the second half of :meth:`draw`.
 
-        A hidden object or one with an error draws nothing; an error is
-        reported with a :class:`~pygridplot.PlotWarning` the first time it
-        appears.
+        A hidden object draws nothing. If the plane refuses to draw it, the
+        error is kept in :attr:`error` and reported with a
+        :class:`~pygridplot.PlotWarning` the first time it appears.
 
         Args:
             plane: The plane.
             surface: The surface (usually the display).
         """
-        runtime, error = self._live()
-        if error is None and self._draw_error is None and self._visible:
+        if not self._visible:
+            return
+        if self._draw_error is None:
             try:
-                self._render(plane, surface, runtime)
+                self._render(plane, surface)
             except (TypeError, ValueError) as failure:
                 self._draw_error = str(failure)
-        if self._visible or not self.drawn:
-            self._report(error if error is not None else self._draw_error)
+        self._report(self._draw_error)
 
     def handles(self, plane: Plane) -> tuple[DraggablePoint, ...]:
         """Return the draggable handles the object shows on a plane (to draw last).
@@ -227,40 +130,17 @@ class PlotObject:
             plane.draw_draggables(surface, *shown)
 
     def __repr__(self) -> str:
-        """Return the class, the name and a description."""
-        name = f" {self._name!r}" if self._name else ""
+        """Return the class and a short description."""
         detail = self._describe()
-        return f"<{type(self).__name__}{name}{': ' if detail else ''}{detail}>"
+        return f"<{type(self).__name__}{': ' if detail else ''}{detail}>"
 
-    # --- For subclasses and owners ----------------------------------------
-    def _changed(self) -> None:
-        """Note that names or expressions changed: compile again when drawn."""
-        self._own = None
-        if self._owner is not None:
-            self._owner._invalidate()
+    # --- For subclasses ---------------------------------------------------
+    def _render(self, plane: Plane, surface: pygame.Surface) -> None:
+        """Draw (the object is visible): one call of a plane method."""
 
-    def _live(self) -> tuple[Any, str | None]:
-        """Return the compiled runtime and the error, compiling if needed."""
-        if self._owner is not None:
-            return self._owner._resolve(self)
-        if self._own is None:
-            try:
-                self._own = (self._runtime(standalone), None)
-            except ExpressionError as error:
-                self._own = (None, error.message)
-        return self._own
-
-    def _working(self) -> Any:
-        """Return the compiled runtime, or raise if the object has an error.
-
-        Raises:
-            ValueError: If the object has an error in its expressions.
-        """
-        runtime, error = self._live()
-        if error is not None:
-            msg = f"{self._label()} has an error: {error}"
-            raise ValueError(msg)
-        return runtime
+    def _describe(self) -> str:
+        """Return a short description of the object, for ``repr`` and warnings."""
+        return ""
 
     def _report(self, message: str | None) -> None:
         """Warn about an error the first time it appears (or changes)."""
@@ -268,36 +148,7 @@ class PlotObject:
             return
         self._reported = message
         if message is not None:
-            warn(f"{self._label()}: {message}")
-
-    def _label(self) -> str:
-        """Name the object in a warning."""
-        if self._name:
-            return repr(self._name)
-        if self._owner is not None:
-            items = self._owner.items
-            index = next(i for i, item in enumerate(items) if item is self)
-            return f"item {index} ({self.kind})"
-        return repr(self)
-
-    def _formulas(self) -> list[tuple[Formula, tuple[str, ...]]]:
-        """Return the object's formulas and the variables of each."""
-        return []
-
-    def _runtime(self, make: Maker) -> Any:
-        """Compile the object's formulas into what drawing needs."""
-        return None
-
-    def _binding(self, runtime: Any) -> Binding | None:
-        """Return what the object's name stands for in expressions, if anything."""
-        return None
-
-    def _render(self, plane: Plane, surface: pygame.Surface, runtime: Any) -> None:
-        """Draw with the compiled runtime (the object is visible, without errors)."""
-
-    def _describe(self) -> str:
-        """Return a short description of the object, for ``repr`` and errors."""
-        return ""
+            warn(f"{self!r}: {message}")
 
 
 def style_property(field: str, annotation: str, doc: str) -> property:
@@ -329,10 +180,10 @@ class StyledObject(PlotObject):
     """An object drawn with a style: a line, a point or a polygon style.
 
     An object without a colour takes the colour of its *palette slot* from
-    the plane's theme. A plane or graph gives each object it is given the
-    next slot, so colours stay with their objects when others are hidden or
-    removed, and follow the theme; an object drawn without one takes the
-    next colour of the frame, like the plane's drawing methods.
+    the plane's theme. A plane gives each object added to it the next slot,
+    so colours stay with their objects when others are hidden or removed,
+    and follow the theme; an object drawn without one takes the next colour
+    of the frame, like the plane's drawing methods.
     """
 
     style_type: ClassVar[type] = LineStyle
@@ -344,11 +195,10 @@ class StyledObject(PlotObject):
         style: Any = None,
         overrides: dict[str, Any] | None = None,
         palette: int | None = None,
-        name: str | None = None,
         visible: bool = True,
         default: Any = None,
     ) -> None:
-        super().__init__(name=name, visible=visible)
+        super().__init__(visible=visible)
         base = self._check_style(style) if style is not None else default
         if base is None:
             base = self.default_style

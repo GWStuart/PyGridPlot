@@ -1,10 +1,11 @@
 """Objects drawn from a list of points: points, polylines and polygons.
 
 Their coordinates are numbers (an ``(N, 2)`` array of data is fine, and
-fast: it is drawn as it is), or, coordinate by coordinate, Python functions
-of nothing or text without variables, evaluated every time the object is
-drawn, so a shape can follow other objects. A NaN coordinate is allowed, as
-for the plane: a point that is not drawn, or a gap in a line.
+fast: it is drawn as it is), or, coordinate by coordinate, functions of
+nothing that are called every time the object is drawn
+(``(lambda: p.x, lambda: p.y)``), so a shape can follow other objects. A NaN
+coordinate is allowed, as for the plane: a point that is not drawn, or a gap
+in a line.
 """
 
 from __future__ import annotations
@@ -23,15 +24,7 @@ from pygridplot.objects.base import (
     StyledObject,
     style_property,
 )
-from pygridplot.objects.values import (
-    Coordinate,
-    Formula,
-    Maker,
-    coordinate,
-    getter,
-    is_number,
-    two,
-)
+from pygridplot.objects.values import Coordinate, current, is_number, two
 
 if TYPE_CHECKING:
     import pygame
@@ -43,17 +36,18 @@ class PathData:
     """The points of a ``Points``, ``Polyline`` or ``Polygon`` object.
 
     Plain numbers are kept in an array, so large data sets cost nothing to
-    redraw; formulas (which may change) are evaluated each time.
+    redraw; coordinates given as functions are called each time.
 
     Attributes:
-        numbers: The coordinates, NaN where a formula gives them.
-        formulas: The formulas, by ``(row, column)``.
+        numbers: The coordinates, NaN where a function gives them.
+        functions: The functions, by ``(row, column)``.
     """
 
-    __slots__ = ("formulas", "numbers")
+    __slots__ = ("functions", "numbers")
 
     def __init__(self, points: object, what: str) -> None:
-        self.formulas: dict[tuple[int, int], Formula] = {}
+        self.functions: dict[tuple[int, int], Callable[[], Any]] = {}
+        self.numbers: NDArray[np.float64]
         if isinstance(points, np.ndarray):
             array = np.asarray(points, dtype=np.float64)
             if array.ndim != 2 or array.shape[1] != 2:
@@ -73,65 +67,46 @@ class PathData:
         for i, row in enumerate(rows):
             where = f"{what}[{i}]"
             for j, value in enumerate(two(row, where)):
-                if is_number(value):
+                if callable(value):
+                    self.functions[(i, j)] = value
+                    self.numbers[i, j] = np.nan
+                elif is_number(value):
                     number = float(value)
                     if math.isinf(number):
                         msg = f"{where} must not be infinite (NaN leaves a gap)"
                         raise ValueError(msg)
                     self.numbers[i, j] = number
                 else:
-                    self.formulas[(i, j)] = coordinate(
-                        value, f"a coordinate of {where}"
-                    )
-                    self.numbers[i, j] = np.nan
+                    msg = f"{where} must be numbers or functions, got {row!r}"
+                    raise TypeError(msg)
 
     def value(self) -> list[tuple[Coordinate, Coordinate]]:
-        """Return the points as given (numbers, functions and text)."""
+        """Return the points as given (numbers and functions)."""
         result: list[tuple[Coordinate, Coordinate]] = []
         for i, (x, y) in enumerate(self.numbers.tolist()):
-            fx = self.formulas.get((i, 0))
-            fy = self.formulas.get((i, 1))
-            result.append(
-                (
-                    x if fx is None else fx.source,
-                    y if fy is None else fy.source,
-                )
-            )
+            fx = self.functions.get((i, 0))
+            fy = self.functions.get((i, 1))
+            result.append((x if fx is None else fx, y if fy is None else fy))
         return result
 
-    def evaluator(self, make: Maker) -> Callable[[], NDArray[np.float64]]:
-        """Return a function giving the points' current coordinates."""
-        getters = {key: getter(make(f, ())) for key, f in self.formulas.items()}
-        numbers = self.numbers
-        if not getters:
-            return lambda: numbers
-
-        def evaluate() -> NDArray[np.float64]:
-            result: NDArray[np.float64] = numbers.copy()
-            for (i, j), get in getters.items():
-                result[i, j] = get()
-            return result
-
-        return evaluate
+    def current(self) -> NDArray[np.float64]:
+        """Return the points' coordinates now (functions called)."""
+        if not self.functions:
+            return self.numbers
+        result: NDArray[np.float64] = self.numbers.copy()
+        for (i, j), func in self.functions.items():
+            result[i, j] = current(func)
+        return result
 
 
 class _PathObject(StyledObject):
     """What objects made of a list of points share."""
 
-    def _set_points(self, points: Any) -> None:
-        """Replace the points; compile again only if formulas are involved."""
-        new = PathData(points, "points")
-        old: PathData | None = getattr(self, "_points", None)
-        had_formulas = old is not None and bool(old.formulas)
-        self._points: PathData = new
-        if had_formulas or new.formulas:
-            self._changed()
-        else:
-            self._own = None  # the runtime holds the old array
+    _points: PathData
 
     @property
     def points(self) -> list[tuple[Coordinate, Coordinate]]:
-        """The points as given: numbers, functions and text.
+        """The points as given: numbers and functions.
 
         Assign a new list or array to change them (every frame, for data
         that moves).
@@ -140,19 +115,7 @@ class _PathObject(StyledObject):
 
     @points.setter
     def points(self, points: Any) -> None:
-        self._set_points(points)
-
-    def _formulas(self) -> list[tuple[Formula, tuple[str, ...]]]:
-        return [(f, ()) for f in self._points.formulas.values()]
-
-    def _runtime(self, make: Maker) -> Any:
-        return self._points.evaluator(make)
-
-    def _live(self) -> tuple[Any, str | None]:
-        runtime, error = super()._live()
-        if error is None and not self._points.formulas:
-            return (lambda: self._points.numbers), None  # numbers: always current
-        return runtime, error
+        self._points = PathData(points, "points")
 
 
 class Points(_PathObject, MarkerObject):
@@ -160,8 +123,7 @@ class Points(_PathObject, MarkerObject):
 
     Args:
         points: ``(x, y)`` pairs or an ``(N, 2)`` array; each coordinate a
-            number, a function of nothing, or text without variables.
-        name: The object's name (optional).
+            number or a function of nothing.
         color: Fill colour (default: the object's palette colour).
         radius: Marker size in pixels.
         marker: Marker shape.
@@ -170,16 +132,13 @@ class Points(_PathObject, MarkerObject):
         opacity: Opacity.
         style: A :class:`~pygridplot.PointStyle`.
         visible: Whether it is drawn.
-        palette: Palette slot (normally chosen by the plane or graph).
+        palette: Palette slot (normally chosen by the plane).
     """
-
-    kind: ClassVar[str] = "points"
 
     def __init__(
         self,
         points: Any,
         *,
-        name: str | None = None,
         color: Any = None,
         radius: float | None = None,
         marker: Any = None,
@@ -201,13 +160,14 @@ class Points(_PathObject, MarkerObject):
                 "opacity": opacity,
             },
             palette=palette,
-            name=name,
             visible=visible,
         )
-        self._set_points(points)
+        self.points = points
 
-    def _render(self, plane: Plane, surface: pygame.Surface, runtime: Any) -> None:
-        plane.points(surface, runtime(), style=self.style, color=self._color(plane))
+    def _render(self, plane: Plane, surface: pygame.Surface) -> None:
+        plane.points(
+            surface, self._points.current(), style=self.style, color=self._color(plane)
+        )
 
     def _describe(self) -> str:
         return f"{len(self._points.numbers)} points"
@@ -218,25 +178,21 @@ class Polyline(_PathObject, LineObject):
 
     Args:
         points: The vertices: ``(x, y)`` pairs or an ``(N, 2)`` array; each
-            coordinate a number, a function of nothing, or text.
+            coordinate a number or a function of nothing.
         closed: Join the last point back to the first.
-        name: The object's name (optional).
         color: Line colour (default: the object's palette colour).
         width: Line width in pixels.
         opacity: Line opacity.
         style: A :class:`~pygridplot.LineStyle`.
         visible: Whether it is drawn.
-        palette: Palette slot (normally chosen by the plane or graph).
+        palette: Palette slot (normally chosen by the plane).
     """
-
-    kind: ClassVar[str] = "polyline"
 
     def __init__(
         self,
         points: Any,
         *,
         closed: bool = False,
-        name: str | None = None,
         color: Any = None,
         width: float | None = None,
         opacity: float | None = None,
@@ -248,11 +204,10 @@ class Polyline(_PathObject, LineObject):
             style=style,
             overrides={"color": color, "width": width, "opacity": opacity},
             palette=palette,
-            name=name,
             visible=visible,
         )
-        self._set_points(points)
-        self._closed = bool(closed)
+        self.points = points
+        self.closed = closed
 
     @property
     def closed(self) -> bool:
@@ -263,10 +218,10 @@ class Polyline(_PathObject, LineObject):
     def closed(self, closed: bool) -> None:
         self._closed = bool(closed)
 
-    def _render(self, plane: Plane, surface: pygame.Surface, runtime: Any) -> None:
+    def _render(self, plane: Plane, surface: pygame.Surface) -> None:
         plane.polyline(
             surface,
-            runtime(),
+            self._points.current(),
             style=self.style,
             color=self._color(plane),
             closed=self._closed,
@@ -281,8 +236,7 @@ class Polygon(_PathObject):
 
     Args:
         points: The vertices: ``(x, y)`` pairs or an ``(N, 2)`` array; each
-            coordinate a number, a function of nothing, or text.
-        name: The object's name (optional).
+            coordinate a number or a function of nothing.
         color: Outline (and fill) colour (default: the palette colour).
         width: Outline thickness in pixels (0 for none).
         opacity: Outline opacity.
@@ -292,10 +246,9 @@ class Polygon(_PathObject):
         fill_rule: ``"nonzero"`` or ``"evenodd"``.
         style: A :class:`~pygridplot.PolygonStyle`.
         visible: Whether it is drawn.
-        palette: Palette slot (normally chosen by the plane or graph).
+        palette: Palette slot (normally chosen by the plane).
     """
 
-    kind: ClassVar[str] = "polygon"
     style_type: ClassVar[type] = PolygonStyle
     default_style: ClassVar[Any] = PolygonStyle()
 
@@ -303,7 +256,6 @@ class Polygon(_PathObject):
         self,
         points: Any,
         *,
-        name: str | None = None,
         color: Any = None,
         width: float | None = None,
         opacity: float | None = None,
@@ -327,10 +279,9 @@ class Polygon(_PathObject):
                 "fill_rule": fill_rule,
             },
             palette=palette,
-            name=name,
             visible=visible,
         )
-        self._set_points(points)
+        self.points = points
 
     width = style_property("width", "float", "The outline's thickness, in pixels.")
     fill = style_property("fill", "bool", "Whether the inside is filled.")
@@ -341,8 +292,10 @@ class Polygon(_PathObject):
     )
     fill_opacity = style_property("fill_opacity", "float", "The fill opacity.")
 
-    def _render(self, plane: Plane, surface: pygame.Surface, runtime: Any) -> None:
-        plane.polygon(surface, runtime(), style=self.style, color=self._color(plane))
+    def _render(self, plane: Plane, surface: pygame.Surface) -> None:
+        plane.polygon(
+            surface, self._points.current(), style=self.style, color=self._color(plane)
+        )
 
     def _describe(self) -> str:
         return f"{len(self._points.numbers)} vertices"

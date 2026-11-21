@@ -18,17 +18,12 @@ and default.
 6. [Objects](objects.md): functions, curves and points made once and
    changed through their attributes (`f = pgp.Function(np.sin)`,
    `f.color = "red"`), drawn by the plane every frame.
-7. [Graphs](graphs.md): objects written as maths (`"y = a sin(x - P.x)"`),
-   with names, edited while the program runs and saved as JSON.
-8. [The expression language](expressions.md): the maths that objects,
-   graphs and `pgp.expression` read: operators, functions, derivatives,
-   conditions.
-9. [Logarithmic axes](log-axes.md): log-log and semi-log planes.
-10. [Styles and themes](styles-and-themes.md): colours, reusable styles,
-    the palette, themes and how numbers are written.
-11. [Recipes](recipes.md): worked examples (mouse readouts, animation,
-    legends, screenshots, ...), performance tips and troubleshooting.
-12. [API reference](reference.md): everything `import pygridplot` provides.
+7. [Logarithmic axes](log-axes.md): log-log and semi-log planes.
+8. [Styles and themes](styles-and-themes.md): colours, reusable styles, the
+   palette, themes and how numbers are written.
+9. [Recipes](recipes.md): worked examples (mouse readouts, animation,
+   legends, screenshots, ...), performance tips and troubleshooting.
+10. [API reference](reference.md): everything `import pygridplot` provides.
 
 The `examples/` folder of the repository has a runnable program for every
 topic; [Recipes](recipes.md#examples) lists them.

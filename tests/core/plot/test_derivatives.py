@@ -165,3 +165,11 @@ def test_results_that_are_not_derivatives_fall_back() -> None:
     np.testing.assert_allclose(lengths(X), 2.0)  # point by point instead
     as_list = pgp.derivative(lambda x: [x])  # type: ignore[arg-type, return-value]
     assert np.isnan(as_list(X)).all()
+
+
+def test_an_undefined_constant_has_undefined_derivatives() -> None:
+    """Where a function is NaN, its derivatives are NaN too, even for a constant."""
+    f = pgp.derivative(lambda x: np.where(x > 0, x**2, np.nan))
+    np.testing.assert_array_equal(f(np.array([-1.0, 2.0])), [np.nan, 4.0])
+    g = pgp.derivative(lambda x: x + np.where(x > 0, 1.0, np.inf), 2)
+    assert np.isnan(g(np.array([-1.0]))).all()

@@ -37,7 +37,7 @@ created once and keep the position the user drags them to.
 
 A plane can also keep **objects** made once and changed through their
 attributes (:mod:`pygridplot.objects`: ``pgp.Function``, ``pgp.Point``,
-..., and whole graphs): :meth:`Plane.add` them, then :meth:`Plane.draw`
+...): :meth:`Plane.add` them, then :meth:`Plane.draw`
 draws the grid, the objects and the draggable points each frame. Objects
 draw themselves with the methods above, so the two styles mix freely.
 """
@@ -106,8 +106,8 @@ _DEFAULT_POLYGON = PolygonStyle()
 class Drawable(Protocol):
     """What a plane can keep and draw every frame (see :meth:`Plane.add`).
 
-    The objects of :mod:`pygridplot.objects` and :class:`~pygridplot.Graph`
-    follow it. Drawing happens in two phases, so that everything reading a
+    The objects of :mod:`pygridplot.objects` follow it, and so can a
+    program's own classes. Drawing happens in two phases, so that everything reading a
     draggable point sees where it was dragged this frame: every object's
     :meth:`update`, then every object's :meth:`render`, then the draggable
     handles of all of them, on top.
@@ -869,7 +869,7 @@ class Plane:
         """
         # The plane owns its points, not the other way round: a point only
         # holds a weak reference to it, so a plane can be freed while
-        # something (a graph, the user's code) still holds its points.
+        # something (an object, the user's code) still holds its points.
         forget = weakref.WeakMethod(self._forget_draggable)
 
         def on_remove(removed: DraggablePoint) -> None:
@@ -966,7 +966,7 @@ class Plane:
 
         Objects are the functions, curves and points of
         :mod:`pygridplot.objects` (``pgp.Function(np.sin)``,
-        ``pgp.Point((1, 2), draggable=True)``, ...) and whole graphs. They
+        ``pgp.Point((1, 2), draggable=True)``, ...). They
         are drawn in the order they were added. An object without a colour
         gets the plane's next palette slot, so it keeps its colour when
         others are hidden or removed.
@@ -980,8 +980,7 @@ class Plane:
 
         Raises:
             TypeError: If something is not an object a plane can draw.
-            ValueError: If an object is already on the plane, or belongs to a
-                graph (add the graph instead).
+            ValueError: If an object is already on the plane.
         """
         given: tuple[Drawable, ...] = (obj, *more)
         for item in given:
@@ -990,9 +989,6 @@ class Plane:
                 raise TypeError(msg)
             if any(other is item for other in self._objects):
                 msg = f"{item!r} is already on this plane"
-                raise ValueError(msg)
-            if getattr(item, "graph", None) is not None:
-                msg = f"{item!r} belongs to a graph: add the graph instead"
                 raise ValueError(msg)
         for item in given:
             if getattr(item, "palette", 0) is None:
