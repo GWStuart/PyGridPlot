@@ -150,6 +150,64 @@ def scene_implicit(plane: pgp.Plane, surface: pygame.Surface) -> None:
     )
 
 
+def scene_regions(plane: pgp.Plane, surface: pygame.Surface) -> None:
+    """Draw inequalities and areas between graphs.
+
+    A disc with its boundary, an annulus, a compound region, a region that
+    ends at the asymptotes of ``tan``, the area between two crossing graphs
+    and the area under ``1/x`` down to the bottom edge.
+
+    Args:
+        plane: The plane.
+        surface: The surface to draw on.
+    """
+    plane.inequality(surface, lambda x, y: (x + 5) ** 2 + (y - 2) ** 2 < 3)
+    plane.implicit(surface, lambda x, y: (x + 5) ** 2 + (y - 2) ** 2, 3, width=1.5)
+    plane.inequality(
+        surface,
+        lambda x, y: (
+            ((x + 5) ** 2 + (y + 2.5) ** 2 > 0.6)
+            & ((x + 5) ** 2 + (y + 2.5) ** 2 < 2.5)
+        ),
+    )
+    plane.inequality(
+        surface, lambda x, y: (y > (x - 1) ** 2 - 4) & (y < 1 - 0.5 * x) & (x < 2.5)
+    )
+    plane.inequality(surface, lambda x, y: (y < np.tan(x)) & (y > 2.5), opacity=0.35)
+    plane.fill_between(surface, np.sin, lambda x: 0.4 * x - 3, domain=(4, 9))
+    plane.plot(surface, np.sin, domain=(4, 9), width=1.5)
+    plane.plot(surface, lambda x: 0.4 * x - 3, domain=(4, 9), width=1.5)
+    plane.fill_between(surface, lambda x: 1 / x, -math.inf, domain=(-2.5, -0.4))
+
+
+def scene_fields(plane: pgp.Plane, surface: pygame.Surface) -> None:
+    """Draw a vector field, a slope field with a solution, and arrows.
+
+    The left half shows a rotation field by magnitude, the right half the
+    slope field of ``dy/dx = x - y`` with one solution, and arrows of
+    several widths and opacities lie on top, including two translucent ones
+    drawn in one call that cross without darkening.
+
+    Args:
+        plane: The plane.
+        surface: The surface to draw on.
+    """
+    plane.vector_field(
+        surface, lambda x, y: (np.where(x < 0, -(y + 1), np.nan), x), scale=6.0
+    )
+    plane.slope_field(surface, lambda x, y: np.where(x > 0.5, x - y, np.nan))
+    plane.plot(surface, lambda x: x - 1 + 2 * np.exp(-x), domain=(0.5, 9))
+    plane.arrow(surface, (-6.0, -4.0), [(-2.0, -4.0), (-3.0, -1.5)], width=3.0)
+    plane.arrow(
+        surface,
+        [(-1.0, 3.0), (1.0, 4.5)],
+        [(3.0, 4.5), (2.5, 2.5)],
+        width=6.0,
+        opacity=0.5,
+    )
+    plane.arrow(surface, (2.0, -4.5), (2.2, -4.4), head_size=12.0)  # all head
+
+
 def scene_draggable(plane: pgp.Plane, surface: pygame.Surface) -> None:
     """Draw draggable points of every kind, one hovered and one being dragged.
 
@@ -198,6 +256,8 @@ SCENES: dict[str, Scene] = {
     "log": scene_log,
     "curves": scene_curves,
     "implicit": scene_implicit,
+    "regions": scene_regions,
+    "fields": scene_fields,
     "draggable": scene_draggable,
     "derivatives": scene_derivatives,
 }
@@ -296,6 +356,16 @@ VIEWS: tuple[GalleryView, ...] = (
         scale=(2e3, 400.0),
         scene="derivatives",
     ),
+    GalleryView("52_regions", scale=60.0, scene="regions"),
+    GalleryView("53_regions_dark", scale=60.0, theme="dark", scene="regions"),
+    GalleryView("54_regions_loglog", log_x=True, log_y=True, scene="regions"),
+    GalleryView(
+        "55_regions_zoomed", center=(-5.0, 2.0 + 3**0.5), scale=2e4, scene="regions"
+    ),
+    GalleryView("56_fields", scale=60.0, scene="fields"),
+    GalleryView("57_fields_dark", scale=60.0, theme="dark", scene="fields"),
+    GalleryView("58_fields_fading", scale=60.0 * 1.38, scene="fields"),
+    GalleryView("59_fields_loglog", log_x=True, log_y=True, scene="fields"),
 )
 
 

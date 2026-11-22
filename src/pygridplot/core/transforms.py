@@ -109,6 +109,28 @@ class AxisTransform:
                 return math.inf if exponent > 308.25 else 10.0**exponent
             return np.power(10.0, np.asarray(values, dtype=np.float64))
 
+    def derivative(self, values: ArrayLike) -> NDArray[np.float64]:
+        """Return how fast the transformed coordinate changes with the value.
+
+        This maps directions in world units to directions in transformed
+        coordinates (and so on screen): a step ``dx`` at ``x`` moves the
+        transformed coordinate by ``derivative(x) * dx``. Vector and slope
+        fields use it, so that their arrows stay tangent to the curves they
+        describe on log axes too.
+
+        Args:
+            values: World values.
+
+        Returns:
+            1 everywhere on a linear axis. On a log axis ``1 / (x ln 10)``,
+            and NaN where ``x <= 0`` (not on the axis at all).
+        """
+        array = np.asarray(values, dtype=np.float64)
+        if not self.is_log:
+            return np.ones_like(array)
+        with np.errstate(divide="ignore", invalid="ignore"):
+            return np.where(array > 0, 1.0 / (array * math.log(10.0)), np.nan)
+
     def check(self, name: str, value: float) -> float:
         """Return the transformed coordinate of a world value, or raise if invalid.
 

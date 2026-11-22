@@ -378,7 +378,7 @@ def fill_coverage(
     col1 = min(cx1, math.floor(float(max(np.max(ex0), np.max(ex1))) + 0.5) + 2)
     if row1 <= row0 or col1 <= col0:
         return None
-    spans = _spans(ex0, ey0, ex1, ey1, rule, row0, row1, subsamples)
+    spans = _spans(ex0, ey0, ex1, ey1, rule, (row0, row1, col0, col1), subsamples)
     if spans is None:
         return None
     sub, start, end = spans
@@ -407,20 +407,28 @@ def _ring_edges(
         ``(x0, y0, x1, y1)`` arrays of edge endpoints, or ``None`` if there are
         no usable edges.
     """
-    starts, ends = [], []
-    for ring in rings:
-        pts = ring[np.isfinite(ring).all(axis=1)]
-        if pts.shape[0] >= 3:
-            starts.append(pts)
-            ends.append(np.roll(pts, -1, axis=0))
-    if not starts:
+    if len(rings) == 0:
         return None
-    a, b = np.concatenate(starts), np.concatenate(ends)
-    sloped = a[:, 1] != b[:, 1]
-    if not sloped.any():
+    # All rings at once (a region can have hundreds), on 1-D columns (masking
+    # rows of an (N, 2) array is several times slower): drop non-finite
+    # vertices, then rings left with fewer than three, then pair each vertex
+    # with the next one of its ring, the last with the first.
+    points = np.concatenate(rings)
+    ring = np.repeat(np.arange(len(rings)), [len(r) for r in rings])
+    finite = np.isfinite(points[:, 0]) & np.isfinite(points[:, 1])
+    sizes = np.bincount(ring[finite], minlength=len(rings))
+    kept = np.flatnonzero(finite & (sizes[ring] >= 3))
+    if kept.shape[0] == 0:
         return None
-    a, b = a[sloped], b[sloped]
-    return a[:, 0], a[:, 1], b[:, 0], b[:, 1]
+    x0, y0, ring = points[kept, 0], points[kept, 1], ring[kept]
+    following = np.arange(1, kept.shape[0] + 1)
+    last = np.flatnonzero(np.append(ring[1:] != ring[:-1], True))
+    following[last] = np.concatenate(([0], last[:-1] + 1))
+    x1, y1 = x0[following], y0[following]
+    sloped = np.flatnonzero(y0 != y1)
+    if sloped.shape[0] == 0:
+        return None
+    return x0[sloped], y0[sloped], x1[sloped], y1[sloped]
 
 
 def _spans(
@@ -429,8 +437,7 @@ def _spans(
     x1: NDArray[np.float64],
     y1: NDArray[np.float64],
     rule: FillRule,
-    row0: int,
-    row1: int,
+    block: tuple[int, int, int, int],
     subsamples: int,
 ) -> tuple[NDArray[np.intp], NDArray[np.float64], NDArray[np.float64]] | None:
     """Find the covered spans on every sub-scanline.
@@ -441,14 +448,15 @@ def _spans(
         x1: Edge end x.
         y1: Edge end y.
         rule: The fill rule.
-        row0: First pixel row.
-        row1: One past the last pixel row.
+        block: ``(row0, row1, col0, col1)``: the first pixel row, one past
+            the last, and likewise for columns.
         subsamples: Sub-scanlines per row.
 
     Returns:
         ``(sub, start, end)``: sub-scanline index (from the top of ``row0``)
         and the x extent of each inside span, or ``None`` if there are none.
     """
+    row0, row1, col0, col1 = block
     base = row0 - 0.5  # top edge of the first row
     count = (row1 - row0) * subsamples
     direction = np.where(y1 > y0, 1, -1)
@@ -471,7 +479,15 @@ def _spans(
     y = base + (k + 0.5) / subsamples
     slope = (x1 - x0) / (y1 - y0)
     x = x0[edge] + (y - y0[edge]) * slope[edge]
-    order = np.lexsort((x, k))
+    # Sort by sub-scanline, then by x, with one key: k × stride + x, where x
+    # is clamped to a little beyond the block so that it stays below the
+    # stride. One stable sort of floats is about three times faster than
+    # np.lexsort((x, k)). Crossings beyond the block that clamp to the same
+    # key may change places, but the spans between them lie outside the
+    # block, so the coverage is the same.
+    stride = float(col1 - col0 + 8)
+    offset = np.clip(x - (col0 - 2), 0.0, stride - 1.0)
+    order = np.argsort(k * stride + offset, kind="stable")
     k, x, wind = k[order], x[order], direction[edge][order]
     if rule == "evenodd":
         wind = np.ones_like(wind)
@@ -516,17 +532,26 @@ def _accumulate_spans(
     Returns:
         Coverage of shape ``(height, width)`` (``float32``).
     """
-    # float32 is ample for coverage and halves the memory traffic of the
-    # block-sized arrays, which dominate the cost of large fills.
-    weights = np.zeros((height, width + 2), dtype=np.float32)
     u0 = np.clip(start + 0.5, 0.0, float(width))  # to pixel-edge coordinates
     u1 = np.clip(end + 0.5, 0.0, float(width))
     share = 1.0 / subsamples
+    stride = width + 2
+    places, amounts = [], []
     for u, sign in ((u0, share), (u1, -share)):
         i = np.floor(u).astype(np.intp)
         f = u - i
-        np.add.at(weights, (rows, i), (sign * (1.0 - f)).astype(np.float32))
-        np.add.at(weights, (rows, i + 1), (sign * f).astype(np.float32))
+        places += [rows * stride + i, rows * stride + i + 1]
+        amounts += [sign * (1.0 - f), sign * f]
+    # One bincount scatters all the weights (much faster than np.add.at).
+    # The running sums are then taken in float32, which is ample for
+    # coverage and halves the memory traffic of the block-sized array, the
+    # main cost of large fills.
+    sums = np.bincount(
+        np.concatenate(places),
+        weights=np.concatenate(amounts),
+        minlength=height * stride,
+    )
+    weights = sums.astype(np.float32).reshape(height, stride)
     np.cumsum(weights, axis=1, out=weights)
     coverage = weights[:, :width]
     # Round-off in the running sums leaves tiny errors: snap them, so empty

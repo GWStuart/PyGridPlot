@@ -181,6 +181,52 @@ def test_fill_clipping_and_degenerate_input() -> None:
     assert fill_coverage([], "nonzero", CLIP) is None
 
 
+def square(x: float, y: float, size: float) -> np.ndarray:
+    """Return the ring of a square with its lower corner at ``(x, y)``."""
+    return np.array([[x, y], [x + size, y], [x + size, y + size], [x, y + size]])
+
+
+def test_many_rings_are_filled_together() -> None:
+    """Rings are handled all at once: each is closed on itself, never on the next."""
+    squares = [square(10.0 + 20 * i, 10.0 + 10 * (i % 3), 10.0) for i in range(9)]
+    image = fill_image(squares, "evenodd")
+    for i in range(9):
+        assert image[15 + 10 * (i % 3), 15 + 20 * i] == 1.0  # every square
+        assert image[15 + 10 * (i % 3), 25 + 20 * i] == 0.0  # and between them
+    assert image.sum() == pytest.approx(9 * 100.0)
+
+
+def test_rings_drop_non_finite_vertices_and_short_rings() -> None:
+    with_nan = np.array(
+        [[20.0, 20.0], [np.nan, 50.0], [80.0, 20.0], [80.0, 80.0], [20.0, 80.0]]
+    )
+    two_left = np.array([[100.0, 10.0], [np.inf, 10.0], [150.0, 60.0]])
+    tiny = np.array([[0.0, 0.0], [5.0, 5.0]])
+    image = fill_image([tiny, with_nan, two_left], "nonzero")
+    assert image.sum() == pytest.approx(60.0 * 60.0)  # only the square is left
+    assert image[50, 50] == 1.0
+
+
+@pytest.mark.parametrize("rule", ["nonzero", "evenodd"])
+def test_shapes_reaching_far_beyond_the_block_fill_correctly(rule: str) -> None:
+    """Crossings far outside the block are ordered loosely; coverage is exact."""
+    wide = np.array([[-1e6, 30.0], [1e6, 30.0], [1e6, 90.0], [-1e6, 90.0]])
+    slanted = np.array([[-5e5, 40.0], [8e5, 45.0], [9e5, 80.0], [-7e5, 75.0]])
+    back = square(80.0, 50.0, 20.0)[::-1]  # wound the other way
+    image = fill_image([wide, slanted, back], rule)
+    assert image[35, :].min() == 1.0  # inside one shape
+    assert image[60, 20] == (1.0 if rule == "nonzero" else 0.0)  # inside two
+    assert image[60, 90] == 1.0  # winding 1 + 1 - 1, and three crossings
+    assert image[10, :].max() == 0.0
+
+
+def test_shared_edges_leave_no_seam() -> None:
+    """Rings that touch along an edge fill as one shape, every pixel full."""
+    left, right = square(20.0, 20.0, 40.0), square(60.0, 20.0, 40.0)
+    image = fill_image([left, right], "evenodd")
+    assert np.all(image[21:59, 21:99] == 1.0)
+
+
 # ----------------------------------------------------------------------
 # Markers
 # ----------------------------------------------------------------------

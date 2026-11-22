@@ -12,8 +12,9 @@ library works the way it does.
 3. [Interaction](interaction.md): the built-in pan and zoom controls,
    configuring them, and moving the view from your own code.
 4. [Plotting](plotting.md): functions `y = f(x)` and their derivatives,
-   parametric, polar and implicit curves, contour lines, points, polylines
-   and polygons.
+   parametric, polar and implicit curves, contour lines, areas between
+   graphs, inequalities, vector and slope fields, points, polylines,
+   polygons and arrows.
 5. [Draggable points](draggable-points.md): points the user drags, freely,
    along one axis or along a curve.
 6. [Logarithmic axes](log-axes.md): log-log and semi-log planes.

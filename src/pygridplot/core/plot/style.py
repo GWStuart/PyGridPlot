@@ -1,4 +1,4 @@
-"""Styles for plotted objects: lines, points and polygons.
+"""Styles for plotted objects: lines, points, polygons, shaded areas and arrows.
 
 Every drawing call accepts keyword arguments (``color=``, ``width=``, ...)
 and, optionally, a reusable style dataclass. Keyword arguments override the
@@ -12,7 +12,9 @@ A colour of ``None`` means "take the next colour from the theme's palette"
 
 Sizes are in screen pixels, so lines and points look the same at every zoom
 level. Polygons themselves are in world units and scale with the zoom; only
-their outline width is in pixels.
+their outline width is in pixels. Shaded areas (between graphs, or where an
+inequality holds) have no outline: draw their boundaries with the curve
+methods.
 """
 
 from __future__ import annotations
@@ -29,7 +31,9 @@ from pygridplot.core.primitives import (
     MarkerShape,
 )
 
-StyleT = TypeVar("StyleT", "LineStyle", "PointStyle", "PolygonStyle")
+StyleT = TypeVar(
+    "StyleT", "LineStyle", "PointStyle", "PolygonStyle", "FillStyle", "ArrowStyle"
+)
 
 
 def _check_opacity(name: str, value: float) -> None:
@@ -149,6 +153,60 @@ class PolygonStyle:
         if self.fill_rule not in FILL_RULES:
             msg = f"fill_rule must be one of {FILL_RULES}, got {self.fill_rule!r}"
             raise ValueError(msg)
+
+
+@dataclass(frozen=True, slots=True)
+class FillStyle:
+    """How a shaded area is drawn: a translucent fill, without an outline.
+
+    Used by :meth:`~pygridplot.Plane.fill_between` and
+    :meth:`~pygridplot.Plane.inequality`. Their boundaries are curves of
+    their own, drawn with :meth:`~pygridplot.Plane.plot` or
+    :meth:`~pygridplot.Plane.implicit` when wanted.
+
+    Attributes:
+        color: Fill colour. ``None`` takes the next palette colour.
+        opacity: Opacity of the fill in ``[0, 1]``.
+    """
+
+    color: ColorLike | None = None
+    opacity: float = 0.25
+
+    def __post_init__(self) -> None:
+        """Validate the fields."""
+        _check_opacity("opacity", self.opacity)
+
+
+@dataclass(frozen=True, slots=True)
+class ArrowStyle:
+    """How arrows are drawn: a straight shaft with a triangular head.
+
+    Used by :meth:`~pygridplot.Plane.arrow` and
+    :meth:`~pygridplot.Plane.vector_field`. Sizes are in pixels, so arrows
+    look the same at every zoom level; only where they start and end is in
+    world units.
+
+    Attributes:
+        color: Arrow colour, or ``None`` for the next palette colour.
+        width: Thickness of the shaft in pixels.
+        opacity: Opacity in ``[0, 1]``.
+        head_size: Length of the head in pixels, or ``None`` for a head in
+            proportion to the shaft (about ``3 × width + 4``). ``0`` draws no
+            head: a plain segment with square ends. An arrow shorter than its
+            head is drawn as a smaller head alone.
+    """
+
+    color: ColorLike | None = None
+    width: float = 2.5
+    opacity: float = 1.0
+    head_size: float | None = None
+
+    def __post_init__(self) -> None:
+        """Validate the fields."""
+        _check_size("width", self.width, allow_zero=False)
+        _check_opacity("opacity", self.opacity)
+        if self.head_size is not None:
+            _check_size("head_size", self.head_size, allow_zero=True)
 
 
 def with_overrides(style: StyleT, **overrides: object) -> StyleT:

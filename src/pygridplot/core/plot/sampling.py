@@ -96,6 +96,8 @@ def sample_function(
     scale: tuple[float, float],
     y_band: tuple[float, float],
     config: SamplingConfig = DEFAULT_SAMPLING,
+    *,
+    keep_offscreen: bool = False,
 ) -> list[NDArray[np.float64]]:
     """Sample ``func`` over ``x_range`` into polylines that look right on screen.
 
@@ -107,11 +109,15 @@ def sample_function(
         y_band: ``(y_min, y_max)`` world interval that is on screen (including
             any margin). Parts of the curve outside it are not refined.
         config: Sampling settings.
+        keep_offscreen: Keep polylines that lie entirely above or below the
+            band (they are dropped by default, as they draw nothing). The
+            area between two graphs needs them: it can fill the screen
+            while both graphs are off it.
 
     Returns:
         The curve as a list of polylines in world coordinates, each an array of
-        shape ``(N, 2)`` with ``N >= 2``. The curve is broken wherever the
-        function is undefined or jumps.
+        shape ``(N, 2)`` with ``N >= 2``, in order of x. The curve is broken
+        wherever the function is undefined or jumps.
     """
     lo, hi = x_range
     if not (math.isfinite(lo) and math.isfinite(hi) and hi > lo):
@@ -121,7 +127,7 @@ def sample_function(
         warnings.simplefilter("ignore")
         ys = evaluate_quietly(func, xs)
         xs, ys, broken = _refine(func, xs, ys, scale, y_band, config)
-    return _polylines(xs, ys, broken, y_band)
+    return _polylines(xs, ys, broken, None if keep_offscreen else y_band)
 
 
 def _initial_samples(
@@ -617,7 +623,7 @@ def _polylines(
     xs: NDArray[np.float64],
     ys: NDArray[np.float64],
     broken: NDArray[np.bool_],
-    band: tuple[float, float],
+    band: tuple[float, float] | None,
 ) -> list[NDArray[np.float64]]:
     """Cut the samples into polylines at every break.
 
@@ -625,20 +631,20 @@ def _polylines(
         xs: Sample positions.
         ys: Sample values.
         broken: Where consecutive samples must not be joined.
-        band: Visible y interval (polylines entirely outside it are dropped).
+        band: Visible y interval (polylines entirely outside it are
+            dropped), or ``None`` to keep them all.
 
     Returns:
         Polylines with at least two points, as ``(N, 2)`` arrays.
     """
     starts = np.flatnonzero(np.concatenate(([True], broken)))
     ends = np.concatenate((starts[1:], [xs.shape[0]]))
-    lo, hi = band
     lines = []
     for start, end in zip(starts.tolist(), ends.tolist(), strict=True):
         if end - start < 2 or not np.isfinite(ys[start]):
             continue
         y = ys[start:end]
-        if np.max(y) < lo or np.min(y) > hi:
+        if band is not None and (np.max(y) < band[0] or np.min(y) > band[1]):
             continue
         lines.append(np.column_stack((xs[start:end], y)))
     return lines

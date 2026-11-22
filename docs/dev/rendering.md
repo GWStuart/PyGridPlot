@@ -84,9 +84,24 @@ sub-scanlines. On each, the spans inside the polygon are found exactly
 (edge crossings sorted along the line, with a running winding number for
 `"nonzero"` or its parity for `"evenodd"`), and each pixel gets the
 fraction of its width covered. Those fractions are accumulated with a
-cumulative-sum trick (four point weights per span, one `cumsum` per row) in
-`float32`, and round-off within `1e-5` of 0 or 1 is snapped, so holes are
-exactly empty and interiors exactly solid.
+cumulative-sum trick (four point weights per span, scattered with one
+`np.bincount`, then one `cumsum` per row in `float32`), and round-off
+within `1e-5` of 0 or 1 is snapped, so holes are exactly empty and
+interiors exactly solid.
+
+All the rings of a fill are handled at once, so a fill made of hundreds
+of small polygons (a region with many pieces, the arrows of a vector
+field) costs little more than one polygon with as many edges:
+`_ring_edges` pairs up the vertices of every ring in one pass, and the
+crossings of all sub-scanlines are ordered by one stable sort of the key
+`k × stride + x` (with `x` clamped to just beyond the block, below the
+stride), about three times faster than `np.lexsort((x, k))`. Crossings
+beyond the block that clamp to the same key may swap places, but the
+spans between them lie outside the block, so the coverage is unchanged.
+The cost that remains grows with the area of the fill's bounding box (the
+running sums) and with the total height of its edges (the crossings), so
+many long, thin shapes, such as hundreds of long arrows, are the most
+expensive case.
 
 ### Markers
 

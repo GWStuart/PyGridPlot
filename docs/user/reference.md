@@ -13,7 +13,7 @@ setting with its parameters and defaults.
 - The plane: [`Plane`](#plane), [`show`](#show)
 - Derivatives: [`derivative`](#derivative), [`derivatives`](#derivatives)
 - Draggable points: [`DraggablePoint`](#draggablepoint)
-- Styles: [`LineStyle`](#linestyle), [`PointStyle`](#pointstyle), [`PolygonStyle`](#polygonstyle)
+- Styles: [`LineStyle`](#linestyle), [`PointStyle`](#pointstyle), [`PolygonStyle`](#polygonstyle), [`FillStyle`](#fillstyle), [`ArrowStyle`](#arrowstyle)
 - Themes: [`GridTheme`](#gridtheme), [`LIGHT`](#light), [`DARK`](#dark), [`NumberFormat`](#numberformat)
 - Configuration: [`InteractionConfig`](#interactionconfig), [`KeyBindings`](#keybindings), [`SamplingConfig`](#samplingconfig), [`CurveSampling`](#curvesampling), [`ImplicitSampling`](#implicitsampling), [`ViewLimits`](#viewlimits), [`CacheStats`](#cachestats)
 - The view: [`View`](#view), [`ViewState`](#viewstate)
@@ -324,6 +324,223 @@ The initial view can be given like a graphing calculator's window settings, `x_r
   *Raises:*
 
   - `ValueError`: If a level is not a finite number.
+
+- **`plane.fill_between()`**
+
+  ```py
+  plane.fill_between(
+      surface: pygame.Surface,
+      f: Boundary,
+      g: Boundary = 0.0,
+      *,
+      color: ColorLike | None = None,
+      opacity: float | None = None,
+      domain: tuple[float, float] | None = None,
+      style: FillStyle | None = None,
+      sampling: SamplingConfig | None = None,
+  )
+  ```
+
+  Shade the area between the graphs `y = f(x)` and `y = g(x)`.
+
+  Both sides are sampled exactly as `plot` samples a graph, so the shading meets the curves drawn with `plot` exactly. It covers only the x intervals where both sides are defined, and stops with a straight edge wherever either one jumps (as `tan` does at its asymptotes) or ends. Where the graphs cross, both parts are shaded.
+
+  The area has no outline: plot the curves too, if they should show:
+
+  ```py
+  plane.fill_between(screen, np.sin, 0, domain=(0, np.pi))
+  plane.plot(screen, np.sin)
+  ```
+
+  *Parameters:*
+
+  - `surface`: The surface to draw on.
+  - `f`: One side: a function of `x` (vectorised or scalar-only, like for `plot`), or a number for a horizontal line.
+  - `g`: The other side, likewise (default `0`: the area between `f` and the x axis). `-math.inf` or `math.inf` shades all the way to the bottom or top of the plane; on a log y axis, so does any number `<= 0`.
+  - `color`: Fill colour (default: the next palette colour).
+  - `opacity`: Fill opacity in `[0, 1]` (default 0.25).
+  - `domain`: Only shade where `domain[0] <= x <= domain[1]`.
+  - `style`: A reusable `FillStyle`. The other keyword arguments override its fields.
+  - `sampling`: Override the plane's sampling settings for this call (used for both sides).
+
+  *Raises:*
+
+  - `TypeError`: If `f` or `g` is neither callable nor a number.
+  - `ValueError`: If `domain` is not an increasing pair of numbers.
+
+- **`plane.inequality()`**
+
+  ```py
+  plane.inequality(
+      surface: pygame.Surface,
+      condition: PlaneFunction,
+      *,
+      color: ColorLike | None = None,
+      opacity: float | None = None,
+      style: FillStyle | None = None,
+      sampling: ImplicitSampling | None = None,
+  )
+  ```
+
+  Shade the region where `condition(x, y)` holds.
+
+  The condition is an inequality written in Python, such as `lambda x, y: x**2 + y**2 < 4` or `lambda x, y: y < np.sin(x)`. Conditions combine with NumPy's `&` (and), `|` (or) and `~` (not), each part in brackets:
+
+  ```py
+  plane.inequality(screen, lambda x, y: (y > x**2) & (y < 4))
+  ```
+
+  (Python's `and`, `or` and chained comparisons such as `0 < x < 1` work too, but only on single numbers, so they are much slower.) Any value that is not zero counts as true, so a function returning 0 or 1 works as well. Where the condition is undefined (it raises an error or returns NaN), the point is outside.
+
+  The region is found like an implicit curve, on a grid of samples a couple of pixels apart, with its edges refined onto the true boundary, so it can be any shape: several pieces, holes, regions that end at an asymptote. Islands and holes smaller than about eight pixels across may be missed.
+
+  The region has no outline: draw its boundary with `implicit` or `plot`, if it should show:
+
+  ```py
+  plane.inequality(screen, lambda x, y: x**2 + y**2 < 4)
+  plane.implicit(screen, lambda x, y: x**2 + y**2, 4)
+  ```
+
+  *Parameters:*
+
+  - `surface`: The surface to draw on.
+  - `condition`: `condition(x, y)`, taking NumPy arrays and returning booleans (or plain numbers, at some cost in speed).
+  - `color`: Fill colour (default: the next palette colour).
+  - `opacity`: Fill opacity in `[0, 1]` (default 0.25).
+  - `style`: A reusable `FillStyle`. The other keyword arguments override its fields.
+  - `sampling`: How the region is searched for (the same settings as implicit curves: see `ImplicitSampling`).
+
+- **`plane.arrow()`**
+
+  ```py
+  plane.arrow(
+      surface: pygame.Surface,
+      start: ArrayLike,
+      end: ArrayLike,
+      *,
+      color: ColorLike | None = None,
+      width: float | None = None,
+      opacity: float | None = None,
+      head_size: float | None = None,
+      style: ArrowStyle | None = None,
+  )
+  ```
+
+  Draw an arrow from `start` to `end`, or many arrows at once.
+
+  The arrow runs straight from `start` to its tip at `end`, both in world units, so it moves and grows with the view; its width and head are in pixels, so it looks the same at every zoom. To draw a vector `v` at a point `p`, give `p` and `np.add(p, v)`.
+
+  Each end is one point `(x, y)` or many (a sequence of points, or an `(N, 2)` array), for many arrows in one call, which is much faster than one call each. A single start is shared by all the ends, and a single end by all the starts:
+
+  ```py
+  plane.arrow(screen, (0, 0), (2, 1))
+  plane.arrow(screen, (0, 0), [(1, 0), (0, 1)])      # two, from the origin
+  ```
+
+  Arrows with a NaN coordinate, or whose ends are in the same place, are left out.
+
+  *Parameters:*
+
+  - `surface`: The surface to draw on.
+  - `start`: Where the arrow starts (its tail).
+  - `end`: Where it points to (its tip).
+  - `color`: Arrow colour (default: the next palette colour).
+  - `width`: Shaft width in pixels (default 2.5).
+  - `opacity`: Opacity in `[0, 1]`.
+  - `head_size`: Length of the head in pixels (default: in proportion to the width; `0` for no head).
+  - `style`: A reusable `ArrowStyle`. The other keyword arguments override its fields.
+
+  *Raises:*
+
+  - `ValueError`: If `start` or `end` is not one or more points, or they are both several points but not as many.
+
+- **`plane.vector_field()`**
+
+  ```py
+  plane.vector_field(
+      surface: pygame.Surface,
+      field: VectorFunction,
+      *,
+      spacing: float | None = None,
+      scale: float | None = None,
+      color: ColorLike | None = None,
+      width: float | None = None,
+      opacity: float | None = None,
+      head_size: float | None = None,
+      style: ArrowStyle | None = None,
+  )
+  ```
+
+  Draw the vector field `(u, v) = field(x, y)` as a lattice of arrows.
+
+  `field` takes `x` and `y` and returns the vector there as a pair, written with NumPy like the functions given to `implicit`:
+
+  ```py
+  plane.vector_field(screen, lambda x, y: (-y, x))  # a rotation
+  plane.vector_field(screen, lambda x, y: (1, np.sin(x)))  # u is a number
+  ```
+
+  An arrow is centred on each point of a lattice that keeps about the same density on screen, `spacing` pixels apart. The lattice is fixed to the plane, so panning moves the arrows with it; while zooming, new arrows fade and grow in between the others (or shrink and fade out), so that their density stays the same and nothing jumps.
+
+  By default every arrow has the same length, so the picture shows the field's direction. Give `scale` to show its magnitude too: each arrow is then `scale` pixels long per unit of magnitude, up to a cap of 0.8 × `spacing`, so that arrows never run into each other. Where `field` raises an error, returns NaN or an infinite component, or is zero, no arrow is drawn.
+
+  Arrows are tangent to the field's flow lines on screen, on log axes too (a vector `(u, v)` is taken as a direction in world units at its point).
+
+  *Parameters:*
+
+  - `surface`: The surface to draw on.
+  - `field`: `field(x, y) -> (u, v)`, taking NumPy arrays (or plain numbers, at some cost in speed).
+  - `spacing`: Distance between neighbouring arrows in pixels (default 40, at least 10). While zooming it varies between this and twice this, as arrows fade in and out.
+  - `scale`: `None` for arrows of one length, or pixels of length per unit of the vector's magnitude.
+  - `color`: Arrow colour (default: the next palette colour).
+  - `width`: Shaft width in pixels (default 1.5).
+  - `opacity`: Opacity in `[0, 1]`.
+  - `head_size`: Length of the heads in pixels (default: in proportion to the width).
+  - `style`: A reusable `ArrowStyle`. The other keyword arguments override its fields.
+
+  *Raises:*
+
+  - `ValueError`: If `spacing` or `scale` is not valid.
+
+- **`plane.slope_field()`**
+
+  ```py
+  plane.slope_field(
+      surface: pygame.Surface,
+      slope: PlaneFunction,
+      *,
+      spacing: float | None = None,
+      color: ColorLike | None = None,
+      width: float | None = None,
+      opacity: float | None = None,
+      style: LineStyle | None = None,
+  )
+  ```
+
+  Draw the slope field of the differential equation `dy/dx = slope(x, y)`.
+
+  A short segment is drawn at each point of a lattice, with the slope the equation gives there, so the solution curves can be seen following the segments:
+
+  ```py
+  plane.slope_field(screen, lambda x, y: x - y)
+  plane.plot(screen, lambda x: x - 1 + 2 * np.exp(-x))     # one solution
+  ```
+
+  The lattice behaves as for `vector_field`: fixed to the plane when panning, with segments fading in and out while zooming. An infinite slope gives a vertical segment; where `slope` raises an error or returns NaN, no segment is drawn. For arrows instead of segments, draw the vector field `lambda x, y: (1, slope(x, y))`.
+
+  *Parameters:*
+
+  - `surface`: The surface to draw on.
+  - `slope`: `dy/dx` as a function of `x` and `y`, taking NumPy arrays (or plain numbers, at some cost in speed).
+  - `spacing`: Distance between neighbouring segments in pixels (default 40, at least 10).
+  - `color`: Segment colour (default: the next palette colour).
+  - `width`: Line width in pixels (default 1.5).
+  - `opacity`: Opacity in `[0, 1]`.
+  - `style`: A reusable `LineStyle`. The other keyword arguments override its fields.
+
+  *Raises:*
+
+  - `ValueError`: If `spacing` is not valid.
 
 - **`plane.points()`**
 
@@ -897,6 +1114,43 @@ How a polygon is drawn: a translucent fill and an outline.
 - `fill_color`: Fill colour, or `None` to use `color`.
 - `fill_opacity`: Opacity of the fill in `[0, 1]`.
 - `fill_rule`: Which parts of a self-overlapping polygon are inside.
+
+### FillStyle
+
+```py
+pgp.FillStyle(color: ColorLike | None = None, opacity: float = 0.25)
+```
+
+How a shaded area is drawn: a translucent fill, without an outline.
+
+Used by `Plane.fill_between` and `Plane.inequality`. Their boundaries are curves of their own, drawn with `Plane.plot` or `Plane.implicit` when wanted.
+
+*Attributes:*
+
+- `color`: Fill colour. `None` takes the next palette colour.
+- `opacity`: Opacity of the fill in `[0, 1]`.
+
+### ArrowStyle
+
+```py
+pgp.ArrowStyle(
+    color: ColorLike | None = None,
+    width: float = 2.5,
+    opacity: float = 1.0,
+    head_size: float | None = None,
+)
+```
+
+How arrows are drawn: a straight shaft with a triangular head.
+
+Used by `Plane.arrow` and `Plane.vector_field`. Sizes are in pixels, so arrows look the same at every zoom level; only where they start and end is in world units.
+
+*Attributes:*
+
+- `color`: Arrow colour, or `None` for the next palette colour.
+- `width`: Thickness of the shaft in pixels.
+- `opacity`: Opacity in `[0, 1]`.
+- `head_size`: Length of the head in pixels, or `None` for a head in proportion to the shaft (about `3 × width + 4`). `0` draws no head: a plain segment with square ends. An arrow shorter than its head is drawn as a smaller head alone.
 
 ## Themes
 

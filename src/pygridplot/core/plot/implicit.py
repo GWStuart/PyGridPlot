@@ -49,21 +49,16 @@ from __future__ import annotations
 
 import math
 import warnings
-from collections.abc import Callable, Sequence
+from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Final, TypeAlias, cast
+from typing import Final, cast
 
 import contourpy
 import numpy as np
 from numpy.typing import NDArray
 
-TransformedFunction: TypeAlias = Callable[
-    [NDArray[np.float64], NDArray[np.float64]], NDArray[np.float64]
-]
-"""``F`` as a function of transformed coordinates ``(u, w)``, never raising.
-
-Undefined values are NaN (or infinite).
-"""
+from pygridplot.core.plot import lattice
+from pygridplot.core.plot.lattice import TransformedFunction
 
 _ROOT_SHRINK: Final = 0.6
 """A crossing is a true root if bisection shrinks ``max(|F|)`` at its two ends
@@ -82,18 +77,6 @@ _WHOLE: Final = 1e-7
 
 _SUBDIVISIONS: Final = (16, 8, 4, 2, 1)
 """Allowed values of :attr:`ImplicitSampling.coarse_factor`."""
-
-_VERTICES_PER_CELL: Final = 0.5
-"""Contour vertices per candidate cell per fine step across it, for planning
-the budget: measured at 0.06 (``y - floor x``) to 0.43 (a contour map of
-nine levels). If there are more, fewer bisection steps are taken."""
-
-_DENSE_FACTOR: Final = 16
-"""The fine grid's array has at most this many times ``max_samples`` nodes
-(most of them not evaluated), which bounds memory and contouring time."""
-
-_MAX_FACTOR: Final = 1024
-"""The largest coarse cell, in fine steps, before a region counts as too big."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -188,7 +171,7 @@ def sample_implicit(
 
     Returns:
         The curves, or ``None`` if none passes through the region (or the
-        region is so large that even coarse cells ``_MAX_FACTOR`` fine
+        region is so large that even coarse cells ``lattice.MAX_FACTOR`` fine
         steps across would overrun the budget).
 
     Raises:
@@ -202,13 +185,13 @@ def sample_implicit(
         return None
     if not all(math.isfinite(v) for v in (*u_range, *w_range)) or min(step) <= 0:
         return None
-    lattice = _coarse_lattice(u_range, w_range, step, config)
-    if lattice is None:
+    chosen = lattice.coarse_lattice(u_range, w_range, step, config)
+    if chosen is None:
         return None
-    factor, coarse_step, start, shape = lattice
+    factor, coarse_step, start, shape = chosen
     with np.errstate(all="ignore"), warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        grid = _Grid(func, start, coarse_step)
+        grid = lattice.Grid(func, start, coarse_step)
         coarse = grid.evaluate_nodes(np.arange(shape[1]), np.arange(shape[0]), 1)
         cells = np.zeros((shape[0] - 1, shape[1] - 1), dtype=bool)
         for level in np.unique(level_array):
@@ -217,16 +200,17 @@ def sample_implicit(
             return None
         # Work only on the candidates' bounding box: contourpy's cost grows
         # with the size of the grid it is given.
-        cells, coarse, (dc, dr) = _crop(cells, coarse)
+        cells, coarse, (dc, dr) = lattice.crop(cells, coarse)
         grid = grid.shifted((start[0] + dc, start[1] + dr))
-        subdivision = _subdivision(cells, factor, grid.evaluations, config)
+        subdivision = lattice.subdivision(cells, factor, grid.evaluations, config)
         values = grid.fine_values(coarse, cells, subdivision)
         points, starts, point_levels = _contour(values, level_array)
         if points.shape[0] == 0:
             return None
         # Spend what is left of the budget on checking crossings, up to the
         # configured number of steps, evenly over all the levels.
-        steps = min(config.refine_steps, _remaining(grid, config) // points.shape[0])
+        remaining = lattice.remaining(grid, config)
+        steps = min(config.refine_steps, remaining // points.shape[0])
         if steps > 0:
             points = _check_crossings(
                 _Brackets(points, values, point_levels),
@@ -242,181 +226,6 @@ def sample_implicit(
     origin = (a0 * subdivision, b0 * subdivision)
     fine_step = (coarse_step[0] / subdivision, coarse_step[1] / subdivision)
     return ImplicitContours(lines, origin, fine_step, grid.evaluations)
-
-
-def _coarse_lattice(
-    u_range: tuple[float, float],
-    w_range: tuple[float, float],
-    step: tuple[float, float],
-    config: ImplicitSampling,
-) -> tuple[int, tuple[float, float], tuple[int, int], tuple[int, int]] | None:
-    """Choose the coarse grid that covers a region, with one cell to spare.
-
-    The coarse grid normally takes a quarter of the budget at most. On a huge
-    region (or with a very fine setting) its cells are made larger, by powers
-    of two, so that the lattices stay nested and panning stays rigid.
-
-    Args:
-        u_range: ``(u_min, u_max)`` to cover.
-        w_range: ``(w_min, w_max)`` to cover.
-        step: The fine grid step.
-        config: Sampling settings.
-
-    Returns:
-        ``(factor, coarse_step, start, shape)``: fine steps per coarse step,
-        the coarse step, the coarse indices ``(a0, b0)`` of the first node,
-        and the number of nodes as ``(rows, columns)``; or ``None`` if no
-        coarse grid up to ``_MAX_FACTOR`` fits.
-    """
-    factor = config.coarse_factor
-    while True:
-        coarse_step = (step[0] * factor, step[1] * factor)
-        a0 = math.floor(u_range[0] / coarse_step[0]) - 1
-        a1 = math.ceil(u_range[1] / coarse_step[0]) + 1
-        b0 = math.floor(w_range[0] / coarse_step[1]) - 1
-        b1 = math.ceil(w_range[1] / coarse_step[1]) + 1
-        shape = (b1 - b0 + 1, a1 - a0 + 1)
-        if shape[0] * shape[1] <= config.max_samples // 4:
-            return factor, coarse_step, (a0, b0), shape
-        if factor >= _MAX_FACTOR:
-            return None
-        factor *= 2
-
-
-def _crop(
-    cells: NDArray[np.bool_], coarse: NDArray[np.float64]
-) -> tuple[NDArray[np.bool_], NDArray[np.float64], tuple[int, int]]:
-    """Cut the cells and coarse nodes down to the candidates' bounding box.
-
-    Args:
-        cells: Candidate cells (at least one), shape ``(rows, columns)``.
-        coarse: Values at the coarse nodes, shape ``(rows + 1, columns + 1)``.
-
-    Returns:
-        The cropped cells and nodes, and the ``(column, row)`` of the box's
-        first cell.
-    """
-    rows, columns = np.nonzero(cells)
-    r0, r1 = int(np.min(rows)), int(np.max(rows)) + 1
-    c0, c1 = int(np.min(columns)), int(np.max(columns)) + 1
-    return cells[r0:r1, c0:c1], coarse[r0 : r1 + 1, c0 : c1 + 1], (c0, r0)
-
-
-class _Grid:
-    """Evaluates ``F`` on grids of nodes that are multiples of a step.
-
-    Node ``(i, j)`` of a grid subdivided ``s`` times lies at the transformed
-    coordinates ``((a0 × s + i) × step_u / s, (b0 × s + j) × step_w / s)``,
-    where ``(a0, b0)`` is the coarse grid's first node.
-
-    Args:
-        func: ``F`` in transformed coordinates.
-        start: Coarse indices ``(a0, b0)`` of the first node.
-        coarse_step: The coarse step ``(step_u, step_w)``.
-
-    Attributes:
-        start: Coarse indices ``(a0, b0)`` of the first node.
-        evaluations: How many times ``F`` has been evaluated, which the
-            budget is checked against.
-    """
-
-    def __init__(
-        self,
-        func: TransformedFunction,
-        start: tuple[int, int],
-        coarse_step: tuple[float, float],
-    ) -> None:
-        self._func = func
-        self.start = start
-        self._step = coarse_step
-        self.evaluations = 0
-
-    def shifted(self, start: tuple[int, int]) -> _Grid:
-        """Return the same grid with another first node, keeping the count.
-
-        Args:
-            start: Coarse indices ``(a0, b0)`` of the new first node.
-
-        Returns:
-            The shifted grid.
-        """
-        grid = _Grid(self._func, start, self._step)
-        grid.evaluations = self.evaluations
-        return grid
-
-    def at(
-        self, columns: NDArray[np.float64], rows: NDArray[np.float64], subdivision: int
-    ) -> NDArray[np.float64]:
-        """Evaluate ``F`` at (fractional) positions of a subdivided grid.
-
-        Args:
-            columns: Column positions, in fine steps from the first node.
-            rows: Row positions, likewise.
-            subdivision: Fine steps per coarse step.
-
-        Returns:
-            ``F`` at each position (NaN where undefined or infinite).
-        """
-        a0, b0 = self.start
-        su, sw = self._step[0] / subdivision, self._step[1] / subdivision
-        u = (a0 * subdivision + columns) * su
-        w = (b0 * subdivision + rows) * sw
-        self.evaluations += int(u.shape[0])
-        values = np.asarray(self._func(u, w), dtype=np.float64)
-        return np.where(np.isfinite(values), values, np.nan)
-
-    def evaluate_nodes(
-        self, columns: NDArray[np.int64], rows: NDArray[np.int64], subdivision: int
-    ) -> NDArray[np.float64]:
-        """Evaluate ``F`` at every node of a rectangle of the grid.
-
-        Args:
-            columns: Column indices.
-            rows: Row indices.
-            subdivision: Fine steps per coarse step.
-
-        Returns:
-            The values, shape ``(len(rows), len(columns))``.
-        """
-        cc, rr = np.meshgrid(columns.astype(np.float64), rows.astype(np.float64))
-        return self.at(cc.ravel(), rr.ravel(), subdivision).reshape(cc.shape)
-
-    def fine_values(
-        self,
-        coarse: NDArray[np.float64],
-        cells: NDArray[np.bool_],
-        subdivision: int,
-    ) -> NDArray[np.float64]:
-        """Evaluate the fine grid inside the candidate cells.
-
-        Nodes outside the candidate cells are not evaluated: they take the
-        value of the nearest coarse node. A cell that is not a candidate has
-        corners of one sign, and neighbouring cells share corners, so these
-        stand-in values can never create a contour; and unlike masking them,
-        they leave contourpy a plain array, which it contours much faster.
-
-        Args:
-            coarse: Values at the coarse nodes, shape ``(NY + 1, NX + 1)``.
-            cells: Candidate coarse cells, shape ``(NY, NX)``.
-            subdivision: Fine steps per coarse step.
-
-        Returns:
-            Values at the fine nodes, shape ``(NY·s + 1, NX·s + 1)``.
-        """
-        s = subdivision
-        if s == 1:
-            return coarse
-        ny, nx = cells.shape[0] * s + 1, cells.shape[1] * s + 1
-        nearest_row = (np.arange(ny) + s // 2) // s
-        nearest_column = (np.arange(nx) + s // 2) // s
-        values = coarse[np.ix_(nearest_row, nearest_column)]
-        need = _node_mask(np.kron(cells, np.ones((s, s), dtype=bool)))
-        need[::s, ::s] = False  # the coarse values are already exact
-        rows, columns = np.nonzero(need)
-        values[rows, columns] = self.at(
-            columns.astype(np.float64), rows.astype(np.float64), s
-        )
-        return values
 
 
 def candidate_cells(values: NDArray[np.float64]) -> NDArray[np.bool_]:
@@ -448,120 +257,10 @@ def candidate_cells(values: NDArray[np.float64]) -> NDArray[np.bool_]:
     # How much F varies across a cell nearby. Cells with a sign change are
     # candidates anyway and are left out: next to a pole they would make the
     # whole neighbourhood look as if F could reach zero anywhere.
-    variation = _widen_max(np.where(some & ~crossing, high - low, 0.0))
+    variation = lattice.widen_max(np.where(some & ~crossing, high - low, 0.0))
     near = nearest <= variation
     candidates = crossing | (some & ~every) | near
-    return _widen(candidates)
-
-
-def _widen_max(values: NDArray[np.float64]) -> NDArray[np.float64]:
-    """Return the maximum over each cell and its eight neighbours.
-
-    Args:
-        values: A 2-D array (NaN-free).
-
-    Returns:
-        The 3×3 neighbourhood maximum, same shape.
-    """
-    padded = np.pad(values, 1, constant_values=-np.inf)
-    rows, columns = values.shape
-    result: NDArray[np.float64] = values.copy()
-    for dy in (0, 1, 2):
-        for dx in (0, 1, 2):
-            np.maximum(result, padded[dy : dy + rows, dx : dx + columns], out=result)
-    return result
-
-
-def _widen(mask: NDArray[np.bool_]) -> NDArray[np.bool_]:
-    """Grow a mask by one cell in every direction (8-connected).
-
-    Args:
-        mask: A 2-D boolean array.
-
-    Returns:
-        The grown mask, same shape.
-    """
-    return np.asarray(_widen_max(mask.astype(np.float64)) > 0.0, dtype=bool)
-
-
-def _node_mask(cells: NDArray[np.bool_]) -> NDArray[np.bool_]:
-    """Return the nodes that are a corner of at least one of the cells.
-
-    Args:
-        cells: A cell mask, shape ``(rows, columns)``.
-
-    Returns:
-        A node mask, shape ``(rows + 1, columns + 1)``.
-    """
-    nodes = np.zeros((cells.shape[0] + 1, cells.shape[1] + 1), dtype=bool)
-    nodes[:-1, :-1] |= cells
-    nodes[:-1, 1:] |= cells
-    nodes[1:, :-1] |= cells
-    nodes[1:, 1:] |= cells
-    return nodes
-
-
-def _subdivision(
-    cells: NDArray[np.bool_], factor: int, used: int, config: ImplicitSampling
-) -> int:
-    """Choose how finely to subdivide the candidate cells within the budget.
-
-    Subdividing the candidate cells ``s`` times costs ``s - 1`` new
-    evaluations along each of their edges and ``(s - 1)²`` inside each of
-    them, counted exactly; checking the crossings then costs about
-    ``_VERTICES_PER_CELL × s × refine_steps`` per cell (a curve through a
-    cell crosses about ``s`` fine cells, but many candidate cells are only
-    neighbours of the curve). The fine grid's array, mostly not evaluated,
-    is also limited to ``_DENSE_FACTOR × max_samples`` nodes, which bounds
-    memory and contouring time.
-
-    Args:
-        cells: Candidate coarse cells.
-        factor: The preferred subdivision (fine steps per coarse step), a
-            power of two.
-        used: Evaluations already spent.
-        config: The sampling settings (the budget and the steps).
-
-    Returns:
-        The largest power of two, at most ``factor``, that fits; 1 if none
-        does.
-    """
-    count = int(cells.sum())
-    rows, columns = cells.shape
-    # The edges of the candidate cells, each counted once.
-    across = np.zeros((rows + 1, columns), dtype=bool)
-    across[:-1] |= cells
-    across[1:] |= cells
-    down = np.zeros((rows, columns + 1), dtype=bool)
-    down[:, :-1] |= cells
-    down[:, 1:] |= cells
-    edges = int(across.sum()) + int(down.sum())
-    budget = config.max_samples - used
-
-    def cost(s: int) -> float:
-        nodes = edges * (s - 1) + count * (s - 1) ** 2
-        return nodes + _VERTICES_PER_CELL * count * s * config.refine_steps
-
-    s = factor
-    while s > 1 and (
-        cost(s) > budget
-        or (rows * s + 1) * (columns * s + 1) > _DENSE_FACTOR * config.max_samples
-    ):
-        s //= 2
-    return s
-
-
-def _remaining(grid: _Grid, config: ImplicitSampling) -> int:
-    """Return how many evaluations are left in the budget.
-
-    Args:
-        grid: The grid, which counts its evaluations.
-        config: The sampling settings.
-
-    Returns:
-        The evaluations left, at least 0.
-    """
-    return max(config.max_samples - grid.evaluations, 0)
+    return lattice.widen(candidates)
 
 
 def _contour(
@@ -616,7 +315,7 @@ def _contour(
 
 def _check_crossings(
     brackets: _Brackets,
-    grid: _Grid,
+    grid: lattice.Grid,
     subdivision: int,
     steps: int,
     max_samples: int,
@@ -721,7 +420,7 @@ class _Brackets:
         self.f_low, self.f_high = self.start.copy(), self.end.copy()
         self.active = np.flatnonzero(~self.exact & self.defined)
 
-    def bisect(self, grid: _Grid, subdivision: int) -> bool:
+    def bisect(self, grid: lattice.Grid, subdivision: int) -> bool:
         """Halve every active bracket once.
 
         Args:

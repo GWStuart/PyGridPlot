@@ -281,3 +281,250 @@ def test_implicit_curves_move_rigidly_when_panning(dx: int, dy: int) -> None:
     shifted = np.roll(np.roll(before, dy, axis=0), dx, axis=1)
     np.testing.assert_allclose(after[inner], shifted[inner], atol=2 / 255)
     assert before.max() > 0.9  # the curve was drawn at all
+
+
+# ----------------------------------------------------------------------
+# Areas between graphs, and regions
+# ----------------------------------------------------------------------
+def test_fill_between_shades_between_the_graphs() -> None:
+    plane, surface = blank_plane()
+    plane.fill_between(surface, 1, -1, color=BLACK, opacity=0.5)
+    image = ink(surface)
+    top = round(plane.to_screen(0.0, 1.0)[1])
+    bottom = round(plane.to_screen(0.0, -1.0)[1])
+    assert np.allclose(image[top + 2 : bottom - 2, :], 0.5, atol=2 / 255)
+    assert image[: top - 1, :].max() == 0.0
+    assert image[bottom + 2 :, :].max() == 0.0
+
+
+def test_fill_between_defaults_to_the_x_axis() -> None:
+    plane, surface = blank_plane()
+    plane.fill_between(surface, lambda x: 0 * x + 1, color=BLACK)
+    image = ink(surface)
+    zero = round(plane.to_screen(0.0, 0.0)[1])
+    one = round(plane.to_screen(0.0, 1.0)[1])
+    assert image[one + 2 : zero - 1, :].min() > 0.2
+    assert image[zero + 2 :, :].max() == 0.0
+
+
+def test_fill_between_shades_both_sides_of_a_crossing() -> None:
+    plane, surface = blank_plane()
+    plane.fill_between(surface, lambda x: x, lambda x: -x, color=BLACK)
+    image = ink(surface)
+    cx, cy = (round(v) for v in plane.to_screen(0.0, 0.0))
+    assert image[cy, cx - 40] > 0.2  # left lobe
+    assert image[cy, cx + 40] > 0.2  # right lobe
+    assert image[cy - 40, cx] == 0.0  # not between the lobes
+    assert image[cy + 40, cx] == 0.0
+
+
+def test_fill_between_does_not_join_jumps() -> None:
+    plane, surface = blank_plane()
+    plane.fill_between(surface, np.tan, color=BLACK)
+    image = ink(surface)
+    pole = round(plane.to_screen(math.pi / 2, 0.0)[0])
+    cy = round(plane.to_screen(0.0, 0.0)[1])
+    # Left of the pole tan is large and positive; right of it, negative.
+    assert image[cy - 60, pole - 4] > 0.2
+    assert image[cy + 60, pole - 4] == 0.0
+    assert image[cy + 60, pole + 4] > 0.2
+    assert image[cy - 60, pole + 4] == 0.0
+
+
+def test_fill_between_survives_broken_functions() -> None:
+    plane, surface = blank_plane()
+
+    def broken(x: object) -> float:
+        raise ZeroDivisionError
+
+    plane.fill_between(surface, broken, 0)
+    plane.fill_between(surface, np.sin, lambda x: "not a number")
+    assert ink(surface).max() == 0.0
+    plane.fill_between(surface, math.sqrt, 0, color=BLACK)  # scalar-only, x >= 0
+    image = ink(surface)
+    assert image[:, : SIZE[0] // 2 - 1].max() == 0.0
+    assert image.max() > 0.2
+    with pytest.raises(TypeError, match="number"):
+        plane.fill_between(surface, np.sin, "0")  # type: ignore[arg-type]
+
+
+def test_fill_between_on_log_axes_reaches_the_bottom_for_zero() -> None:
+    plane, surface = blank_plane(log_x=True, log_y=True)
+    plane.fill_between(surface, lambda x: x, 0, domain=(1, 10), color=BLACK)
+    image = ink(surface)
+    column = round(plane.to_screen(3.0, 1.0)[0])
+    row = round(plane.to_screen(3.0, 3.0)[1])
+    assert image[row + 2 :, column].min() > 0.2  # down to the bottom edge
+    assert image[: row - 2, column].max() == 0.0
+
+
+def test_inequality_shades_where_the_condition_holds() -> None:
+    plane, surface = blank_plane()
+    plane.inequality(
+        surface, lambda x, y: (x**2 + y**2 > 1) & (x**2 + y**2 < 4), color=BLACK
+    )
+    image = ink(surface)
+    cx, cy = (round(v) for v in plane.to_screen(0.0, 0.0))
+    assert image[cy, cx] == 0.0  # the hole
+    assert image[cy, cx + 75] > 0.2  # the ring, r = 1.5
+    assert image[cy - 75, cx] > 0.2
+    assert image[cy, cx + 105] == 0.0  # outside, r = 2.1
+
+
+def test_regions_have_no_seams() -> None:
+    """The parts of a large region are filled as one: every pixel alike."""
+    plane, surface = blank_plane()
+    plane.inequality(surface, lambda x, y: x > 0.3 * np.sin(3 * y), color=BLACK)
+    image = ink(surface)
+    right = image[:, SIZE[0] // 2 + 20 :]
+    assert np.ptp(right) == 0.0
+    assert right.min() > 0.2
+
+
+def test_inequalities_take_palette_colours_and_styles() -> None:
+    plane, surface = blank_plane()
+    plane.inequality(surface, lambda x, y: x < -1)
+    plane.inequality(surface, lambda x, y: x > 1, style=pgp.FillStyle(opacity=1.0))
+    first, second = plane.theme.palette[:2]
+    cy = SIZE[1] // 2
+    left = tuple(surface.get_at((5, cy)))[:3]
+    assert left != (255, 255, 255)
+    assert left != first  # translucent, by default
+    assert tuple(surface.get_at((SIZE[0] - 5, cy)))[:3] == second
+    plane.fill_between(surface, 1.5, 2, color="red", opacity=1.0)
+    top = round(plane.to_screen(0.0, 1.75)[1])
+    assert tuple(surface.get_at((SIZE[0] // 2, top)))[:3] == (255, 0, 0)
+
+
+def test_inequalities_survive_broken_conditions() -> None:
+    plane, surface = blank_plane()
+
+    def broken(x: object, y: object) -> bool:
+        raise ZeroDivisionError
+
+    plane.inequality(surface, broken)
+    plane.inequality(surface, lambda x, y: "not a number")
+    assert ink(surface).max() == 0.0
+    # Python's `and` works on single numbers (more slowly).
+    plane.inequality(surface, lambda x, y: x > 0 and y > 0, color=BLACK)
+    image = ink(surface)
+    cx, cy = (round(v) for v in plane.to_screen(0.0, 0.0))
+    assert image[cy - 20, cx + 20] > 0.2
+    assert image[cy + 20, cx + 20] == 0.0
+    assert image[cy - 20, cx - 20] == 0.0
+
+
+@pytest.mark.parametrize(("dx", "dy"), [(7, -3), (-12, 5)])
+def test_areas_move_rigidly_when_panning(dx: int, dy: int) -> None:
+    plane, _ = blank_plane(center=(0.13, 0.29))
+
+    def draw(surface: pygame.Surface) -> None:
+        plane.inequality(surface, lambda x, y: x**2 + 2 * y**2 < 3, color=BLACK)
+        plane.fill_between(surface, np.sin, lambda x: 0.5 * x - 1, color=BLACK)
+
+    before = capture(plane, draw)
+    plane.view.pan_pixels(dx, dy)
+    after = capture(plane, draw)
+    inner = (slice(40, 200), slice(40, 280))
+    shifted = np.roll(np.roll(before, dy, axis=0), dx, axis=1)
+    np.testing.assert_allclose(after[inner], shifted[inner], atol=2 / 255)
+    assert before.max() > 0.2
+
+
+# ----------------------------------------------------------------------
+# Arrows and fields
+# ----------------------------------------------------------------------
+def test_arrows_draw_their_shaft_and_head() -> None:
+    plane, surface = blank_plane()
+    plane.arrow(surface, (-2, 0), (2, 0), color=BLACK, width=3, head_size=12)
+    image = ink(surface)
+    cx, cy = (round(v) for v in plane.to_screen(0.0, 0.0))
+    tip = round(plane.to_screen(2.0, 0.0)[0])
+    assert image[cy, cx - 90 : tip - 2].min() > 0.9  # the shaft, up to the tip
+    assert image[cy - 3, tip - 10] > 0.9  # the head is wider than the shaft
+    assert image[cy - 3, cx] == 0.0
+    assert image[cy, tip + 2 :].max() == 0.0  # nothing beyond the tip
+
+
+def test_translucent_arrows_have_no_darker_joins() -> None:
+    plane, surface = blank_plane()
+    plane.arrow(surface, (-2, 0), (2, 0), color=BLACK, width=5, opacity=0.5)
+    image = ink(surface)
+    cy = round(plane.to_screen(0.0, 0.0)[1])
+    tip = round(plane.to_screen(2.0, 0.0)[0])
+    inside = image[cy, 80 : tip - 4]  # along the shaft and into the head
+    assert np.ptp(inside) < 2 / 255
+    assert inside.min() == pytest.approx(0.5, abs=2 / 255)
+
+
+def test_many_arrows_take_one_colour_and_style() -> None:
+    plane, surface = blank_plane()
+    plane.arrow(surface, (0, 0), [(2, 0), (-2, 0), (0, 2)])
+    style = pgp.ArrowStyle(color="red", width=4.0)
+    plane.arrow(surface, (0, -1), (2, -1), style=style)
+    first = plane.theme.palette[0]
+    cx, cy = (round(v) for v in plane.to_screen(0.0, 0.0))
+    assert tuple(surface.get_at((cx + 50, cy)))[:3] == first
+    assert tuple(surface.get_at((cx - 50, cy)))[:3] == first
+    assert tuple(surface.get_at((cx, cy - 50)))[:3] == first
+    row = round(plane.to_screen(0.0, -1.0)[1])
+    assert tuple(surface.get_at((cx + 50, row)))[:3] == (255, 0, 0)
+    assert tuple(surface.get_at((cx + 50, row + 1)))[:3] == (255, 0, 0)  # 4 px wide
+    with pytest.raises(ValueError, match="starts and"):
+        plane.arrow(surface, [(0, 0), (1, 1)], [(1, 0), (2, 0), (3, 0)])
+
+
+def test_vector_fields_draw_a_lattice_of_arrows() -> None:
+    plane, surface = blank_plane()  # 50 px per unit: arrows 1 unit apart
+    plane.vector_field(surface, lambda x, y: (1 + 0 * x, 0 * y), color=BLACK)
+    image = ink(surface)
+    cx, cy = (round(v) for v in plane.to_screen(0.0, 0.0))
+    for row in (cy - 50, cy, cy + 50):
+        assert image[row, cx - 12 : cx + 12].min() > 0.9  # a horizontal arrow
+    assert image[cy - 25, :].max() == 0.0  # and nothing between the rows
+    assert image[:, cx + 25].max() == 0.0  # nor between the columns
+
+
+def test_slope_fields_draw_short_segments() -> None:
+    plane, surface = blank_plane()
+    plane.slope_field(surface, lambda x, y: 0 * x + 0 * y, color=BLACK)
+    image = ink(surface)
+    cx, cy = (round(v) for v in plane.to_screen(0.0, 0.0))
+    assert image[cy, cx - 10 : cx + 10].min() > 0.9  # a level segment at the origin
+    assert image[cy, cx + 14 : cx + 36].max() == 0.0  # and a gap to the next
+
+
+def test_fields_survive_broken_functions() -> None:
+    plane, surface = blank_plane()
+
+    def broken(x: object, y: object) -> object:
+        raise ZeroDivisionError
+
+    plane.vector_field(surface, broken)
+    plane.vector_field(surface, lambda x, y: "not a vector")
+    plane.slope_field(surface, broken)
+    assert ink(surface).max() == 0.0
+    plane.vector_field(surface, lambda x, y: (math.sqrt(x), 0.0), color=BLACK)
+    assert ink(surface)[:, : SIZE[0] // 2 - 25].max() == 0.0  # sqrt needs x >= 0
+    assert ink(surface).max() > 0.5
+    with pytest.raises(ValueError, match="spacing"):
+        plane.vector_field(surface, lambda x, y: (x, y), spacing=1)
+    with pytest.raises(ValueError, match="scale"):
+        plane.vector_field(surface, lambda x, y: (x, y), scale=-2)
+
+
+@pytest.mark.parametrize(("dx", "dy"), [(7, -3), (-12, 5)])
+def test_fields_move_rigidly_when_panning(dx: int, dy: int) -> None:
+    plane, _ = blank_plane(center=(0.13, 0.29), scale=63.0)
+
+    def draw(surface: pygame.Surface) -> None:
+        plane.vector_field(surface, lambda x, y: (np.sin(y), np.cos(x)), color=BLACK)
+        plane.slope_field(surface, lambda x, y: x * y, color=BLACK, spacing=55)
+
+    before = capture(plane, draw)
+    plane.view.pan_pixels(dx, dy)
+    after = capture(plane, draw)
+    inner = (slice(40, 200), slice(40, 280))
+    shifted = np.roll(np.roll(before, dy, axis=0), dx, axis=1)
+    np.testing.assert_allclose(after[inner], shifted[inner], atol=2 / 255)
+    assert before.max() > 0.5

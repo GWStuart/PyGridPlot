@@ -54,7 +54,7 @@ SECTIONS: list[tuple[str, str, list[str]]] = [
         "Styles",
         "Reusable looks for plotted objects. Keyword arguments of the plotting "
         "methods override their fields.",
-        ["LineStyle", "PointStyle", "PolygonStyle"],
+        ["LineStyle", "PointStyle", "PolygonStyle", "FillStyle", "ArrowStyle"],
     ),
     (
         "Themes",

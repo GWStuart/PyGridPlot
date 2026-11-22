@@ -48,6 +48,11 @@ class Scene:
         plane.plot(surface, pgp.derivative(lambda x: x**3 / 9 - shift))
         plane.parametric(surface, np.cos, lambda t: np.sin(t) + shift, (0, 2 * math.pi))
         plane.implicit(surface, lambda x, y: x * y - shift, 1)
+        plane.fill_between(surface, lambda x: np.cos(x) - shift, -0.5)
+        plane.inequality(surface, lambda x, y: x**2 + y**2 < 1 + shift)
+        plane.vector_field(surface, lambda x, y: (-y, x + shift))
+        plane.slope_field(surface, lambda x, y: x - y - shift, spacing=60)
+        plane.arrow(surface, self.data[0], self.data[1:])
         plane.polyline(surface, self.data)  # the same array, changed in place
         plane.polygon(surface, self.data - np.array([0.0, 2.0]))
         plane.points(surface, self.data)
@@ -105,14 +110,14 @@ def test_unchanged_frames_are_reused() -> None:
     cached, _, surface, _ = planes()
     scene = Scene()
     scene.draw(cached, surface)
-    assert cached.cache_stats == pgp.CacheStats(hits=0, misses=9)
+    assert cached.cache_stats == pgp.CacheStats(hits=0, misses=14)
     scene.draw(cached, surface)
-    assert cached.cache_stats == pgp.CacheStats(hits=9, misses=9)
-    # Three plots change with the shift. The derivative of x³/9 - shift does
+    assert cached.cache_stats == pgp.CacheStats(hits=14, misses=14)
+    # Seven plots change with the shift. The derivative of x³/9 - shift does
     # not: its values are the same, so it is reused, which is exactly right.
     scene.shift += 1.0
     scene.draw(cached, surface)
-    assert cached.cache_stats == pgp.CacheStats(hits=15, misses=12)
+    assert cached.cache_stats == pgp.CacheStats(hits=21, misses=21)
 
 
 def test_changes_of_style_and_inputs_are_seen() -> None:
@@ -227,3 +232,15 @@ def test_calls_are_matched_by_position_and_kind() -> None:
     cache.begin_frame()
     cache.build("polar", 1, [3.0], make("d"))  # a constant in place of the function
     assert built[-1] == "d"
+
+
+def test_vector_field_recorders_check_both_components() -> None:
+    k = [1.0]
+    recorder = Recorder(lambda x, y: (-y, k[0] * x), arity=2, outputs=2)
+    u, v = recorder(np.array([1.0, 2.0]), np.array([3.0, 4.0]))  # (2, N), like a field
+    np.testing.assert_array_equal(u, [-3.0, -4.0])
+    np.testing.assert_array_equal(v, [1.0, 2.0])
+    assert recorder.evaluations == 2
+    assert recorder.unchanged()
+    k[0] = 1.5  # only the second component changes
+    assert not recorder.unchanged()

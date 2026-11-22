@@ -20,44 +20,52 @@ or a new plane method taking Python values, not a second way to draw.
 
 ## A new kind of plot
 
-Parametric, polar and implicit curves were all added this way, so they are
-worked examples to copy. As a sketch, take **inequalities**, shading the
-region where `F(x, y) < 0`:
+Parametric, polar and implicit curves, areas between graphs,
+inequalities, vector and slope fields and arrows were all added this way,
+so they are worked examples to copy.
+Take **inequalities** (`Plane.inequality`), which shade the region where a
+condition such as `x**2 + y**2 < 4` holds:
 
 1. **Sample it in `core/plot/`**, as a pure function that knows nothing
-   about the view. `curves.sample_curve(curve, t_range, box, config)` takes
-   a function from `t` to *screen* points; `implicit.sample_implicit(func,
-   u_range, w_range, step, config, levels)` takes `F` in transformed
-   coordinates and returns lines in grid coordinates plus the grid's origin
-   and step. An inequality could reuse the implicit sampler's grid and
-   candidate cells: the boundary is the curve `F = 0`, and each
-   non-candidate cell is entirely inside or outside, decided by the sign
-   at its corners. Evaluate robustly (`evaluation.evaluate_xy_quietly`
-   inside one `np.errstate` block), anchor samples to the world so panning
-   stays rigid, and put the settings in a frozen, validated dataclass next
-   to the sampler, like `ImplicitSampling`.
-2. **Build primitives in `core/plot/builders.py`.** Add
-   `inequality_fill(view, func, style, color, *, sampling)`: wrap the user's
-   function robustly, work in transformed coordinates so log axes work
-   (see `implicit_stroke`), map to screen precisely (`View.to_screen`, or
-   `View.multiples_to_screen` for points on an anchored grid), clip
-   (`geometry.clip_paths` or `clip_polygon`), and return a primitive
-   (`Fill`, `Stroke`), or `None` when nothing is visible. If no existing
-   primitive fits, see [A new primitive](#a-new-primitive).
-3. **Expose it in `plane.py`.** Add `Plane.inequality(surface, func, *,
-   color, opacity, style, sampling)`: call `self._sync_rect(surface)`,
-   resolve the style with `with_overrides`, the colour with
-   `self._colors.resolve`, build the primitive, and finish with
-   `self._draw(surface, primitive)`. Write the docstring for users: it
-   becomes the [API reference](../user/reference.md). Export any new
-   settings class from `pygridplot/__init__.py` (see
-   [A new public name](#a-new-public-name)).
-4. **Test it**: the sampler in `tests/core/plot/` (accuracy, edge cases such
-   as poles and undefined regions, the budget, rigid panning as a property
-   test; `test_implicit.py` is a model), the builder in
-   `tests/core/plot/test_builders.py` (log axes, clipping, broken
-   functions), and the whole path in `tests/test_plane_plotting.py` (the
-   right pixels, palette colours, rigidity when panning).
+   about the view. `regions.sample_region(func, u_range, w_range, step,
+   config)` takes the condition in transformed coordinates and returns
+   rings in grid coordinates plus the grid's origin and step
+   (`RegionRings`). It reuses the anchored grids of implicit curves
+   (`lattice.py`: the coarse grid, cropping, the fine grid on candidate
+   cells only, the budget), so panning stays rigid and the work follows
+   the boundary. Look for such shared pieces first, and move them into a
+   module of their own when a second sampler needs them, as `lattice.py`
+   was split out of `implicit.py`. Evaluate robustly (inside one
+   `np.errstate` block) and reuse an existing settings class if it fits
+   (regions take `ImplicitSampling`), or put a new one, frozen and
+   validated, next to the sampler.
+2. **Build primitives in `core/plot/builders.py`.** `region_fill(view,
+   func, style, color, *, sampling)` wraps the user's function robustly
+   (`evaluation.evaluate_xy_quietly`) in transformed coordinates, so log
+   axes work, maps to the screen precisely (`_grid_to_screen`, built on
+   `View.multiples_to_screen`; use `View.to_screen` for other points),
+   clips if needed (`geometry.clip_paths` or `clip_polygon`), and returns a
+   primitive (`Fill`, `Stroke`), or `None` when nothing is visible. If no
+   existing primitive fits, see [A new primitive](#a-new-primitive).
+3. **Expose it in `plane.py`.** `Plane.inequality(surface, condition, *,
+   color, opacity, style, sampling)` calls `self._sync_rect(surface)`,
+   resolves the style with `with_overrides` and the colour with
+   `self._colors.resolve`, builds the primitive through `self._cached`
+   (with everything the result depends on in the key, and `arity=2` for a
+   function of two variables, so unchanged frames are reused exactly;
+   `vector_field` adds `outputs=2`, as its function returns a pair), and
+   finishes with `self._draw(surface, primitive)` (several primitives may be
+   passed, as `vector_field` does, one per fade level). Write the docstring for
+   users: it becomes the [API reference](../user/reference.md). Export any
+   new public class, such as `FillStyle`, from `pygridplot/__init__.py`
+   (see [A new public name](#a-new-public-name)).
+4. **Test it**: the sampler in `tests/core/plot/` (`test_regions.py`:
+   accuracy against an independent check, edge cases such as asymptotes
+   and undefined points, the budget, rigid panning as a property test),
+   the builder in `tests/core/plot/test_builders.py` (log axes, clipping,
+   broken functions), the whole path in `tests/test_plane_plotting.py`
+   (the right pixels, palette colours, rigidity when panning), and the
+   cache in `tests/test_plane_cache.py` (add the call to its scene).
 5. **Document it**: run `python scripts/build_api_docs.py`, add a section to
    [Plotting](../user/plotting.md) with runnable examples and its limits,
    describe the method in [Plotting](plotting.md) for developers, add a
@@ -151,7 +159,8 @@ If no existing primitive fits (an image, say):
 3. Dispatch it in `Plane._draw`.
 
 Keep primitives few and general: every one must be implemented by every
-backend.
+backend. Most new kinds of plot need none: arrows, for example, are rings
+of a `Fill`, and slope fields are `Stroke`s of two-point paths.
 
 ## A new backend
 

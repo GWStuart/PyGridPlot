@@ -8,6 +8,42 @@ follow [semantic versioning](https://semver.org/) once 1.0 is released.
 
 ### Added
 
+- **Vector fields**: `Plane.vector_field(surface, field)` draws a field
+  `(u, v) = field(x, y)` as arrows on a lattice that is fixed to the plane
+  (panning is rigid) and keeps its density on screen: the spacing is a
+  power of two per axis, and while zooming the new arrows grow and fade in
+  between the others, so nothing pops. Arrows have one length (the field's
+  direction) or, with `scale=`, a length in proportion to the magnitude,
+  capped so that they never meet; they are tangent to the flow lines on log
+  axes too. `spacing=` sets their density.
+- **Slope fields**: `Plane.slope_field(surface, slope)` shows
+  `dy/dx = slope(x, y)` as segments on the same lattice, tangent to the
+  solution curves (vertical for an infinite slope).
+- **Arrows**: `Plane.arrow(surface, start, end)` draws one arrow or many
+  (one start for many ends, or the other way round), each filled as one
+  shape, so translucent arrows have no darker joins. `ArrowStyle(color,
+  width, opacity, head_size)`, with heads in proportion to the width by
+  default.
+- `AxisTransform.derivative`, and `evaluate_vectors` for robustly
+  evaluating functions that return a pair. `examples/fields.py`: fields,
+  a solution through a draggable point, and vectors at a point.
+- **Inequalities and regions**: `Plane.inequality(surface, condition)`
+  shades the region where a condition such as `x**2 + y**2 < 4` holds,
+  written in Python and combined with NumPy's `&`, `|` and `~`. Regions
+  can have any shape (several pieces, holes, edges at asymptotes and
+  jumps); they are found on the implicit curves' anchored grids, sampled
+  finely only near the boundary, with edges bisected onto the true
+  boundary to within 1/8 px, so they pan rigidly and cost about as much as
+  their outline. Undefined points are outside.
+- **Areas between graphs**: `Plane.fill_between(surface, f, g=0)` shades
+  between two graphs (or a graph and a number, `±inf` for the edges of the
+  plane), sampled exactly as `plot` samples them. It covers only where both
+  are defined, stops with a clean edge at jumps and asymptotes, and fills
+  both sides of a crossing; `domain=` restricts it, and on a log y axis `0`
+  reaches the bottom edge.
+- `FillStyle(color, opacity)`: the reusable style of both.
+  `examples/regions.py`: inequalities, compound conditions and areas
+  between draggable graphs.
 - `docs/philosophy.md`: the principles behind PyGridPlot (one way to do
   things, done well; Python first; a library, not a framework; immediate
   mode; ...), how features are judged, and the features that were tried
@@ -65,6 +101,12 @@ follow [semantic versioning](https://semver.org/) once 1.0 is released.
 
 ### Changed
 
+- Fills of many polygons are rasterised up to twice as fast (the rings are
+  collected in one pass, crossings are ordered by one sort key instead of
+  `np.lexsort`, and span weights are scattered with `np.bincount`): about
+  9 → 4.5 ms for a vector field's arrows, 7.6 → 4.5 ms for a region of 100
+  pieces, unchanged for a single polygon. Coverage changes by at most
+  `1e-6`.
 - Log-axis grids are drawn about a third faster: the subdivisions of every
   whole decade on screen are worked out once per frame.
 

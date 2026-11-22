@@ -11,8 +11,9 @@ anyone changing it (they decide what belongs in it).
 ### 1. One way to do things, done well
 
 There is one way to draw: call the plane's methods. Each kind of drawing
-is one method (`plot`, `parametric`, `polar`, `implicit`, `points`,
-`polyline`, `polygon`), and every improvement goes into that method, so
+is one method (`plot`, `parametric`, `polar`, `implicit`, `fill_between`,
+`inequality`, `vector_field`, `slope_field`, `points`, `polyline`,
+`polygon`, `arrow`), and every improvement goes into that method, so
 every program benefits from it. There is no second, parallel API doing
 the same things another way, which would have to be learned, documented,
 tested and kept in step with the first.

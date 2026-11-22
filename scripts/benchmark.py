@@ -135,6 +135,7 @@ def cases() -> dict[str, Case]:
     """Return every benchmark case by name."""
     test_set = (lambda x: 1 / x, np.tan, np.sqrt, np.log, np.floor, lambda x: x**2)
     xs = np.linspace(-8, 8, 2000)
+    starts200 = np.random.default_rng(0).uniform(-6, 6, (200, 2))
     ellipse = np.column_stack(
         (
             8 * np.cos(np.linspace(0, 2 * math.pi, 200)),
@@ -194,6 +195,43 @@ def cases() -> dict[str, Case]:
         "implicit scalar math": plot_case(
             lambda p, s: p.implicit(s, lambda x, y: math.sin(x) - y), scale=60.0
         ),
+        "inequality disc": plot_case(
+            lambda p, s: p.inequality(s, lambda x, y: x**2 + y**2 < 16), scale=60.0
+        ),
+        "inequality y < tan x": plot_case(
+            lambda p, s: p.inequality(s, lambda x, y: y < np.tan(x)), scale=60.0
+        ),
+        "inequality busy sin*sin": plot_case(
+            lambda p, s: p.inequality(
+                s, lambda x, y: np.sin(3 * x) * np.sin(3 * y) > 0.2
+            ),
+            scale=60.0,
+        ),
+        "inequality scalar math": plot_case(
+            lambda p, s: p.inequality(s, lambda x, y: y < math.sin(x)), scale=60.0
+        ),
+        "fill between sin and x/3": plot_case(
+            lambda p, s: p.fill_between(s, np.sin, lambda x: x / 3), scale=60.0
+        ),
+        "fill between tan and 0": plot_case(
+            lambda p, s: p.fill_between(s, np.tan), scale=60.0
+        ),
+        "vector field at rest": plot_case(
+            lambda p, s: p.vector_field(s, lambda x, y: (-y, x)), scale=50.0
+        ),
+        "vector field fading in": plot_case(
+            lambda p, s: p.vector_field(s, lambda x, y: (-y, x)), scale=74.0
+        ),
+        "vector field scalar math": plot_case(
+            lambda p, s: p.vector_field(s, lambda x, y: (math.sin(y), math.cos(x))),
+            scale=50.0,
+        ),
+        "slope field x - y": plot_case(
+            lambda p, s: p.slope_field(s, lambda x, y: x - y), scale=60.0
+        ),
+        "arrows 200 short": plot_case(
+            lambda p, s: p.arrow(s, starts200, starts200 + 0.4), scale=60.0
+        ),
         "plot 1st derivative (NumPy)": plot_case(
             lambda p, s: p.plot(s, pgp.derivative(damped)), scale=60.0
         ),
@@ -215,6 +253,12 @@ def cases() -> dict[str, Case]:
                 s, lambda x, y: (x**2 + y**2 - 4) ** 3 - 4 * x**2 * y**3
             ),
             scale=60.0,
+        ),
+        "cached: idle vector field": cached_case(
+            lambda p, s: p.vector_field(s, lambda x, y: (-y, x)), scale=50.0
+        ),
+        "cached: idle inequality disc": cached_case(
+            lambda p, s: p.inequality(s, lambda x, y: x**2 + y**2 < 16), scale=60.0
         ),
         "points 2000": plot_case(
             lambda p, s: p.points(s, np.column_stack((xs, np.sin(xs))))

@@ -5,7 +5,9 @@ from __future__ import annotations
 import pytest
 
 from pygridplot.core.plot.style import (
+    ArrowStyle,
     ColorCycle,
+    FillStyle,
     LineStyle,
     PointStyle,
     PolygonStyle,
@@ -17,6 +19,10 @@ def test_default_styles_are_valid() -> None:
     assert LineStyle().width == 2.5
     assert PointStyle().marker == "circle"
     assert PolygonStyle().fill is True
+    assert FillStyle().opacity == 0.25
+    assert FillStyle().color is None
+    assert ArrowStyle().head_size is None  # automatic
+    assert ArrowStyle(head_size=0).head_size == 0  # no head
 
 
 @pytest.mark.parametrize(
@@ -31,6 +37,12 @@ def test_default_styles_are_valid() -> None:
         lambda: PolygonStyle(width=-1),
         lambda: PolygonStyle(fill_opacity=2),
         lambda: PolygonStyle(fill_rule="winding"),  # type: ignore[arg-type]
+        lambda: FillStyle(opacity=-0.1),
+        lambda: FillStyle(opacity=float("nan")),
+        lambda: ArrowStyle(width=0),
+        lambda: ArrowStyle(head_size=-1),
+        lambda: ArrowStyle(head_size=float("inf")),
+        lambda: ArrowStyle(opacity=2),
     ],
 )
 def test_invalid_styles_are_rejected(make: object) -> None:
@@ -73,3 +85,11 @@ def test_palette_must_not_be_empty() -> None:
     cycle = ColorCycle(("a",))
     with pytest.raises(ValueError, match="palette"):
         cycle.palette = ()
+
+
+def test_fill_styles_take_overrides() -> None:
+    base = FillStyle(color="red")
+    changed = with_overrides(base, opacity=0.5)
+    assert (changed.color, changed.opacity) == ("red", 0.5)
+    with pytest.raises(TypeError, match="width"):
+        with_overrides(base, width=3)  # areas have no outline

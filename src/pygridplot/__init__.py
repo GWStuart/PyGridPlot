@@ -2,13 +2,15 @@
 
 The library draws an adaptive grid with axes and clean tick labels on
 linear or logarithmic axes, handles pan and zoom, and plots functions,
-parametric, polar and implicit curves, points, polylines and polygons, and
-lets the user drag points around. It stays out of your way: your program
-owns the main loop.
+parametric, polar and implicit curves, points, polylines and polygons,
+shades areas between graphs and regions where inequalities hold, draws
+arrows and vector and slope fields, and lets the user drag points around.
+It stays out of your way: your program owns the main loop.
 
 Everything a program needs is importable from here: :class:`Plane` (the
 plane itself), the style classes (:class:`LineStyle`, :class:`PointStyle`,
-:class:`PolygonStyle`), themes (:class:`GridTheme`, :data:`LIGHT`,
+:class:`PolygonStyle`, :class:`FillStyle`, :class:`ArrowStyle`), themes
+(:class:`GridTheme`, :data:`LIGHT`,
 :data:`DARK`, :class:`NumberFormat`), configuration
 (:class:`InteractionConfig`, :class:`KeyBindings`, :class:`SamplingConfig`,
 :class:`CurveSampling`, :class:`ImplicitSampling`, :class:`ViewLimits`),
@@ -47,7 +49,13 @@ from pygridplot.core.plot.derivatives import derivative, derivatives
 from pygridplot.core.plot.implicit import ImplicitSampling
 from pygridplot.core.plot.memo import CacheStats
 from pygridplot.core.plot.sampling import SamplingConfig
-from pygridplot.core.plot.style import LineStyle, PointStyle, PolygonStyle
+from pygridplot.core.plot.style import (
+    ArrowStyle,
+    FillStyle,
+    LineStyle,
+    PointStyle,
+    PolygonStyle,
+)
 from pygridplot.core.view import View, ViewLimits, ViewState
 from pygridplot.interaction import InteractionConfig, KeyBindings
 from pygridplot.plane import Plane
@@ -58,9 +66,11 @@ __version__ = "0.1.0.dev0"
 __all__ = [
     "DARK",
     "LIGHT",
+    "ArrowStyle",
     "CacheStats",
     "CurveSampling",
     "DraggablePoint",
+    "FillStyle",
     "GridTheme",
     "ImplicitSampling",
     "InteractionConfig",

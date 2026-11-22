@@ -1,24 +1,30 @@
 # Plotting
 
 Everything in `core/plot/` turns a plotted object (a function, a
-parametric, polar or implicit curve, points, a polyline, a polygon) into
-clipped, screen-space primitives
+parametric, polar or implicit curve, an area between graphs, a region
+where an inequality holds, a vector or slope field, points, a polyline, a
+polygon, arrows) into clipped, screen-space primitives
 (`Stroke`, `Fill`, `Markers`). The entry point is
 `core/plot/builders.py`, one function per kind of plot; the other modules
 are its building blocks.
 
 | Module | Role |
 |---|---|
-| `builders.py` | `function_stroke`, `parametric_stroke`, `polar_stroke`, `implicit_stroke`, `polyline_stroke`, `polygon_shapes`, `point_markers`: world data → clipped primitives. |
+| `builders.py` | `function_stroke`, `parametric_stroke`, `polar_stroke`, `implicit_stroke`, `area_fill`, `region_fill`, `vector_field_fills`, `slope_field_strokes`, `arrow_fill`, `polyline_stroke`, `polygon_shapes`, `point_markers`: world data → clipped primitives. |
 | `evaluation.py` | Calling user functions so that they can never raise. |
 | `sampling.py` | Adaptive sampling of `y = f(x)`. |
 | `curves.py` | Adaptive sampling of parametric curves (and so polar ones) on screen. |
 | `jets.py` | Taylor arithmetic: the `Jet` number type that carries derivatives through NumPy code. |
 | `derivatives.py` | `derivative` and `derivatives`: exact via jets, point by point, or numerical. |
 | `memo.py` | `PlotCache`: reusing a plotting call's result between frames, exactly. |
+| `lattice.py` | The anchored coarse and fine grids shared by implicit curves and regions, and their evaluation budget. |
 | `implicit.py` | Finding implicit curves `F(x, y) = c` on a grid: marching squares (contourpy), checked and refined. |
+| `regions.py` | Finding regions where a condition holds, on the same grids: filled contours (contourpy), refined by bisection. |
+| `areas.py` | The area between two sampled graphs, as rings. |
+| `fields.py` | The anchored, fading lattice of vector and slope fields, and their directions on screen. |
+| `arrows.py` | Arrows as polygons (shaft and head as one ring), for many arrows at once. |
 | `geometry.py` | Normalising point input; clipping polylines (Liang–Barsky) and polygons (Sutherland–Hodgman). |
-| `style.py` | `LineStyle`, `PointStyle`, `PolygonStyle`, `with_overrides`, and `ColorCycle` (the palette). |
+| `style.py` | `LineStyle`, `PointStyle`, `PolygonStyle`, `FillStyle`, `ArrowStyle`, `with_overrides`, and `ColorCycle` (the palette). |
 
 ## Robust evaluation: `evaluation.py`
 
@@ -41,6 +47,14 @@ evaluations, which is much cheaper than once per batch. `evaluate_xy` and
 `evaluate_xy_quietly` are the same for functions of two variables (implicit
 curves); both share `_evaluate_arrays`, which tries the vectorised call and
 falls back to calling the function point by point.
+
+`evaluate_vectors` (and `evaluate_vectors_quietly`) does the same for vector
+fields, which return a pair `(u, v)`: a tuple or list of two components,
+or an array of shape `(2, N)`. A component that is a plain number (as in
+`(1, y)`) is spread over the points; if both are, or the result is not a
+pair at all, the field is called point by point, where each result is
+unpacked as `u, v`. The result has shape `(N, 2)`, with NaN in the
+components that are undefined (and in both where the field raised).
 
 ## Sampling functions: `sampling.py`
 
@@ -124,7 +138,9 @@ be found from samples of `F`. The method is **marching squares** on a grid
 that is fine only near the curve, with every crossing it finds checked and
 refined. `sample_implicit(func, u_range, w_range, step, config, levels)`
 works on `F` as a function of *transformed* coordinates, so like
-`sample_curve` it knows nothing of the view or the kind of axes.
+`sample_curve` it knows nothing of the view or the kind of axes. The grids
+themselves (steps 1, 2, 4 and 5 below, and the budget) are in
+`lattice.py`, shared with [regions](#finding-regions-regionspy).
 
 ### Why marching squares, and why contourpy
 
@@ -151,8 +167,8 @@ finds. It is the only dependency of `core` besides NumPy (see
    multiples of `coarse_factor` fine steps. Both are anchored to the world,
    not the screen, so panning by whole pixels evaluates exactly the same
    points and the curve moves rigidly (a property test checks this).
-2. **The coarse grid** (8 px by default) covers the region plus one cell
-   all round. If it alone would take more than a quarter of the budget (a
+2. **The coarse grid** (8 px by default, `lattice.coarse_lattice`) covers
+   the region plus one cell all round. If it alone would take more than a quarter of the budget (a
    huge window, or a very fine setting), its cells are doubled until it
    fits; powers of two keep the lattices nested.
 3. **Candidate cells** (`candidate_cells`): a coarse cell can contain the
@@ -165,9 +181,10 @@ finds. It is the only dependency of `core` besides NumPy (see
    pole they would make every neighbour a candidate. Candidates are widened
    by one cell. With several levels, the candidates are the union over all
    of them.
-4. **Cropping**: everything after works on the candidates' bounding box,
-   because contourpy's cost grows with the size of the array it is given.
-5. **The fine grid** (`_Grid.fine_values`) is evaluated only on the nodes of
+4. **Cropping** (`lattice.crop`): everything after works on the
+   candidates' bounding box, because contourpy's cost grows with the size
+   of the array it is given.
+5. **The fine grid** (`lattice.Grid.fine_values`) is evaluated only on the nodes of
    candidate cells. The others take the value of the nearest coarse node:
    a non-candidate cell's corners all have the same sign, so these stand-in
    values cannot create a contour, and unlike a mask they leave contourpy a
@@ -207,12 +224,12 @@ finds. It is the only dependency of `core` besides NumPy (see
 
 `max_samples` bounds the evaluations of `F` per call, which is what keeps
 slow (scalar-only) functions usable. The coarse grid takes at most a
-quarter. `_subdivision` then picks the largest power of two, up to
+quarter. `lattice.subdivision` then picks the largest power of two, up to
 `coarse_factor`, whose cost fits what is left: the new fine nodes, counted
 exactly from the candidate cells' edges and interiors, plus a reserve for
-checking crossings (`_VERTICES_PER_CELL` vertices per cell per fine step,
+checking crossings (`VERTICES_PER_CELL` vertices per cell per fine step,
 measured at 0.06 to 0.43). The dense array is also limited to
-`_DENSE_FACTOR × max_samples` nodes. If the vertices turn out to need more
+`DENSE_FACTOR × max_samples` nodes. If the vertices turn out to need more
 than is left, fewer bisection steps are taken, and the extra steps only
 spend what remains. A test counts every evaluation.
 
@@ -233,6 +250,155 @@ found, and is documented for users. Features smaller than the fine grid can
 be missed (loops are found reliably from about 1.5 px in radius). A curve
 stops within a fine cell of where `F` becomes undefined; bisecting the
 domain edge, as the curve sampler does, would be a possible improvement.
+
+## Finding regions: `regions.py`
+
+A region where a condition holds (`x² + y² < 4`, `y < tan x`, several
+combined with `&`, `|` and `~`) is found on the same anchored grids as an
+implicit curve, by `sample_region(func, u_range, w_range, step, config)`,
+which again works in transformed coordinates.
+
+The obvious approach would be to sample `F` and fill where `F < 0`, reusing
+the implicit sampler. Taking the condition as a *predicate* instead is
+both more general and simpler: users write any Python condition, combined
+freely, and the sampler sees only 1 (inside) or 0 (outside, including
+undefined). There are no signs to check, so poles and jumps need no
+special care: where `y < tan x` changes from everything to nothing at an
+asymptote, the region really does end there.
+
+1. **The coarse grid** (`lattice.coarse_lattice`) is evaluated as for
+   implicit curves. Nothing inside: no region. Inside everywhere: one
+   rectangle covering the grid.
+2. **Candidates** (`boundary_cells`) are the coarse cells whose corners
+   disagree, widened by one cell. There is no near-miss test, as a
+   predicate has no magnitude: islands and holes smaller than a coarse
+   cell can be missed (documented for users).
+3. **Cropping and the fine grid**, exactly as for implicit curves: the
+   candidates' bounding box, fine values only on candidate cells, stand-in
+   coarse values elsewhere (right for a predicate too: a non-candidate cell
+   is inside or outside as a whole).
+4. **Filled contours** (`_filled`): contourpy's `filled(0.5, 1.5)` on the
+   grid of 0s and 1s, with `FillType.OuterOffset`, gives the box's region as
+   outer rings and holes. Every vertex lies halfway along a grid edge
+   between an inside and an outside node, or on a node of the box's border.
+5. **Refining** (`_refine`): each edge vertex is moved onto the boundary
+   by bisecting the predicate along its edge, `refine_steps` times, for all
+   vertices at once (the bracket is 1/8 of a fine step after the default 3
+   steps, so the edge is within 1/16 of a step, or 1/8 px). The steps are
+   cut if they would overrun the budget. Without refinement, the edges
+   would be a staircase of half-cells, visibly jagged once antialiased.
+6. **The frame** (`_frame`): around the box, no cell is a candidate, so
+   each of the four strips (below, above, left and right of the box, the
+   first two full width) is inside or outside as a whole, decided by one
+   coarse node. Inside strips are added as rectangles. They meet the box's
+   rings along shared edges, which cancel exactly under the even-odd rule,
+   as the rasteriser accumulates crossings of all rings together (a test
+   checks that a large region has no seams).
+
+The result (`RegionRings`) is rings in fine grid coordinates with the
+grid's origin and step, mapped to the screen by `region_fill` exactly as
+implicit curves are ([Mapping to the screen](#mapping-to-the-screen)), and
+filled with the even-odd rule. The rings reach a little beyond the plane
+(the clip margin, and the grid's last cell) but never far, so they need no
+clipping: the rasteriser clips to its box.
+
+The cost is that of the boundary, not of the area: about 1 to 2 ms for a
+disc or a half-plane on an 800 × 600 plane, 13 ms for a checkerboard of 150
+pieces. Most of it is contourpy and building the fine grid.
+
+## Areas between graphs: `areas.py`
+
+`area_fill` samples both sides with the function sampler, in transformed
+coordinates exactly as `function_stroke` does, so the area's edges are
+exactly the curves `plot` draws. It passes `keep_offscreen=True`, because
+a piece of a graph entirely above or below the plane draws nothing as a
+curve but still bounds an area that may fill the screen. A constant side
+is one horizontal piece, its height kept within a screen height of the
+band (so infinities and, on a log y axis, values `<= 0` lie just beyond the
+edge).
+
+`rings_between(first, second)` then sweeps the two sorted lists of pieces
+together. Wherever a piece of each covers the same x interval, both are
+cut to it (`section`, interpolating the ends exactly at the interval's
+bounds) and joined into a ring: the first forwards, the second backwards.
+So the area exists only where both graphs are defined, with a vertical
+edge where either one stops (a jump, a pole, a domain edge). Where the
+graphs cross, the ring crosses itself; its two lobes wind in opposite
+directions, and the nonzero rule fills both. The rings are mapped to the
+screen and clipped with `clip_polygon` (a side can be far off screen near
+a pole), which keeps winding numbers inside the clip box unchanged.
+
+## Vector and slope fields: `fields.py`
+
+A field is drawn as a mark (an arrow, or a segment) at each node of a
+lattice. The lattice has to keep panning rigid, keep a steady density on
+screen at every zoom, and change continuously while zooming.
+`field_lattice(view, spacing, margin)` does all three:
+
+- **Anchored.** The nodes are multiples of a step in transformed
+  coordinates, so they stay on the same world points while panning (a
+  property test pans by random whole pixels), and on log axes they are even
+  on screen.
+- **Powers of two.** Per axis, `lattice_step(scale, spacing)` takes the
+  power of two with `spacing / 2 <= step × scale < spacing`. Powers of two
+  nest: when zooming in halves the step, every old node is still a node.
+- **Fading.** The nodes at odd multiples of the step are the ones that
+  appear at the halving. Their fade is 0 for the first half of the octave
+  (`FADE_START`: measured as `log2(2 × step × scale / spacing)`), then rises
+  by a smoothstep to 1 at its end. So the fully drawn marks are always
+  between `spacing` and twice that apart, more than half of all zoom levels
+  show no fading marks at all, and just before and just after a halving
+  the visible nodes and their fades are the same (a test zooms through a
+  halving by 2 × 10⁻⁹). A node that is odd along both axes takes the
+  smaller of the two fades rather than their product, so there are at most
+  three fade levels (two on equal-aspect planes), each one primitive.
+
+Builders shorten marks that are fading in as well as making them fainter,
+so that they grow into place: with marks at most `ARROW_FRACTION` (0.8) of
+the spacing long, a growing mark never reaches its neighbours.
+
+`screen_directions(view, x, y, u, v)` maps world vectors at world points to
+unit vectors on screen through the axis transforms' derivatives
+(`AxisTransform.derivative`: 1 on a linear axis, `1 / (x ln 10)` on a log
+axis), so arrows are tangent to the field's flow lines and slope segments
+to the solutions on any axes. Each vector is first divided by its larger
+component, so that huge values next to a pole still have a direction;
+vectors that are zero, infinite or undefined have none and get no mark.
+
+`vector_field_fills` evaluates the field once on all the nodes
+(`evaluate_vectors_quietly`), sets each arrow's length (the cap, or
+`scale × |F|` up to it, times its fade), centres it on its node, and builds
+one `Fill` of arrows per fade level. `slope_field_strokes` does the same
+with the direction `(1, slope)` (`(0, ±1)` for an infinite slope) and one
+`Stroke` of two-point segments per level.
+
+On an 1100 × 720 plane a vector field takes about 7.5 ms, nearly all of it
+rasterising the arrows, and about 13 ms while new arrows fade in (two
+fills, the fading one with three times as many arrows), which only happens
+while zooming; an unchanged field is reused in about 1.2 ms. A slope field
+takes about 2.5 ms, strokes of short segments being cheaper to rasterise
+than fills spread over the whole plane.
+
+## Arrows: `arrows.py`
+
+An arrow is one polygon of seven vertices (tail corners, shaft corners at
+the head, barbs, tip) rather than a stroke with a head on top: a separate
+shaft and head would overlap where they meet, and a translucent arrow would
+be darker there. All the arrows of a call are rings of one `Fill` with the
+nonzero rule; they all wind the same way (a property test checks the
+signed area of random arrows), so overlapping arrows merge. `arrow_rings`
+builds them for all arrows at once, leaving out arrows without a direction
+(ends in the same place, or not finite). The head's size is in pixels
+(`head_shape`: by default `3 × width + 4` long and 0.8 of that wide); an
+arrow shorter than its head becomes a smaller head alone, with the same
+proportions.
+
+`arrow_fill` transforms the ends one by one (like a polyline's vertices,
+clamping coordinates so that an end at zero on a log axis runs off the
+plane), pairs a single start or end with all the others, and drops arrows
+whose box lies wholly outside the plane. Fills of many small rings rely on
+the rasteriser handling all rings together; see
+[Rendering](rendering.md#fills).
 
 ## Derivatives: `jets.py` and `derivatives.py`
 
@@ -312,7 +478,9 @@ same values*, and so produces the same primitives. Hence:
 1. While a call is built, its functions are wrapped in `Recorder`s, which
    evaluate robustly (like `evaluate_quietly`, so the builders' own
    evaluation passes the results through untouched) and record every input
-   and result.
+   and result. A recorder knows its function's number of arguments
+   (`arity`) and of results (`outputs`: 2 for vector fields, whose values
+   it returns as a `(2, N)` array, like a field).
 2. In the next frame, the call in the same position (calls are matched by
    order, like palette colours) is reused only if its kind is the same, its
    key is equal (`same_inputs`: the view's `fingerprint`, the style, the
@@ -360,14 +528,18 @@ clips exactly), and return a primitive, or `None` when nothing is visible.
   over the transformed visible range, so sampling is even on screen and the
   sampler needs no knowledge of log axes. A `domain` is transformed too (on
   a log x axis, the part at or below zero is dropped).
-- **Implicit curves** are found on a grid in transformed coordinates and
-  mapped to the screen precisely; see
+- **Implicit curves** and **regions** are found on a grid in transformed
+  coordinates and mapped to the screen precisely (`_grid_to_screen`); see
   [Mapping to the screen](#mapping-to-the-screen).
+- **Areas between graphs** sample both sides as functions; see
+  [Areas between graphs](#areas-between-graphs-areaspy).
 - **Parametric and polar curves** wrap each component robustly
   (`_component`, which also accepts plain numbers), map them through
   `View.to_screen` and hand the result to `sample_curve`. Polar curves are
   parametric curves `(r cos θ, r sin θ)`.
-- **Polylines, polygons and points** transform vertex by vertex. On a log
+- **Vector and slope fields** are drawn on a fading lattice; see
+  [Vector and slope fields](#vector-and-slope-fields-fieldspy).
+- **Polylines, polygons, points and arrows** transform vertex by vertex. On a log
   axis a negative coordinate becomes NaN (a break) and zero becomes
   infinite; `geometry.clamp_coordinates` clamps such values to
   `±COORDINATE_LIMIT` (10⁹ px) before clipping, so edges towards zero run off

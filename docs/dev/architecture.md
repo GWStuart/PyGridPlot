@@ -109,13 +109,18 @@ src/pygridplot/
 │   │   ├── scene.py         build_grid(): the pipeline, into a GridScene
 │   │   └── theme.py         GridTheme, LIGHT, DARK
 │   ├── plot/            Plotted objects -> primitives
-│   │   ├── style.py         LineStyle, PointStyle, PolygonStyle, ColorCycle (palette)
+│   │   ├── style.py         Line, Point, Polygon, Fill and ArrowStyle; ColorCycle
 │   │   ├── evaluation.py    Calling user functions robustly (errors/complex -> NaN)
 │   │   ├── sampling.py      Adaptive sampling of y = f(x): jumps, poles, domain edges
 │   │   ├── curves.py        Adaptive sampling of parametric curves on screen
 │   │   ├── jets.py          Taylor arithmetic: exact derivatives through NumPy code
 │   │   ├── derivatives.py   derivative(), derivatives(): jets, point by point, numerical
+│   │   ├── lattice.py       Anchored coarse and fine grids, and their budget
 │   │   ├── implicit.py      Implicit curves F(x, y) = 0: marching squares (contourpy), checked
+│   │   ├── regions.py       Regions where a condition holds: filled contours, refined
+│   │   ├── areas.py         The area between two graphs, as rings
+│   │   ├── fields.py        The fading lattice of vector and slope fields; directions
+│   │   ├── arrows.py        Arrows as polygons, shaft and head in one ring
 │   │   ├── geometry.py      Point input; clipping polylines and polygons
 │   │   ├── memo.py          PlotCache: reusing unchanged plots between frames, exactly
 │   │   └── builders.py      One function per kind of plot -> clipped primitives

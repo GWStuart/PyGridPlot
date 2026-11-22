@@ -9,6 +9,8 @@ of the Desmos graph view but driven entirely from Python code. It gives you:
 - smooth, eased panning and zooming;
 - robust, antialiased plotting of functions (and their exact derivatives),
   parametric, polar and implicit curves, points, polylines and polygons;
+- shaded areas between graphs, and regions where inequalities hold;
+- arrows, and vector and slope fields;
 - draggable points: free, locked to an axis, or running along a curve.
 
 PyGridPlot is a *library, not a framework*: your program owns the main loop,
@@ -69,6 +71,18 @@ pgp.show(np.exp, log_y=True, x_range=(0, 10))               # semi-log, quick mo
   draws any curve `F(x, y) = c`: loops, crossings and separate pieces,
   accurate to a fraction of a pixel, with no false lines at poles or jumps.
   Several levels at once make a contour map.
+- **Areas and inequalities.** `plane.fill_between(screen, f, g)` shades
+  between two graphs, stopping cleanly at jumps and asymptotes, and
+  `plane.inequality(screen, lambda x, y: x**2 + y**2 < 4)` shades the
+  region where a condition holds, holes and all, with edges accurate to a
+  fraction of a pixel. Conditions combine with `&`, `|` and `~`.
+- **Vector and slope fields.** `plane.vector_field(screen, lambda x, y: (-y, x))`
+  and `plane.slope_field(screen, lambda x, y: x - y)` draw arrows or
+  segments on a lattice that pans rigidly and keeps its density while you
+  zoom, with new arrows growing in smoothly rather than popping. Arrows show
+  direction, or magnitude too with `scale=`, and stay tangent to the flow
+  lines on log axes. `plane.arrow(screen, start, end)` draws any arrows,
+  one or thousands at once.
 - **Exact derivatives of any order.** `pgp.derivative(f, n)` is the
   `n`-th derivative of a NumPy function, exact to rounding (Taylor-mode
   automatic differentiation, no dependencies), with clean jumps at kinks
@@ -111,6 +125,8 @@ has two parts:
 python examples/functions.py        # the function test set and hard cases (Space)
 python examples/curves.py           # animated parametric and polar curves (Space)
 python examples/implicit.py         # implicit curves and contour lines (Space)
+python examples/regions.py          # inequalities and areas between graphs (Space)
+python examples/fields.py           # vector and slope fields, arrows (Space)
 python examples/draggable.py        # draggable points, sliders, points on curves (Space)
 python examples/derivatives.py      # tangents, Taylor polynomials, osculating circles (Space)
 python examples/shapes.py           # points, polylines, polygons, fill rules

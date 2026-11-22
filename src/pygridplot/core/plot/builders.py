@@ -20,6 +20,11 @@ coordinates cannot be shown at all and are treated like NaN.
 * :func:`parametric_stroke`: a parametric curve ``(x(t), y(t))``.
 * :func:`polar_stroke`: a polar curve ``r(θ)``.
 * :func:`implicit_stroke`: an implicit curve ``F(x, y) = 0``.
+* :func:`area_fill`: the area between two graphs.
+* :func:`region_fill`: the region where a condition holds (an inequality).
+* :func:`arrow_fill`: arrows between points.
+* :func:`vector_field_fills`: the arrows of a vector field.
+* :func:`slope_field_strokes`: the segments of a slope field.
 * :func:`polyline_stroke`: connected vertices, open or closed.
 * :func:`polygon_shapes`: a filled polygon and its outline.
 * :func:`point_markers`: fixed-size markers at points.
@@ -28,13 +33,17 @@ coordinates cannot be shown at all and are treated like NaN.
 from __future__ import annotations
 
 import math
+import warnings
 from collections.abc import Callable, Sequence
+from dataclasses import dataclass
 from typing import Final, TypeAlias
 
 import numpy as np
 from numpy.typing import ArrayLike, NDArray
 
 from pygridplot.core.coords import ColorLike
+from pygridplot.core.plot.areas import rings_between
+from pygridplot.core.plot.arrows import arrow_rings, head_shape
 from pygridplot.core.plot.curves import (
     DEFAULT_CURVE_SAMPLING,
     CurveSampling,
@@ -43,12 +52,24 @@ from pygridplot.core.plot.curves import (
 from pygridplot.core.plot.evaluation import (
     Function,
     PlaneFunction,
+    VectorFunction,
     evaluate_quietly,
+    evaluate_vectors_quietly,
     evaluate_xy_quietly,
+)
+from pygridplot.core.plot.fields import (
+    ARROW_FRACTION,
+    DEFAULT_SPACING,
+    SLOPE_FRACTION,
+    FieldLattice,
+    check_spacing,
+    field_lattice,
+    screen_directions,
 )
 from pygridplot.core.plot.geometry import (
     Box,
     as_points,
+    clamp_coordinates,
     clip_path,
     clip_paths,
     clip_polygon,
@@ -58,18 +79,28 @@ from pygridplot.core.plot.implicit import (
     ImplicitSampling,
     sample_implicit,
 )
+from pygridplot.core.plot.regions import sample_region
 from pygridplot.core.plot.sampling import (
     DEFAULT_SAMPLING,
     SamplingConfig,
     sample_function,
 )
-from pygridplot.core.plot.style import LineStyle, PointStyle, PolygonStyle
+from pygridplot.core.plot.style import (
+    ArrowStyle,
+    FillStyle,
+    LineStyle,
+    PointStyle,
+    PolygonStyle,
+)
 from pygridplot.core.primitives import Fill, Markers, Stroke
 from pygridplot.core.transforms import AxisTransform
 from pygridplot.core.view import View
 
 CurveComponent: TypeAlias = Function | float
 """One coordinate of a parametric curve: a function of ``t``, or a constant."""
+
+Boundary: TypeAlias = Function | float
+"""One side of an area between graphs: a function of ``x``, or a constant."""
 
 WorldCurve: TypeAlias = Callable[
     [NDArray[np.float64]], tuple[NDArray[np.float64], NDArray[np.float64]]
@@ -113,21 +144,13 @@ def function_stroke(
     if view.rect.is_empty:
         return None
     margin = style.width / 2 + CLIP_MARGIN_PX
-    sx, sy = view.scale_x, view.scale_y
-    bounds = view.transformed_bounds
-    lo, hi = bounds.x_min - margin / sx, bounds.x_max + margin / sx
-    if domain is not None:
-        d0, d1 = float(domain[0]), float(domain[1])
-        if not d0 < d1:
-            msg = f"domain must satisfy low < high, got {domain!r}"
-            raise ValueError(msg)
-        span = _transformed_domain(view.transform_x, d0, d1)
-        if span is None:
-            return None
-        lo, hi = max(lo, span[0]), min(hi, span[1])
-    band = (bounds.y_min - margin / sy, bounds.y_max + margin / sy)
+    span = _x_span(view, margin, domain)
+    if span is None:
+        return None
+    band = _y_band(view, margin)
     target = transformed_function(func, view.transform_x, view.transform_y)
-    polylines = sample_function(target, (lo, hi), (sx, sy), band, sampling)
+    scale = (view.scale_x, view.scale_y)
+    polylines = sample_function(target, span, scale, band, sampling)
     box = _clip_box(view, margin)
     paths = clip_paths([_transformed_to_screen(view, line) for line in polylines], box)
     if not paths:
@@ -297,21 +320,296 @@ def implicit_stroke(
     )
     if contours is None:
         return None
-    step_u, step_w = contours.step
-    i0, j0 = contours.origin
-    # The grid origin's pixel, computed precisely (see View.multiples_to_screen);
-    # from there each grid step is a fixed number of pixels.
-    x0 = float(view.multiples_to_screen("x", step_u, np.array([i0], dtype=np.int64))[0])
-    y0 = float(view.multiples_to_screen("y", step_w, np.array([j0], dtype=np.int64))[0])
-    px_u, px_w = step_u * sx, step_w * sy
-    screen = [
-        np.column_stack((x0 + line[:, 0] * px_u, y0 - line[:, 1] * px_w))
-        for line in contours.lines
-    ]
+    screen = _grid_to_screen(view, contours.origin, contours.step, contours.lines)
     paths = clip_paths(screen, _clip_box(view, margin))
     if not paths:
         return None
     return Stroke(tuple(paths), color, style.width, style.opacity)
+
+
+def area_fill(
+    view: View,
+    first: Boundary,
+    second: Boundary,
+    style: FillStyle,
+    color: ColorLike,
+    *,
+    domain: tuple[float, float] | None = None,
+    sampling: SamplingConfig = DEFAULT_SAMPLING,
+) -> Fill | None:
+    """Return the fill of the area between the graphs of ``first`` and ``second``.
+
+    Both graphs are sampled as :func:`function_stroke` samples one (so the
+    area's edges are exactly where the curves are drawn), and the area is
+    built where both are defined (see :mod:`pygridplot.core.plot.areas`). A
+    constant side is a horizontal line; on a log y axis, a constant of zero
+    or below lies infinitely far below the plane, so the area reaches the
+    bottom edge.
+
+    Args:
+        view: The view being drawn.
+        first: One side: a function of ``x`` (vectorised or scalar-only,
+            evaluated robustly), or a constant (``±inf`` reaches the edge of
+            the plane; NaN is undefined everywhere).
+        second: The other side, likewise.
+        style: The fill's opacity (its colour is ignored).
+        color: The resolved fill colour.
+        domain: Restrict the area to ``domain[0] <= x <= domain[1]``.
+        sampling: Sampling settings, for both graphs.
+
+    Returns:
+        The fill, or ``None`` if no part of the area is visible.
+
+    Raises:
+        ValueError: If ``domain`` is not an increasing pair of numbers.
+        TypeError: If a side is neither callable nor a real number.
+    """
+    if view.rect.is_empty or style.opacity <= 0:
+        return None
+    span = _x_span(view, CLIP_MARGIN_PX, domain)
+    if span is None:
+        return None
+    band = _y_band(view, CLIP_MARGIN_PX)
+    sides = [_side(view, part, span, band, sampling) for part in (first, second)]
+    box = _clip_box(view, CLIP_MARGIN_PX)
+    rings = []
+    for ring in rings_between(*sides):
+        clipped = clip_polygon(_transformed_to_screen(view, ring), box)
+        if clipped.shape[0] >= 3:
+            rings.append(clipped)
+    if not rings:
+        return None
+    return Fill(tuple(rings), color, style.opacity, "nonzero")
+
+
+def region_fill(
+    view: View,
+    func: PlaneFunction,
+    style: FillStyle,
+    color: ColorLike,
+    *,
+    sampling: ImplicitSampling = DEFAULT_IMPLICIT_SAMPLING,
+) -> Fill | None:
+    """Return the fill of the region where ``func(x, y)`` holds (an inequality).
+
+    The region is found on a grid in transformed coordinates, like an
+    implicit curve (see :mod:`pygridplot.core.plot.regions`), so panning
+    moves it rigidly and log axes need no special cases.
+
+    Args:
+        view: The view being drawn.
+        func: The condition, as ``x**2 + y**2 < 4``: true (not zero) inside,
+            vectorised or scalar-only, evaluated robustly (an error or NaN
+            counts as outside).
+        style: The fill's opacity (its colour is ignored).
+        color: The resolved fill colour.
+        sampling: Sampling settings (the same as for implicit curves).
+
+    Returns:
+        The fill, or ``None`` if no part of the region is visible.
+    """
+    if view.rect.is_empty or style.opacity <= 0:
+        return None
+    margin = CLIP_MARGIN_PX
+    sx, sy = view.scale_x, view.scale_y
+    bounds = view.transformed_bounds
+    u_range = (bounds.x_min - margin / sx, bounds.x_max + margin / sx)
+    w_range = (bounds.y_min - margin / sy, bounds.y_max + margin / sy)
+    step = (sampling.resolution_px / sx, sampling.resolution_px / sy)
+    x_transform, y_transform = view.transform_x, view.transform_y
+
+    def transformed(
+        u: NDArray[np.float64], w: NDArray[np.float64]
+    ) -> NDArray[np.float64]:
+        return evaluate_xy_quietly(func, x_transform.inverse(u), y_transform.inverse(w))
+
+    region = sample_region(transformed, u_range, w_range, step, sampling)
+    if region is None:
+        return None
+    rings = _grid_to_screen(view, region.origin, region.step, region.rings)
+    return Fill(tuple(rings), color, style.opacity, "evenodd")
+
+
+def arrow_fill(
+    view: View,
+    starts: ArrayLike,
+    ends: ArrayLike,
+    style: ArrowStyle,
+    color: ColorLike,
+) -> Fill | None:
+    """Return arrows from world points ``starts`` to world points ``ends``.
+
+    The ends are transformed one by one and joined by straight arrows on
+    screen, like the vertices of a polyline; the shaft and head have fixed
+    sizes in pixels (see :mod:`pygridplot.core.plot.arrows`).
+
+    Args:
+        view: The view being drawn.
+        starts: Where the arrows start: one point or many (see
+            :func:`~pygridplot.core.plot.geometry.as_points`).
+        ends: Where they point to, likewise. One point and many are paired
+            up as one with each.
+        style: Shaft width, head size and opacity (its colour is ignored).
+        color: The resolved colour.
+
+    Returns:
+        The arrows as one fill, or ``None`` if none is visible. Arrows with
+        a NaN coordinate, or of zero length on screen, are left out.
+
+    Raises:
+        ValueError: If ``starts`` and ``ends`` have different numbers of
+            points, neither of them one.
+    """
+    tails, tips = as_points(starts), as_points(ends)
+    if tails.shape[0] != tips.shape[0] and 1 not in (tails.shape[0], tips.shape[0]):
+        msg = (
+            f"got {tails.shape[0]} starts and {tips.shape[0]} ends: give as many "
+            "of each, or a single start or end for all"
+        )
+        raise ValueError(msg)
+    tails, tips = np.broadcast_arrays(tails, tips)
+    if view.rect.is_empty or tails.shape[0] == 0 or style.opacity <= 0:
+        return None
+    tails = clamp_coordinates(_to_screen(view, tails))
+    tips = clamp_coordinates(_to_screen(view, tips))
+    head = head_shape(style.width, style.head_size)
+    # Leave out the arrows that lie wholly beyond the plane.
+    reach = max(style.width, head[1]) / 2 + CLIP_MARGIN_PX
+    x0, y0, x1, y1 = _clip_box(view, reach)
+    with np.errstate(invalid="ignore"):
+        visible = (
+            (np.maximum(tails[:, 0], tips[:, 0]) >= x0)
+            & (np.minimum(tails[:, 0], tips[:, 0]) <= x1)
+            & (np.maximum(tails[:, 1], tips[:, 1]) >= y0)
+            & (np.minimum(tails[:, 1], tips[:, 1]) <= y1)
+        )
+    rings = arrow_rings(tails[visible], tips[visible], style.width, head)
+    if rings.shape[0] == 0:
+        return None
+    return Fill(tuple(rings), color, style.opacity, "nonzero")
+
+
+def vector_field_fills(
+    view: View,
+    field: VectorFunction,
+    style: ArrowStyle,
+    color: ColorLike,
+    *,
+    spacing: float = DEFAULT_SPACING,
+    scale: float | None = None,
+) -> tuple[Fill, ...]:
+    """Return the arrows of the vector field ``(u, v) = field(x, y)``.
+
+    The field is sampled on an anchored lattice (see
+    :mod:`pygridplot.core.plot.fields`), and an arrow is centred on each
+    node, pointing along the field. Arrows still fading in (while zooming)
+    are shorter and fainter; each group of equally faded arrows is one
+    :class:`~pygridplot.core.primitives.Fill`.
+
+    Args:
+        view: The view being drawn.
+        field: The field: returns a pair ``(u, v)``, vectorised or
+            scalar-only, evaluated robustly (an error or NaN leaves out the
+            arrow).
+        style: Shaft width, head size and opacity (its colour is ignored).
+        color: The resolved colour.
+        spacing: Distance between neighbouring arrows in pixels.
+        scale: ``None`` to draw every arrow the same length (the field's
+            direction only), or pixels of length per unit of the vector's
+            magnitude. Lengths are capped at :data:`ARROW_FRACTION` of the
+            spacing, so arrows never run into each other.
+
+    Returns:
+        The fills, from the most to the least faded in (empty if nothing is
+        visible).
+
+    Raises:
+        ValueError: If ``spacing`` or ``scale`` is invalid.
+    """
+    spacing = check_spacing(spacing)
+    if scale is not None and not (math.isfinite(scale) and scale > 0):
+        msg = f"scale must be a positive number or None, got {scale!r}"
+        raise ValueError(msg)
+    longest = ARROW_FRACTION * spacing
+    lattice = field_lattice(view, spacing, longest / 2 + CLIP_MARGIN_PX)
+    if lattice is None or style.opacity <= 0:
+        return ()
+    with np.errstate(all="ignore"), warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        vectors = evaluate_vectors_quietly(field, lattice.x, lattice.y)
+    u, v = vectors[:, 0], vectors[:, 1]
+    directions = screen_directions(view, lattice.x, lattice.y, u, v)
+    if scale is None:
+        lengths = np.full(u.shape, longest)
+    else:
+        with np.errstate(over="ignore", invalid="ignore"):
+            lengths = np.minimum(scale * np.hypot(u, v), longest)
+    head = head_shape(style.width, style.head_size)
+    fills = []
+    for fade, half in _centred(lattice, directions, lengths):
+        tails = np.column_stack((lattice.px, lattice.py))[fade.indices] - half
+        tips = tails + 2 * half
+        rings = arrow_rings(tails, tips, style.width, head)
+        if rings.shape[0]:
+            fills.append(
+                Fill(tuple(rings), color, style.opacity * fade.value, "nonzero")
+            )
+    return tuple(fills)
+
+
+def slope_field_strokes(
+    view: View,
+    slope: PlaneFunction,
+    style: LineStyle,
+    color: ColorLike,
+    *,
+    spacing: float = DEFAULT_SPACING,
+) -> tuple[Stroke, ...]:
+    """Return the segments of the slope field of ``dy/dx = slope(x, y)``.
+
+    Each node of an anchored lattice (see :mod:`pygridplot.core.plot.fields`)
+    gets a short segment centred on it, with the slope there: tangent to the
+    solution curve through it. An infinite slope gives a vertical segment.
+
+    Args:
+        view: The view being drawn.
+        slope: ``dy/dx`` as a function of ``(x, y)``, vectorised or
+            scalar-only, evaluated robustly (an error or NaN leaves out the
+            segment).
+        style: Line width and opacity (its colour is ignored).
+        color: The resolved colour.
+        spacing: Distance between neighbouring segments in pixels.
+
+    Returns:
+        The strokes, from the most to the least faded in (empty if nothing
+        is visible).
+
+    Raises:
+        ValueError: If ``spacing`` is invalid.
+    """
+    spacing = check_spacing(spacing)
+    length = SLOPE_FRACTION * spacing
+    margin = length / 2 + style.width / 2 + CLIP_MARGIN_PX
+    lattice = field_lattice(view, spacing, margin)
+    if lattice is None or style.opacity <= 0:
+        return ()
+    with np.errstate(all="ignore"), warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        slopes = evaluate_xy_quietly(slope, lattice.x, lattice.y)
+    # The direction (1, slope), or straight up for an infinite slope.
+    steep = np.isinf(slopes)
+    u = np.where(steep, 0.0, 1.0)
+    v = np.where(steep, np.sign(slopes), slopes)
+    directions = screen_directions(view, lattice.x, lattice.y, u, v)
+    lengths = np.full(slopes.shape, length)
+    strokes = []
+    for fade, half in _centred(lattice, directions, lengths):
+        centres = np.column_stack((lattice.px, lattice.py))[fade.indices]
+        paths = np.stack((centres - half, centres + half), axis=1)
+        strokes.append(
+            Stroke(tuple(paths), color, style.width, style.opacity * fade.value)
+        )
+    return tuple(strokes)
 
 
 def polyline_stroke(
@@ -488,6 +786,163 @@ def world_curve(x: CurveComponent, y: CurveComponent) -> WorldCurve:
         return fx(t), fy(t)
 
     return world
+
+
+@dataclass(frozen=True, slots=True, eq=False)
+class _FadeGroup:
+    """The lattice nodes that have faded in equally far."""
+
+    value: float
+    indices: NDArray[np.intp]
+
+
+def _centred(
+    lattice: FieldLattice,
+    directions: NDArray[np.float64],
+    lengths: NDArray[np.float64],
+) -> list[tuple[_FadeGroup, NDArray[np.float64]]]:
+    """Group a field's usable nodes by fade, with half of each mark's extent.
+
+    A mark (an arrow, or a segment) is centred on its node. Marks still
+    fading in are shortened by their fade, so that they grow into place
+    without touching their neighbours.
+
+    Args:
+        lattice: The nodes.
+        directions: Unit screen direction at each node (NaN where there is
+            none).
+        lengths: Length of each node's mark in pixels.
+
+    Returns:
+        ``(group, half)`` for each fade value, fully faded in first:
+        ``half`` is half of each mark's extent, from its centre to its end,
+        shape ``(len(group.indices), 2)``.
+    """
+    with np.errstate(invalid="ignore"):
+        usable = np.isfinite(directions[:, 0]) & np.isfinite(lengths) & (lengths > 0)
+    groups = []
+    for value in np.unique(lattice.fade[usable])[::-1]:
+        indices = np.flatnonzero(usable & (lattice.fade == value))
+        half = directions[indices] * (lengths[indices] * value / 2)[:, None]
+        groups.append((_FadeGroup(float(value), indices), half))
+    return groups
+
+
+def _side(
+    view: View,
+    part: Boundary,
+    span: tuple[float, float],
+    band: tuple[float, float],
+    sampling: SamplingConfig,
+) -> list[NDArray[np.float64]]:
+    """Return one side of an area as pieces in transformed coordinates.
+
+    Args:
+        view: The view being drawn.
+        part: A function of ``x``, or a constant.
+        span: The transformed x interval to cover.
+        band: The transformed y interval on screen (with a margin).
+        sampling: Sampling settings.
+
+    Returns:
+        The pieces of the graph, in order of x (one straight piece for a
+        constant, none for NaN).
+
+    Raises:
+        TypeError: If ``part`` is neither callable nor a real number.
+    """
+    if callable(part):
+        target = transformed_function(part, view.transform_x, view.transform_y)
+        scale = (view.scale_x, view.scale_y)
+        return sample_function(target, span, scale, band, sampling, keep_offscreen=True)
+    # A constant: a horizontal line. Beyond the band, any height draws the
+    # same, so values are kept near it (infinity, or zero or below on a log
+    # axis, lies far below or above). NaN is undefined everywhere.
+    if isinstance(part, bool) or not isinstance(part, (int, float, np.number)):
+        msg = f"expected a function of x or a number, got {part!r}"
+        raise TypeError(msg)
+    value = float(part)
+    if math.isnan(value):
+        return []
+    reach = band[1] - band[0]
+    low, high = band[0] - reach, band[1] + reach
+    if view.log_y and value <= 0:
+        level = low
+    elif math.isinf(value):
+        level = high if value > 0 else low
+    else:
+        level = min(max(float(view.transform_y.forward(value)), low), high)
+    return [np.array([[span[0], level], [span[1], level]], dtype=np.float64)]
+
+
+def _x_span(
+    view: View, margin: float, domain: tuple[float, float] | None
+) -> tuple[float, float] | None:
+    """Return the transformed x interval to sample: the visible one, cut to a domain.
+
+    Args:
+        view: The view being drawn.
+        margin: Pixels to add on both sides.
+        domain: A world interval to restrict to, if any.
+
+    Returns:
+        ``(low, high)``, or ``None`` if the domain is not visible at all.
+
+    Raises:
+        ValueError: If ``domain`` is not an increasing pair of numbers.
+    """
+    bounds = view.transformed_bounds
+    sx = view.scale_x
+    lo, hi = bounds.x_min - margin / sx, bounds.x_max + margin / sx
+    if domain is not None:
+        d0, d1 = float(domain[0]), float(domain[1])
+        if not d0 < d1:
+            msg = f"domain must satisfy low < high, got {domain!r}"
+            raise ValueError(msg)
+        span = _transformed_domain(view.transform_x, d0, d1)
+        if span is None:
+            return None
+        lo, hi = max(lo, span[0]), min(hi, span[1])
+    return (lo, hi)
+
+
+def _y_band(view: View, margin: float) -> tuple[float, float]:
+    """Return the transformed y interval on screen, with ``margin`` pixels."""
+    bounds = view.transformed_bounds
+    sy = view.scale_y
+    return (bounds.y_min - margin / sy, bounds.y_max + margin / sy)
+
+
+def _grid_to_screen(
+    view: View,
+    origin: tuple[int, int],
+    step: tuple[float, float],
+    paths: list[NDArray[np.float64]],
+) -> list[NDArray[np.float64]]:
+    """Map paths in grid coordinates (implicit curves, regions) to the screen.
+
+    The grid origin's pixel is computed precisely (see
+    :meth:`View.multiples_to_screen`); from there each grid step is a fixed
+    number of pixels, so the result moves rigidly with the view.
+
+    Args:
+        view: The view being drawn.
+        origin: Grid indices ``(i, j)`` of the paths' point ``(0, 0)``.
+        step: The grid step ``(step_u, step_w)`` in transformed units.
+        paths: The paths, ``(column, row)`` in grid steps.
+
+    Returns:
+        The paths in screen pixels.
+    """
+    step_u, step_w = step
+    i0, j0 = origin
+    x0 = float(view.multiples_to_screen("x", step_u, np.array([i0], dtype=np.int64))[0])
+    y0 = float(view.multiples_to_screen("y", step_w, np.array([j0], dtype=np.int64))[0])
+    px_u, px_w = step_u * view.scale_x, step_w * view.scale_y
+    return [
+        np.column_stack((x0 + path[:, 0] * px_u, y0 - path[:, 1] * px_w))
+        for path in paths
+    ]
 
 
 def _component(

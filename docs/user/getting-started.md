@@ -65,8 +65,9 @@ Each frame does three things, in this order:
 2. **Draw the grid once** with `plane.draw_grid(surface)`. It fills the
    background, draws the grid, axes and labels, advances eased pan and zoom,
    and restarts the colour palette for the new frame.
-3. **Draw plots** with `plot`, `parametric`, `polar`, `points`,
-   `polyline` and `polygon`, in the order they should be stacked. Each takes
+3. **Draw plots** with `plot`, `parametric`, `polar`, `implicit`,
+   `fill_between`, `inequality`, `vector_field`, `slope_field`, `points`,
+   `polyline`, `polygon` and `arrow`, in the order they should be stacked. Each takes
    the target surface first, like `pygame.draw`.
 
 Then flip the display as usual. Anything drawn after the plots (captions,

@@ -54,13 +54,22 @@ plane.points(screen, [(0, 0), (1, 1)], style=big)
 
 hatch = pgp.PolygonStyle(fill_opacity=0.1, width=1.0, fill_rule="evenodd")
 plane.polygon(screen, [(0, 0), (2, 0), (1, 2)], style=hatch)
+
+pointer = pgp.ArrowStyle(width=3, head_size=14, color="crimson")
+plane.arrow(screen, (0, 0), (2, 2), style=pointer)
 ```
+
+A style replaces the method's own defaults as a whole, so
+`vector_field(..., style=pgp.ArrowStyle())` draws arrows 2.5 pixels wide
+rather than the field's usual 1.5; set the fields you want in the style.
 
 | Style | Used by | Fields (defaults) |
 |---|---|---|
-| `LineStyle` | `plot`, `parametric`, `polar`, `polyline` | `color=None`, `width=2.5`, `opacity=1.0` |
+| `LineStyle` | `plot`, `parametric`, `polar`, `implicit`, `polyline`, `slope_field` | `color=None`, `width=2.5`, `opacity=1.0` |
 | `PointStyle` | `points` | `color=None`, `radius=4.5`, `marker="circle"`, `edge_color=None`, `edge_width=1.5`, `opacity=1.0` |
 | `PolygonStyle` | `polygon` | `color=None`, `width=2.5`, `opacity=1.0`, `fill=True`, `fill_color=None`, `fill_opacity=0.25`, `fill_rule="nonzero"` |
+| `FillStyle` | `fill_between`, `inequality` | `color=None`, `opacity=0.25` |
+| `ArrowStyle` | `arrow`, `vector_field` | `color=None`, `width=2.5`, `opacity=1.0`, `head_size=None` (in proportion to the width; `0` for none) |
 
 Styles are immutable and validated when they are created, so a mistake such
 as a negative width raises a clear `ValueError` at once rather than in the

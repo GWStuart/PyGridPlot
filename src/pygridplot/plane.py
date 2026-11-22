@@ -25,6 +25,9 @@ loop and calls the plane each frame::
         plane.plot(screen, np.sin)
         plane.polar(screen, lambda t: 1 + np.cos(t))
         plane.implicit(screen, lambda x, y: x**2 + y**2, 9)
+        plane.inequality(screen, lambda x, y: y < np.cos(x))
+        plane.vector_field(screen, lambda x, y: (-y, x))
+        plane.arrow(screen, (0, 0), (2, 1))
         plane.points(screen, [(0, 0), (np.pi, 0)])
         plane.polygon(screen, [(1, 1), (3, 1), (2, 2.5)])
         pygame.display.flip()
@@ -56,7 +59,10 @@ from pygridplot.core.handles.constraints import Lock, Range
 from pygridplot.core.handles.drawing import coordinate_item, point_primitives
 from pygridplot.core.handles.point import Coordinates, CurveSpec, DraggablePoint
 from pygridplot.core.plot.builders import (
+    Boundary,
     CurveComponent,
+    area_fill,
+    arrow_fill,
     function_stroke,
     implicit_stroke,
     parametric_stroke,
@@ -64,15 +70,21 @@ from pygridplot.core.plot.builders import (
     polar_stroke,
     polygon_shapes,
     polyline_stroke,
+    region_fill,
+    slope_field_strokes,
+    vector_field_fills,
 )
 from pygridplot.core.plot.curves import DEFAULT_CURVE_SAMPLING, CurveSampling
-from pygridplot.core.plot.evaluation import Function, PlaneFunction
+from pygridplot.core.plot.evaluation import Function, PlaneFunction, VectorFunction
+from pygridplot.core.plot.fields import DEFAULT_SPACING
 from pygridplot.core.plot.geometry import as_points
 from pygridplot.core.plot.implicit import DEFAULT_IMPLICIT_SAMPLING, ImplicitSampling
 from pygridplot.core.plot.memo import CacheStats, PlotCache, same_inputs
 from pygridplot.core.plot.sampling import DEFAULT_SAMPLING, SamplingConfig
 from pygridplot.core.plot.style import (
+    ArrowStyle,
     ColorCycle,
+    FillStyle,
     LineStyle,
     PointStyle,
     PolygonStyle,
@@ -87,6 +99,10 @@ from pygridplot.render.pygame_renderer import PygameRenderer
 _DEFAULT_LINE = LineStyle()
 _DEFAULT_POINT = PointStyle()
 _DEFAULT_POLYGON = PolygonStyle()
+_DEFAULT_FILL = FillStyle()
+_DEFAULT_ARROW = ArrowStyle()
+_DEFAULT_FIELD_ARROW = ArrowStyle(width=1.5)
+_DEFAULT_SLOPE = LineStyle(width=1.5)
 
 
 class Plane:
@@ -617,6 +633,335 @@ class Plane:
         )
         self._draw(surface, stroke)
 
+    def fill_between(
+        self,
+        surface: pygame.Surface,
+        f: Boundary,
+        g: Boundary = 0.0,
+        *,
+        color: ColorLike | None = None,
+        opacity: float | None = None,
+        domain: tuple[float, float] | None = None,
+        style: FillStyle | None = None,
+        sampling: SamplingConfig | None = None,
+    ) -> None:
+        """Shade the area between the graphs ``y = f(x)`` and ``y = g(x)``.
+
+        Both sides are sampled exactly as :meth:`plot` samples a graph, so
+        the shading meets the curves drawn with :meth:`plot` exactly. It
+        covers only the x intervals where both sides are defined, and stops
+        with a straight edge wherever either one jumps (as ``tan`` does at
+        its asymptotes) or ends. Where the graphs cross, both parts are
+        shaded.
+
+        The area has no outline: plot the curves too, if they should show::
+
+            plane.fill_between(screen, np.sin, 0, domain=(0, np.pi))
+            plane.plot(screen, np.sin)
+
+        Args:
+            surface: The surface to draw on.
+            f: One side: a function of ``x`` (vectorised or scalar-only,
+                like for :meth:`plot`), or a number for a horizontal line.
+            g: The other side, likewise (default ``0``: the area between
+                ``f`` and the x axis). ``-math.inf`` or ``math.inf`` shades
+                all the way to the bottom or top of the plane; on a log y
+                axis, so does any number ``<= 0``.
+            color: Fill colour (default: the next palette colour).
+            opacity: Fill opacity in ``[0, 1]`` (default 0.25).
+            domain: Only shade where ``domain[0] <= x <= domain[1]``.
+            style: A reusable :class:`~pygridplot.FillStyle`. The other
+                keyword arguments override its fields.
+            sampling: Override the plane's sampling settings for this call
+                (used for both sides).
+
+        Raises:
+            TypeError: If ``f`` or ``g`` is neither callable nor a number.
+            ValueError: If ``domain`` is not an increasing pair of numbers.
+        """
+        self._sync_rect(surface)
+        fill = with_overrides(style or _DEFAULT_FILL, color=color, opacity=opacity)
+        color_ = self._colors.resolve(fill.color)
+        config = sampling if sampling is not None else self._sampling
+        bounds = None if domain is None else (float(domain[0]), float(domain[1]))
+        area = self._cached(
+            "fill_between",
+            (fill, color_, bounds, config),
+            [f, g],
+            lambda fs: area_fill(
+                self._view, fs[0], fs[1], fill, color_, domain=domain, sampling=config
+            ),
+        )
+        self._draw(surface, area)
+
+    def inequality(
+        self,
+        surface: pygame.Surface,
+        condition: PlaneFunction,
+        *,
+        color: ColorLike | None = None,
+        opacity: float | None = None,
+        style: FillStyle | None = None,
+        sampling: ImplicitSampling | None = None,
+    ) -> None:
+        """Shade the region where ``condition(x, y)`` holds.
+
+        The condition is an inequality written in Python, such as
+        ``lambda x, y: x**2 + y**2 < 4`` or ``lambda x, y: y < np.sin(x)``.
+        Conditions combine with NumPy's ``&`` (and), ``|`` (or) and ``~``
+        (not), each part in brackets::
+
+            plane.inequality(screen, lambda x, y: (y > x**2) & (y < 4))
+
+        (Python's ``and``, ``or`` and chained comparisons such as
+        ``0 < x < 1`` work too, but only on single numbers, so they are
+        much slower.) Any value that is not zero counts as true, so a
+        function returning 0 or 1 works as well. Where the condition is
+        undefined (it raises an error or returns NaN), the point is outside.
+
+        The region is found like an implicit curve, on a grid of samples
+        a couple of pixels apart, with its edges refined onto the true
+        boundary, so it can be any shape: several pieces, holes, regions
+        that end at an asymptote. Islands and holes smaller than about
+        eight pixels across may be missed.
+
+        The region has no outline: draw its boundary with :meth:`implicit`
+        or :meth:`plot`, if it should show::
+
+            plane.inequality(screen, lambda x, y: x**2 + y**2 < 4)
+            plane.implicit(screen, lambda x, y: x**2 + y**2, 4)
+
+        Args:
+            surface: The surface to draw on.
+            condition: ``condition(x, y)``, taking NumPy arrays and
+                returning booleans (or plain numbers, at some cost in
+                speed).
+            color: Fill colour (default: the next palette colour).
+            opacity: Fill opacity in ``[0, 1]`` (default 0.25).
+            style: A reusable :class:`~pygridplot.FillStyle`. The other
+                keyword arguments override its fields.
+            sampling: How the region is searched for (the same settings as
+                implicit curves: see :class:`~pygridplot.ImplicitSampling`).
+        """
+        self._sync_rect(surface)
+        fill = with_overrides(style or _DEFAULT_FILL, color=color, opacity=opacity)
+        color_ = self._colors.resolve(fill.color)
+        config = sampling if sampling is not None else DEFAULT_IMPLICIT_SAMPLING
+        area = self._cached(
+            "inequality",
+            (fill, color_, config),
+            [condition],
+            lambda fs: region_fill(self._view, fs[0], fill, color_, sampling=config),
+            arity=2,
+        )
+        self._draw(surface, area)
+
+    def arrow(
+        self,
+        surface: pygame.Surface,
+        start: ArrayLike,
+        end: ArrayLike,
+        *,
+        color: ColorLike | None = None,
+        width: float | None = None,
+        opacity: float | None = None,
+        head_size: float | None = None,
+        style: ArrowStyle | None = None,
+    ) -> None:
+        """Draw an arrow from ``start`` to ``end``, or many arrows at once.
+
+        The arrow runs straight from ``start`` to its tip at ``end``, both
+        in world units, so it moves and grows with the view; its width and
+        head are in pixels, so it looks the same at every zoom. To draw a
+        vector ``v`` at a point ``p``, give ``p`` and ``np.add(p, v)``.
+
+        Each end is one point ``(x, y)`` or many (a sequence of points, or
+        an ``(N, 2)`` array), for many arrows in one call, which is much
+        faster than one call each. A single start is shared by all the
+        ends, and a single end by all the starts::
+
+            plane.arrow(screen, (0, 0), (2, 1))
+            plane.arrow(screen, (0, 0), [(1, 0), (0, 1)])      # two, from the origin
+
+        Arrows with a NaN coordinate, or whose ends are in the same place,
+        are left out.
+
+        Args:
+            surface: The surface to draw on.
+            start: Where the arrow starts (its tail).
+            end: Where it points to (its tip).
+            color: Arrow colour (default: the next palette colour).
+            width: Shaft width in pixels (default 2.5).
+            opacity: Opacity in ``[0, 1]``.
+            head_size: Length of the head in pixels (default: in proportion
+                to the width; ``0`` for no head).
+            style: A reusable :class:`~pygridplot.ArrowStyle`. The other
+                keyword arguments override its fields.
+
+        Raises:
+            ValueError: If ``start`` or ``end`` is not one or more points, or
+                they are both several points but not as many.
+        """
+        self._sync_rect(surface)
+        arrow_style = with_overrides(
+            style or _DEFAULT_ARROW,
+            color=color,
+            width=width,
+            opacity=opacity,
+            head_size=head_size,
+        )
+        color_ = self._colors.resolve(arrow_style.color)
+        starts = as_points(start).copy()  # the caller may change them in place
+        ends = as_points(end).copy()
+        fill = self._cached(
+            "arrow",
+            (arrow_style, color_, starts, ends),
+            [],
+            lambda _: arrow_fill(self._view, starts, ends, arrow_style, color_),
+        )
+        self._draw(surface, fill)
+
+    def vector_field(
+        self,
+        surface: pygame.Surface,
+        field: VectorFunction,
+        *,
+        spacing: float | None = None,
+        scale: float | None = None,
+        color: ColorLike | None = None,
+        width: float | None = None,
+        opacity: float | None = None,
+        head_size: float | None = None,
+        style: ArrowStyle | None = None,
+    ) -> None:
+        """Draw the vector field ``(u, v) = field(x, y)`` as a lattice of arrows.
+
+        ``field`` takes ``x`` and ``y`` and returns the vector there as a
+        pair, written with NumPy like the functions given to
+        :meth:`implicit`::
+
+            plane.vector_field(screen, lambda x, y: (-y, x))  # a rotation
+            plane.vector_field(screen, lambda x, y: (1, np.sin(x)))  # u is a number
+
+        An arrow is centred on each point of a lattice that keeps about the
+        same density on screen, ``spacing`` pixels apart. The lattice is
+        fixed to the plane, so panning moves the arrows with it; while
+        zooming, new arrows fade and grow in between the others (or shrink
+        and fade out), so that their density stays the same and nothing
+        jumps.
+
+        By default every arrow has the same length, so the picture shows
+        the field's direction. Give ``scale`` to show its magnitude too:
+        each arrow is then ``scale`` pixels long per unit of magnitude, up
+        to a cap of 0.8 × ``spacing``, so that arrows never run into each
+        other. Where ``field`` raises an error, returns NaN or an infinite
+        component, or is zero, no arrow is drawn.
+
+        Arrows are tangent to the field's flow lines on screen, on log axes
+        too (a vector ``(u, v)`` is taken as a direction in world units at
+        its point).
+
+        Args:
+            surface: The surface to draw on.
+            field: ``field(x, y) -> (u, v)``, taking NumPy arrays (or plain
+                numbers, at some cost in speed).
+            spacing: Distance between neighbouring arrows in pixels (default
+                40, at least 10). While zooming it varies between this and
+                twice this, as arrows fade in and out.
+            scale: ``None`` for arrows of one length, or pixels of length
+                per unit of the vector's magnitude.
+            color: Arrow colour (default: the next palette colour).
+            width: Shaft width in pixels (default 1.5).
+            opacity: Opacity in ``[0, 1]``.
+            head_size: Length of the heads in pixels (default: in proportion
+                to the width).
+            style: A reusable :class:`~pygridplot.ArrowStyle`. The other
+                keyword arguments override its fields.
+
+        Raises:
+            ValueError: If ``spacing`` or ``scale`` is not valid.
+        """
+        self._sync_rect(surface)
+        arrow_style = with_overrides(
+            style or _DEFAULT_FIELD_ARROW,
+            color=color,
+            width=width,
+            opacity=opacity,
+            head_size=head_size,
+        )
+        color_ = self._colors.resolve(arrow_style.color)
+        gap = float(spacing) if spacing is not None else DEFAULT_SPACING
+        magnitude = None if scale is None else float(scale)
+        fills = self._cached(
+            "vector_field",
+            (arrow_style, color_, gap, magnitude),
+            [field],
+            lambda fs: vector_field_fills(
+                self._view, fs[0], arrow_style, color_, spacing=gap, scale=magnitude
+            ),
+            arity=2,
+            outputs=2,
+        )
+        self._draw(surface, *fills)
+
+    def slope_field(
+        self,
+        surface: pygame.Surface,
+        slope: PlaneFunction,
+        *,
+        spacing: float | None = None,
+        color: ColorLike | None = None,
+        width: float | None = None,
+        opacity: float | None = None,
+        style: LineStyle | None = None,
+    ) -> None:
+        """Draw the slope field of the differential equation ``dy/dx = slope(x, y)``.
+
+        A short segment is drawn at each point of a lattice, with the slope
+        the equation gives there, so the solution curves can be seen
+        following the segments::
+
+            plane.slope_field(screen, lambda x, y: x - y)
+            plane.plot(screen, lambda x: x - 1 + 2 * np.exp(-x))     # one solution
+
+        The lattice behaves as for :meth:`vector_field`: fixed to the plane
+        when panning, with segments fading in and out while zooming. An
+        infinite slope gives a vertical segment; where ``slope`` raises an
+        error or returns NaN, no segment is drawn. For arrows instead of
+        segments, draw the vector field ``lambda x, y: (1, slope(x, y))``.
+
+        Args:
+            surface: The surface to draw on.
+            slope: ``dy/dx`` as a function of ``x`` and ``y``, taking NumPy
+                arrays (or plain numbers, at some cost in speed).
+            spacing: Distance between neighbouring segments in pixels
+                (default 40, at least 10).
+            color: Segment colour (default: the next palette colour).
+            width: Line width in pixels (default 1.5).
+            opacity: Opacity in ``[0, 1]``.
+            style: A reusable :class:`~pygridplot.LineStyle`. The other
+                keyword arguments override its fields.
+
+        Raises:
+            ValueError: If ``spacing`` is not valid.
+        """
+        self._sync_rect(surface)
+        line = with_overrides(
+            style or _DEFAULT_SLOPE, color=color, width=width, opacity=opacity
+        )
+        color_ = self._colors.resolve(line.color)
+        gap = float(spacing) if spacing is not None else DEFAULT_SPACING
+        strokes = self._cached(
+            "slope_field",
+            (line, color_, gap),
+            [slope],
+            lambda fs: slope_field_strokes(
+                self._view, fs[0], line, color_, spacing=gap
+            ),
+            arity=2,
+        )
+        self._draw(surface, *strokes)
+
     def points(
         self,
         surface: pygame.Surface,
@@ -998,6 +1343,7 @@ class Plane:
         make: Callable[[list[Any]], Any],
         *,
         arity: int = 1,
+        outputs: int = 1,
     ) -> Any:
         """Build a plotting call's primitives, or reuse the previous frame's.
 
@@ -1008,12 +1354,18 @@ class Plane:
             functions: The call's functions (or constants in their place).
             make: Builds the primitives from the functions.
             arity: The functions' number of arguments.
+            outputs: The number of values they return (2 for vector fields).
 
         Returns:
             The primitives (see :class:`~pygridplot.core.plot.memo.PlotCache`).
         """
         return self._plots.build(
-            kind, (self._view.fingerprint, key), functions, make, arity=arity
+            kind,
+            (self._view.fingerprint, key),
+            functions,
+            make,
+            arity=arity,
+            outputs=outputs,
         )
 
     def _grid_scene(self) -> GridScene:

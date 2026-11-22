@@ -4,7 +4,8 @@ PyGridPlot is an interactive Cartesian plane for
 [pygame-ce](https://pyga.me/): an adaptive grid with clean tick labels,
 smooth panning and zooming, linear or logarithmic axes, and robust,
 antialiased plots of functions, parametric, polar and implicit curves,
-points, polylines and polygons, and points the user can drag. Your program
+areas between graphs and inequalities, vector and slope fields, points,
+polylines, polygons and arrows, and points the user can drag. Your program
 owns the main loop; the plane is an object you call every frame.
 
 The [philosophy](philosophy.md) explains the principles behind it: one way
@@ -21,7 +22,7 @@ topic you need:
 | [Getting started](user/getting-started.md) | Installing, the first program, the frame loop, quick mode. |
 | [The plane](user/the-plane.md) | Creating a plane, setting up the view, coordinates, embedding, several planes. |
 | [Interaction](user/interaction.md) | The built-in controls, configuring them, moving the view from code. |
-| [Plotting](user/plotting.md) | Functions and their derivatives, parametric, polar and implicit curves, points, polylines and polygons. |
+| [Plotting](user/plotting.md) | Functions and their derivatives, parametric, polar and implicit curves, areas and inequalities, vector and slope fields, points, polylines, polygons and arrows. |
 | [Draggable points](user/draggable-points.md) | Points the user drags: free, locked to an axis, or on a curve. |
 | [Logarithmic axes](user/log-axes.md) | Log and semi-log planes, how their grid and labels behave. |
 | [Styles and themes](user/styles-and-themes.md) | Colours, reusable styles, the palette, themes and number formats. |

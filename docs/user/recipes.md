@@ -8,6 +8,7 @@ otherwise; `screen` is the display surface and `plane` your plane.
 - [Marking a curve under the mouse](#marking-a-curve-under-the-mouse)
 - [Shading the area under a curve](#shading-the-area-under-a-curve)
 - [A tangent line at a draggable point](#a-tangent-line-at-a-draggable-point)
+- [Velocity and acceleration vectors](#velocity-and-acceleration-vectors)
 - [Plotting data](#plotting-data)
 - [Animating](#animating)
 - [Adding a legend](#adding-a-legend)
@@ -58,20 +59,18 @@ units, so it grows as you zoom in.
 
 ## Shading the area under a curve
 
-Build a polygon from the curve's points and the x axis. Draw it before the
-curve, so the line stays on top:
+Use [`fill_between`](plotting.md#areas-between-graphs), which shades down
+to the x axis by default. Draw it before the curve, so the line stays on
+top:
 
 ```python
-a, b = 0.0, np.pi
-xs = np.linspace(a, b, 200)
-area = np.column_stack((np.r_[a, xs, b], np.r_[0.0, np.sin(xs), 0.0]))
-plane.polygon(screen, area, color="steelblue", width=0, fill_opacity=0.3)
+plane.fill_between(screen, np.sin, domain=(0, np.pi), color="steelblue")
 plane.plot(screen, np.sin, color="steelblue")
 ```
 
-200 points is plenty for a smooth outline on screen. On a log y axis the
-points at `y = 0` lie infinitely far down, so the area fills to the bottom
-of the plane.
+The area meets the curve exactly at every zoom, and stops at jumps and
+asymptotes. On a log y axis, `0` lies infinitely far down, so the area
+fills to the bottom of the plane.
 
 ## A tangent line at a draggable point
 
@@ -87,6 +86,28 @@ point = plane.draggable(curve=(lambda t: t, f, (-10, 10)), t=0.5)   # before the
 value, slope = pgp.derivatives(f, point.x, 1)
 plane.plot(screen, f)
 plane.plot(screen, lambda x: value + slope * (x - point.x), width=1.5)
+plane.draw_draggables(screen)
+```
+
+## Velocity and acceleration vectors
+
+For a point moving along a parametric curve `(x(t), y(t))`, the velocity
+is `(x'(t), y'(t))` and the acceleration `(x''(t), y''(t))`. Put a
+draggable point on the curve and draw both as
+[arrows](plotting.md#arrows) from it, with the exact
+[derivatives](plotting.md#derivatives):
+
+```python
+x = lambda t: 3 * np.cos(t)
+y = lambda t: 2 * np.sin(2 * t)
+mover = plane.draggable(curve=(x, y, (0, 2 * np.pi)), t=1.0)   # before the loop
+
+t = mover.t
+(_, vx, ax), (_, vy, ay) = pgp.derivatives(x, t, 2), pgp.derivatives(y, t, 2)
+plane.parametric(screen, x, y, (0, 2 * np.pi), color="gray", width=1.5)
+plane.arrow(screen, (mover.x, mover.y), (mover.x + vx, mover.y + vy), color="crimson")
+plane.arrow(screen, (mover.x, mover.y), (mover.x + ax / 4, mover.y + ay / 4),
+            color="seagreen")                           # a quarter of the acceleration
 plane.draw_draggables(screen)
 ```
 
@@ -215,7 +236,12 @@ that way:
   of one function with a single call (`plane.implicit(screen, F, levels)`),
   and write `F` with NumPy: scalar-only functions are much slower here.
 - **Big translucent fills** cost about 4 ms for a polygon covering most of
-  a large window.
+  a large window, and so do regions (`inequality`) and areas
+  (`fill_between`) of that size.
+- **Vector fields** cost about 7 ms on a large window, and about twice that
+  for the moments while arrows fade in during a zoom; a larger `spacing`
+  draws fewer arrows. Slope fields are cheaper (about 2.5 ms). Many arrows
+  in one `arrow` call are far cheaper than one call each.
 - **Thin lines are cheaper** than wide ones.
 - **Share a renderer** between planes (`Plane(renderer=...)`), so they
   share font and label caches; `renderer.clear_caches()` frees them.

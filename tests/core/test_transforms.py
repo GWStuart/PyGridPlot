@@ -63,3 +63,14 @@ def test_transforms_are_validated_and_shared() -> None:
 @given(st.floats(1e-300, 1e300))
 def test_log_round_trip(value: float) -> None:
     assert LOG.inverse(LOG.forward(value)) == pytest.approx(value, rel=1e-12)
+
+
+def test_derivatives_map_directions_to_transformed_coordinates() -> None:
+    xs = np.array([0.5, 1.0, 10.0, 250.0])
+    assert np.array_equal(LINEAR.derivative(xs), np.ones(4))
+    np.testing.assert_allclose(LOG.derivative(xs), 1 / (xs * math.log(10)))
+    # Away from zero, it is the slope of forward().
+    h = 1e-6
+    numeric = (LOG.forward(xs * (1 + h)) - LOG.forward(xs * (1 - h))) / (2 * h * xs)
+    np.testing.assert_allclose(LOG.derivative(xs), numeric, rtol=1e-6)
+    assert np.isnan(LOG.derivative(np.array([0.0, -3.0]))).all()

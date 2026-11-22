@@ -45,7 +45,11 @@ from typing import Any, Final
 import numpy as np
 from numpy.typing import NDArray
 
-from pygridplot.core.plot.evaluation import evaluate_quietly, evaluate_xy_quietly
+from pygridplot.core.plot.evaluation import (
+    evaluate_quietly,
+    evaluate_vectors_quietly,
+    evaluate_xy_quietly,
+)
 
 PROBE_POINTS: Final = 32
 """Recorded points re-evaluated first, to reject a changed function cheaply."""
@@ -67,13 +71,18 @@ class Recorder:
     Args:
         func: The user's function.
         arity: 1 for functions of ``x``, 2 for functions of ``(x, y)``.
+        outputs: 1 for functions returning a number, 2 for vector fields
+            (functions of ``(x, y)`` returning a pair ``(u, v)``).
     """
 
-    __slots__ = ("_calls", "arity", "func")
+    __slots__ = ("_calls", "arity", "func", "outputs")
 
-    def __init__(self, func: Callable[..., Any], arity: int = 1) -> None:
+    def __init__(
+        self, func: Callable[..., Any], arity: int = 1, outputs: int = 1
+    ) -> None:
         self.func = func
         self.arity = arity
+        self.outputs = outputs
         self._calls: list[
             tuple[tuple[NDArray[np.float64], ...], NDArray[np.float64]]
         ] = []
@@ -85,12 +94,15 @@ class Recorder:
             *args: Arrays of argument values (one per argument), or numbers.
 
         Returns:
-            The values, NaN where undefined.
+            The values, NaN where undefined. A vector field's values are
+            returned as an array of shape ``(2, N)`` (a pair of rows), like
+            the fields themselves, so the builders' robust evaluation passes
+            them straight through.
         """
         arrays = tuple(np.array(a, dtype=np.float64, ndmin=1) for a in args)
         values = self._evaluate(arrays)
         self._calls.append((arrays, values.copy()))
-        return values
+        return values if self.outputs == 1 else values.T
 
     def unchanged(self) -> bool:
         """Return whether the function still gives every recorded value.
@@ -123,6 +135,8 @@ class Recorder:
     def _evaluate(self, arrays: tuple[NDArray[np.float64], ...]) -> NDArray[np.float64]:
         if self.arity == 1:
             return evaluate_quietly(self.func, arrays[0])
+        if self.outputs == 2:
+            return evaluate_vectors_quietly(self.func, arrays[0], arrays[1])
         return evaluate_xy_quietly(self.func, arrays[0], arrays[1])
 
     def _quiet(self, arrays: tuple[NDArray[np.float64], ...]) -> NDArray[np.float64]:
@@ -236,6 +250,7 @@ class PlotCache:
         make: Callable[[list[Any]], Any],
         *,
         arity: int = 1,
+        outputs: int = 1,
     ) -> Any:
         """Return a plotting call's result, reused if nothing changed.
 
@@ -248,6 +263,7 @@ class PlotCache:
             make: Builds the result from the functions (wrapped so that
                 their evaluations are recorded).
             arity: The number of arguments of the functions.
+            outputs: The number of values they return (2 for vector fields).
 
         Returns:
             The result: the previous frame's own object when reused.
@@ -271,7 +287,7 @@ class PlotCache:
             self._hits += 1
             self._current.append(previous)
             return previous.result
-        recorders = [Recorder(f, arity) for f in functions if callable(f)]
+        recorders = [Recorder(f, arity, outputs) for f in functions if callable(f)]
         wrapped = iter(recorders)
         arguments = [next(wrapped) if callable(f) else f for f in functions]
         result = make(arguments)

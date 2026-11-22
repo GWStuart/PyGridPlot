@@ -13,9 +13,14 @@ automatically, so frames where little changes stay cheap.
 | [`parametric(surface, x, y, t_range)`](#parametric-curves) | The curve `(x(t), y(t))`. |
 | [`polar(surface, r)`](#polar-curves) | The curve `r = r(θ)`. |
 | [`implicit(surface, F)`](#implicit-curves) | The curve `F(x, y) = 0` (or `= c`). |
+| [`fill_between(surface, f, g)`](#areas-between-graphs) | The area between two graphs (or a graph and the x axis). |
+| [`inequality(surface, condition)`](#inequalities-and-regions) | The region where a condition such as `x² + y² < 4` holds. |
+| [`vector_field(surface, field)`](#vector-fields) | Arrows showing a vector field `(u, v) = F(x, y)`. |
+| [`slope_field(surface, slope)`](#slope-fields) | Segments showing the slopes of `dy/dx = f(x, y)`. |
 | [`points(surface, points)`](#points) | Markers that keep their size in pixels. |
 | [`polyline(surface, points)`](#polylines) | Vertices joined by straight lines. |
 | [`polygon(surface, points)`](#polygons) | A filled shape with an outline. |
+| [`arrow(surface, start, end)`](#arrows) | Arrows between points. |
 
 All of them accept `color`, `opacity` and a reusable `style`; see
 [Styles and themes](styles-and-themes.md). Objects drawn without a colour
@@ -333,6 +338,201 @@ curve that winds across the whole plane. Dense contour maps
 on large windows can reach the budget with NumPy functions; raising
 `max_samples` (to `10**6`, say) keeps them at full resolution.
 
+## Areas between graphs
+
+```py
+plane.fill_between(surface, f, g=0, *, color=None, opacity=None,
+                   domain=None, style=None, sampling=None)
+```
+
+```python
+plane.fill_between(screen, np.sin, domain=(0, np.pi))            # under sin, above the x axis
+plane.fill_between(screen, np.sin, np.cos, color="crimson")      # between two graphs
+plane.fill_between(screen, lambda x: x**2, 4)                    # between a parabola and y = 4
+plane.fill_between(screen, np.exp, -math.inf, domain=(-1, 1))    # down to the bottom edge
+```
+
+`fill_between` shades the area between the graphs of `f` and `g`, without
+an outline. Each side is a function of `x`, written as for `plot`, or a
+number for a horizontal line; `g` defaults to `0`, the x axis. Draw the
+area first and the curves on top:
+
+```python
+plane.fill_between(screen, np.sin, np.cos, domain=(-2, 4), color="steelblue")
+plane.plot(screen, np.sin, color="steelblue")
+plane.plot(screen, np.cos, color="steelblue")
+```
+
+Both sides are sampled exactly like a `plot` of them, so the shading
+meets the curves exactly, at every zoom. Where the graphs cross, both
+parts are shaded. The area covers only the `x` where both sides are
+defined, and ends with a straight edge wherever either side jumps or
+ends: `fill_between(screen, np.tan)` shades each branch of `tan` without
+joining them across the asymptotes, and
+`fill_between(screen, np.sqrt, 0)` starts at `x = 0`.
+
+`math.inf` and `-math.inf` shade all the way to the top or bottom of the
+plane. On a [log y axis](log-axes.md), `0` (or any number `<= 0`) lies
+infinitely far down, so `fill_between(screen, f)` shades down to the
+bottom edge there.
+
+| Parameter | Default | Meaning |
+|---|---|---|
+| `f`, `g` | (`g`: `0`) | The two sides: functions of `x`, or numbers. |
+| `color` | next palette colour | Fill colour. |
+| `opacity` | `0.25` | Fill opacity, 0 to 1. |
+| `domain` | `None` | Only shade where `domain[0] <= x <= domain[1]`. |
+| `style` | `None` | A reusable `FillStyle`. |
+| `sampling` | the plane's | `SamplingConfig` for both sides, as for `plot`. |
+
+## Inequalities and regions
+
+```py
+plane.inequality(surface, condition, *, color=None, opacity=None,
+                 style=None, sampling=None)
+```
+
+```python
+plane.inequality(screen, lambda x, y: x**2 + y**2 < 4)                      # a disc
+plane.inequality(screen, lambda x, y: y > np.sin(x), color="seagreen")      # above a curve
+plane.inequality(screen, lambda x, y: (y > x**2 - 2) & (y < 2 - x**2))      # both at once
+plane.inequality(screen, lambda x, y: (np.abs(x) > 3) | (np.abs(y) > 2))    # either
+```
+
+`inequality` shades every point where `condition(x, y)` is true, without
+an outline, like the inequalities of a graphing calculator. The condition
+is a Python function of `x` and `y`, written with NumPy like the functions
+given to `implicit`, and returning booleans. Combine conditions with
+NumPy's `&` (and), `|` (or) and `~` (not), with each part in brackets
+(`&` binds more tightly than `<`).
+
+Python's own `and`, `or`, `not` and chained comparisons (`0 < x < 1`) work
+too, but only on single numbers, so the condition is then evaluated one
+point at a time, tens of times more slowly. Any value that is not zero
+counts as true, so functions returning 0 and 1 work as well. Where the
+condition raises an error or returns NaN, the point is outside: the region
+`lambda x, y: np.sqrt(x) < y` starts at `x = 0`.
+
+To show the boundary, draw it with `implicit` (or `plot`):
+
+```python
+plane.inequality(screen, lambda x, y: x**2 + y**2 < 4, color="steelblue")
+plane.implicit(screen, lambda x, y: x**2 + y**2, 4, color="steelblue")
+```
+
+A region can have any shape: several pieces, holes, parts that end at an
+asymptote (`y < tan(x)`), or edges where the condition jumps
+(`y < floor(x)`). It is found again every frame on the same grid as
+implicit curves, with its edges moved onto the true boundary to a small
+fraction of a pixel, and only the neighbourhood of the boundary is
+sampled finely, so a large region costs no more than a small one with the
+same outline. It takes the same `sampling=` settings as implicit curves
+([above](#implicit-sampling-settings)).
+
+Islands and holes smaller than about 8 pixels across (the coarse grid's
+spacing) may be missed, and so may bands thinner than that; zoom in, or
+use a smaller `coarse_factor`, to find them.
+
+| Parameter | Default | Meaning |
+|---|---|---|
+| `condition` | | `condition(x, y)`: true inside. |
+| `color` | next palette colour | Fill colour. |
+| `opacity` | `0.25` | Fill opacity, 0 to 1. |
+| `style` | `None` | A reusable `FillStyle`. |
+| `sampling` | `ImplicitSampling()` | How the region is searched for. |
+
+## Vector fields
+
+```py
+plane.vector_field(surface, field, *, spacing=None, scale=None, color=None,
+                   width=None, opacity=None, head_size=None, style=None)
+```
+
+```python
+plane.vector_field(screen, lambda x, y: (-y, x))                    # a rotation
+plane.vector_field(screen, lambda x, y: (x, -y), color="seagreen")  # a saddle
+plane.vector_field(screen, lambda x, y: (1, np.sin(x * y)))         # u is a number
+```
+
+A vector field gives a vector `(u, v)` at every point of the plane, and is
+drawn as arrows on a lattice of points. `field` takes `x` and `y` and
+returns the vector there as a pair, written with NumPy like the functions
+given to `implicit` (or plain `math`, more slowly). A component may be a
+plain number, as in `(1, np.sin(x * y))`. Where the field raises an error,
+returns NaN or an infinite component, or is zero, no arrow is drawn.
+
+The arrows are about `spacing` pixels apart (40 by default) at any zoom.
+The lattice is fixed to the plane, so panning moves the arrows with it,
+and while zooming, new arrows grow and fade in between the others (or
+shrink and fade out), so that the density stays the same and nothing
+jumps: at any zoom the arrows are between `spacing` and twice that apart.
+
+By default every arrow has the same length, so the picture shows the
+field's *direction*. Give `scale` to show its *magnitude* as well: each
+arrow is then `scale` pixels long per unit of magnitude, so with
+`scale=10` a vector of length 2 is drawn 20 pixels long. Lengths are capped
+at 0.8 × `spacing`, so that arrows never run into each other; arrows
+shorter than their head are drawn as a smaller head alone.
+
+```python
+def electric(x, y):                   # a charge at the origin: E = r / |r|³
+    r3 = np.hypot(x, y) ** 3
+    return x / r3, y / r3
+
+plane.vector_field(screen, electric)                      # directions: readable everywhere
+plane.vector_field(screen, lambda x, y: (-y, x), scale=8)  # 8 px per unit of magnitude
+```
+
+Fields such as the one of a point charge, whose magnitude ranges over many
+orders, read best by direction alone; fields of moderate size, by
+magnitude too. Each arrow is centred on its point of the lattice and is
+tangent to the field's flow lines on screen, on log axes as well (a vector
+is taken as a direction in world units at its point).
+
+| Parameter | Default | Meaning |
+|---|---|---|
+| `spacing` | `40` | Distance between neighbouring arrows in pixels (at least 10). |
+| `scale` | `None` | `None` for arrows of one length, or pixels per unit of magnitude. |
+| `color` | next palette colour | Arrow colour. |
+| `width` | `1.5` | Shaft width in pixels. |
+| `opacity` | `1.0` | Opacity, 0 to 1. |
+| `head_size` | in proportion | Length of the heads in pixels (`0` for none). |
+| `style` | `None` | A reusable `ArrowStyle`. |
+
+## Slope fields
+
+```py
+plane.slope_field(surface, slope, *, spacing=None, color=None, width=None,
+                  opacity=None, style=None)
+```
+
+```python
+plane.slope_field(screen, lambda x, y: x - y)                      # dy/dx = x - y
+plane.plot(screen, lambda x: x - 1 + 2 * np.exp(-x), color="crimson")   # one solution
+```
+
+A slope field shows the differential equation `dy/dx = slope(x, y)`: a
+short segment at each point of a lattice, with the slope the equation
+gives there, so that the solution curves can be seen running along the
+segments. `slope` takes `x` and `y` like the conditions of `inequality`.
+An infinite slope gives a vertical segment, and where `slope` raises an
+error or returns NaN no segment is drawn.
+
+The lattice behaves exactly as for [vector fields](#vector-fields):
+`spacing` pixels apart (40 by default), fixed to the plane, with segments
+fading in and out while zooming. On log axes the segments are tangent to
+the solution curves on screen, so `dy/dx = y / x`, whose solutions are the
+lines `y = c x`, has every segment at 45° on log-log axes. For arrows
+instead of segments, draw the vector field `lambda x, y: (1, slope(x, y))`.
+
+| Parameter | Default | Meaning |
+|---|---|---|
+| `spacing` | `40` | Distance between neighbouring segments in pixels (at least 10). |
+| `color` | next palette colour | Segment colour. |
+| `width` | `1.5` | Line width in pixels. |
+| `opacity` | `1.0` | Opacity, 0 to 1. |
+| `style` | `None` | A reusable `LineStyle`. |
+
 ## Points
 
 ```py
@@ -408,8 +608,44 @@ A polygon is a translucent fill with an outline; it closes itself.
 | `fill_rule` | `"nonzero"` | For outlines that cross themselves: `"nonzero"` fills everything enclosed, `"evenodd"` leaves doubly enclosed areas (such as a star's centre) empty. |
 | `style` | `None` | A reusable `PolygonStyle`. |
 
-To fill the area under a curve, build the polygon from the curve's points;
-see [Recipes](recipes.md#shading-the-area-under-a-curve).
+To shade the area under a curve, or between two curves, use
+[`fill_between`](#areas-between-graphs).
+
+## Arrows
+
+```py
+plane.arrow(surface, start, end, *, color=None, width=None, opacity=None,
+            head_size=None, style=None)
+```
+
+```python
+plane.arrow(screen, (0, 0), (2, 1))                                  # one arrow
+plane.arrow(screen, (0, 0), [(3, 0), (0, 3)], color="crimson")       # two, from the origin
+plane.arrow(screen, (1, -2), (4, -1), width=4, opacity=0.5)
+```
+
+An arrow runs straight from `start` to its tip at `end`, both points in
+world units, so it moves and grows with the zoom; its width and head are
+in pixels, so it looks the same at every zoom. Draw a vector `v` at a
+point `p` with `plane.arrow(screen, p, np.add(p, v))`.
+
+Each of `start` and `end` is one point `(x, y)` or many (a sequence of
+points, or an `(N, 2)` array): many arrows in one call are much faster than
+one call each. A single start is shared by all the ends, and a single end
+by all the starts. Arrows with a NaN coordinate, or whose ends are in the
+same place, are left out.
+
+An arrow is filled as one shape, shaft and head together, so translucent
+arrows have no darker patch where the head joins the shaft, and arrows
+that overlap merge rather than darken each other. Its tail is square.
+
+| Parameter | Default | Meaning |
+|---|---|---|
+| `color` | next palette colour | Arrow colour. |
+| `width` | `2.5` | Shaft width in pixels. |
+| `opacity` | `1.0` | Opacity, 0 to 1. |
+| `head_size` | in proportion | Length of the head in pixels: by default about `3 × width + 4`; `0` for none (a plain segment with square ends). An arrow shorter than its head is drawn as a smaller head alone. |
+| `style` | `None` | A reusable `ArrowStyle`. |
 
 ## Drawing order
 
@@ -459,8 +695,9 @@ their input, say), which are not well-defined plots anyway.
 
 What is reused:
 
-- function plots, parametric, polar and implicit curves, derivatives, and
-  points, polylines and polygons (their data is compared, and may be
+- function plots, parametric, polar and implicit curves, derivatives,
+  areas between graphs, inequalities, vector and slope fields, and points,
+  polylines, polygons and arrows (their data is compared, and may be
   changed in place);
 - the rasterised pixels of each reused stroke and fill, so only blending
   remains;
@@ -474,5 +711,7 @@ again (and as fast as before).
 Everything above works on [logarithmic axes](log-axes.md) too. Functions
 and curves are sampled in log space, so a power law is an exactly straight
 line on log-log axes, and implicit curves are found on a grid that is even
-on screen. Points, polylines and polygons are transformed vertex
-by vertex and joined by straight lines on screen.
+on screen. Points, polylines, polygons and arrows are transformed vertex
+by vertex and joined by straight lines on screen. Vector and slope fields
+are drawn on a lattice that is even on screen, with arrows and segments
+tangent to the flow lines and solution curves.
