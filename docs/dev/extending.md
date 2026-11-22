@@ -2,12 +2,14 @@
 
 Recipes for the extensions the design anticipates, then the conventions
 every change follows. Each recipe names the files to touch, in order.
+Before starting on a new feature, check it against the
+[philosophy](../philosophy.md#deciding-what-belongs): it should be a better
+or a new plane method taking Python values, not a second way to draw.
 
 - [A new kind of plot](#a-new-kind-of-plot)
 - [A new kind of axis](#a-new-kind-of-axis)
 - [A new kind of draggable point](#a-new-kind-of-draggable-point)
 - [A new derivative rule](#a-new-derivative-rule)
-- [A new kind of object](#a-new-kind-of-object)
 - [A new marker shape](#a-new-marker-shape)
 - [A new theme option](#a-new-theme-option)
 - [A new primitive](#a-new-primitive)
@@ -101,25 +103,6 @@ helpers cover most cases:
 Test the rule in `tests/core/plot/test_jets.py` against the derivatives
 worked out by hand, at several orders. A NumPy *function* (not a ufunc)
 goes in `_FUNCTIONS`, handled through `__array_function__`.
-
-## A new kind of object
-
-An object mirrors a drawing method of the plane. To add one (say, an
-inequality, once the plane can shade one):
-
-1. **The object**, in the matching module of `objects/`: a subclass of
-   `LineObject`, `MarkerObject` or `StyledObject` (or of `CurveObject`, if
-   a draggable point should be able to follow it), with a constructor
-   taking the plane method's arguments, a property per argument (validated
-   with the helpers of `objects/values.py`; everything is read when the
-   object is drawn), `_render` (one call of the plane method) and
-   `_describe` (see the docstring of `PlotObject`). Export it from
-   `objects/__init__.py` and `pygridplot/__init__.py`.
-2. **Test it**: drawing pixel for pixel like the plane call (`SCENES` in
-   `tests/objects/test_objects.py`), and its attributes.
-3. **Document it** in [Objects](../user/objects.md) and in the
-   [API reference](../user/reference.md) (`SECTIONS` in
-   `scripts/build_api_docs.py`).
 
 ## A new kind of axis
 

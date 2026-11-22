@@ -1,7 +1,7 @@
 # Testing and tools
 
 ```bash
-pytest                                   # everything, headless, about 25 s
+pytest                                   # everything, headless, about 15 s
 pytest tests/core/grid                   # one area
 pytest -k log                            # by name
 ruff check . && ruff format --check .    # lint (Google docstrings required) and formatting
@@ -17,9 +17,7 @@ The tests mirror the package:
 |---|---|
 | `tests/core/` | The foundations: view, transforms, framing, easing, coordinates and pixels. |
 | `tests/core/grid/` | Spacing, ticks, formatting, layout, log axes and the whole grid (`test_scene.py`). |
-| `tests/core/plot/` | Evaluation, the samplers, jets and derivatives, geometry, the plot cache, styles and the builders. |
-| `tests/core/handles/` | Draggable points: constraints, curve tracking, labels. |
-| `tests/objects/` | Objects: drawing like the plane's methods, attributes, colours, errors, fixed, derived and draggable points. |
+| `tests/core/plot/` | Evaluation, both samplers, geometry, styles and the builders. |
 | `tests/render/` | Rasterising and compositing (pure NumPy plus small surfaces). |
 | `tests/` | Integration: the renderer, `Plane`, plotting end to end, interaction, the examples, the docs and the architecture rules. |
 
@@ -70,16 +68,9 @@ Allow `2 / 255` for antialiased pixels after a pan: float round-off can
 move a value across an 8-bit rounding boundary.
 
 **Architecture tests** (`test_architecture.py`) parse the imports of every
-module under `core/`: core imports only the standard library, NumPy,
-contourpy and itself; the foundation modules never import `core.grid` or
-`core.plot`; those two never import each other; `core.handles` imports
-only what its entry in `ALLOWED_SUBPACKAGES` lists; and the objects, the
-layer above the plane, are imported only from above
-(`LAYERS_ABOVE_THE_PLANE`).
-
-**Equivalence tests** check that a layer built on another adds nothing it
-should not: objects draw pixel for pixel what the same plane calls draw
-(`tests/objects/test_objects.py`).
+module under `core/`: core imports only the standard library, NumPy and
+itself; the foundation modules never import `core.grid` or `core.plot`; and
+those two never import each other.
 
 **Example smoke tests** (`test_examples.py`) run every program in
 `examples/` headless for a few frames with a scripted event queue that
@@ -101,7 +92,7 @@ presses some of the keys the examples use, zooms, and closes the window.
 
 Some qualities can only be judged by eye, or are about speed:
 
-- `python scripts/render_gallery.py --out DIR` renders 52 tricky views
+- `python scripts/render_gallery.py --out DIR` renders 51 tricky views
   (deep zooms, far offsets, axes at the edges, cross-fades, themes,
   functions, derivatives, shapes, log axes, ranges, curves, implicit curves
   and draggable points) to PNG files plus a contact sheet `_sheet.png`.

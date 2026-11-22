@@ -169,9 +169,3 @@ on_circle.curve = (lambda t: radius * np.cos(t), lambda t: radius * np.sin(t),
 
 See `examples/draggable.py` for a sine wave shaped by a free point and two
 sliders, and points running round a circle and a spirograph.
-
-`plane.draggable` makes the plane's own points. A draggable
-[`pgp.Point`](objects.md#points) object is the same with the conveniences
-of objects: it can be made before the plane, follow a function or curve
-*object* (`pgp.Point(curve=f, draggable=True)`), be switched between fixed
-and draggable, and live on several planes at once.

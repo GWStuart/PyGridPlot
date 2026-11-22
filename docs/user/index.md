@@ -2,7 +2,8 @@
 
 How to use PyGridPlot, from a first program to every setting. Each page
 stands on its own; the [API reference](reference.md) lists every parameter
-and default.
+and default, and the [philosophy](../philosophy.md) explains why the
+library works the way it does.
 
 1. [Getting started](getting-started.md): installing, the first program, the
    frame loop and quick mode.
@@ -15,15 +16,12 @@ and default.
    and polygons.
 5. [Draggable points](draggable-points.md): points the user drags, freely,
    along one axis or along a curve.
-6. [Objects](objects.md): functions, curves and points made once and
-   changed through their attributes (`f = pgp.Function(np.sin)`,
-   `f.color = "red"`), drawn by the plane every frame.
-7. [Logarithmic axes](log-axes.md): log-log and semi-log planes.
-8. [Styles and themes](styles-and-themes.md): colours, reusable styles, the
+6. [Logarithmic axes](log-axes.md): log-log and semi-log planes.
+7. [Styles and themes](styles-and-themes.md): colours, reusable styles, the
    palette, themes and how numbers are written.
-9. [Recipes](recipes.md): worked examples (mouse readouts, animation,
+8. [Recipes](recipes.md): worked examples (mouse readouts, animation,
    legends, screenshots, ...), performance tips and troubleshooting.
-10. [API reference](reference.md): everything `import pygridplot` provides.
+9. [API reference](reference.md): everything `import pygridplot` provides.
 
 The `examples/` folder of the repository has a runnable program for every
 topic; [Recipes](recipes.md#examples) lists them.

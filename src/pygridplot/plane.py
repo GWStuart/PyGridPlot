@@ -32,14 +32,9 @@ loop and calls the plane each frame::
 
 Drawing is *immediate mode*: everything is recomputed from the current view
 every frame, so plots follow panning and zooming automatically and animating
-them needs no extra work. Draggable points (:meth:`Plane.draggable`) are
-created once and keep the position the user drags them to.
-
-A plane can also keep **objects** made once and changed through their
-attributes (:mod:`pygridplot.objects`: ``pgp.Function``, ``pgp.Point``,
-...): :meth:`Plane.add` them, then :meth:`Plane.draw`
-draws the grid, the objects and the draggable points each frame. Objects
-draw themselves with the methods above, so the two styles mix freely.
+them needs no extra work. The one exception is draggable points
+(:meth:`Plane.draggable`), which are created once and keep the position the
+user drags them to.
 """
 
 from __future__ import annotations
@@ -47,15 +42,7 @@ from __future__ import annotations
 import math
 import weakref
 from collections.abc import Callable, Sequence
-from typing import (
-    Any,
-    Literal,
-    Protocol,
-    TypeVar,
-    cast,
-    overload,
-    runtime_checkable,
-)
+from typing import Any, Literal, overload
 
 import numpy as np
 import pygame
@@ -79,7 +66,7 @@ from pygridplot.core.plot.builders import (
     polyline_stroke,
 )
 from pygridplot.core.plot.curves import DEFAULT_CURVE_SAMPLING, CurveSampling
-from pygridplot.core.plot.evaluation import FunctionLike, PlaneFunction
+from pygridplot.core.plot.evaluation import Function, PlaneFunction
 from pygridplot.core.plot.geometry import as_points
 from pygridplot.core.plot.implicit import DEFAULT_IMPLICIT_SAMPLING, ImplicitSampling
 from pygridplot.core.plot.memo import CacheStats, PlotCache, same_inputs
@@ -100,37 +87,6 @@ from pygridplot.render.pygame_renderer import PygameRenderer
 _DEFAULT_LINE = LineStyle()
 _DEFAULT_POINT = PointStyle()
 _DEFAULT_POLYGON = PolygonStyle()
-
-
-@runtime_checkable
-class Drawable(Protocol):
-    """What a plane can keep and draw every frame (see :meth:`Plane.add`).
-
-    The objects of :mod:`pygridplot.objects` follow it, and so can a
-    program's own classes. Drawing happens in two phases, so that everything reading a
-    draggable point sees where it was dragged this frame: every object's
-    :meth:`update`, then every object's :meth:`render`, then the draggable
-    handles of all of them, on top.
-    """
-
-    def update(self, plane: Plane) -> None:
-        """Prepare to draw on ``plane`` (keep draggable handles in step)."""
-        ...
-
-    def render(self, plane: Plane, surface: pygame.Surface) -> None:
-        """Draw onto ``plane``, except draggable handles."""
-        ...
-
-    def handles(self, plane: Plane) -> tuple[DraggablePoint, ...]:
-        """Return the draggable handles to draw on top, on ``plane``."""
-        ...
-
-    def detach(self, plane: Plane) -> None:
-        """Take anything kept on ``plane`` off it (it is no longer drawn there)."""
-        ...
-
-
-DrawableT = TypeVar("DrawableT", bound=Drawable)
 
 
 class Plane:
@@ -223,8 +179,6 @@ class Plane:
         self._draggables: list[DraggablePoint] = []
         self._draggable_colors: dict[DraggablePoint, int] = {}
         self._draggables_created = 0
-        self._objects: list[Drawable] = []
-        self._object_slots = 0
         self._drag = DragController(
             self._view,
             self._controller.config,
@@ -444,7 +398,7 @@ class Plane:
     def plot(
         self,
         surface: pygame.Surface,
-        func: FunctionLike,
+        func: Function,
         *,
         color: ColorLike | None = None,
         width: float | None = None,
@@ -868,8 +822,8 @@ class Plane:
                 position, or a range or position is invalid.
         """
         # The plane owns its points, not the other way round: a point only
-        # holds a weak reference to it, so a plane can be freed while
-        # something (an object, the user's code) still holds its points.
+        # holds a weak reference to it, so a plane can be freed while the
+        # program still holds its points.
         forget = weakref.WeakMethod(self._forget_draggable)
 
         def on_remove(removed: DraggablePoint) -> None:
@@ -957,109 +911,6 @@ class Plane:
             self._draggables.remove(point)
             del self._draggable_colors[point]
             self._drag.forget(point)
-
-    # ------------------------------------------------------------------
-    # Objects
-    # ------------------------------------------------------------------
-    def add(self, obj: DrawableT, *more: Drawable) -> DrawableT:
-        """Keep objects on the plane, to draw every frame with :meth:`draw`.
-
-        Objects are the functions, curves and points of
-        :mod:`pygridplot.objects` (``pgp.Function(np.sin)``,
-        ``pgp.Point((1, 2), draggable=True)``, ...). They
-        are drawn in the order they were added. An object without a colour
-        gets the plane's next palette slot, so it keeps its colour when
-        others are hidden or removed.
-
-        Args:
-            obj: An object.
-            *more: More objects.
-
-        Returns:
-            ``obj``, so that ``f = plane.add(pgp.Function(np.sin))`` works.
-
-        Raises:
-            TypeError: If something is not an object a plane can draw.
-            ValueError: If an object is already on the plane.
-        """
-        given: tuple[Drawable, ...] = (obj, *more)
-        for item in given:
-            if not isinstance(cast(object, item), Drawable):  # for untyped callers
-                msg = f"{item!r} is not an object a plane can draw"
-                raise TypeError(msg)
-            if any(other is item for other in self._objects):
-                msg = f"{item!r} is already on this plane"
-                raise ValueError(msg)
-        for item in given:
-            if getattr(item, "palette", 0) is None:
-                item.palette = self._object_slots  # type: ignore[attr-defined]
-                self._object_slots += 1
-            self._objects.append(item)
-        return obj
-
-    def remove(self, obj: Drawable) -> None:
-        """Stop drawing an object; its draggable handles leave the plane.
-
-        Args:
-            obj: An object added with :meth:`add`.
-
-        Raises:
-            ValueError: If the object is not on the plane.
-        """
-        if not any(other is obj for other in self._objects):
-            msg = f"{obj!r} is not on this plane"
-            raise ValueError(msg)
-        self._objects = [other for other in self._objects if other is not obj]
-        obj.detach(self)
-
-    def clear_objects(self) -> None:
-        """Remove every object added with :meth:`add`."""
-        for obj in list(self._objects):
-            self.remove(obj)
-
-    @property
-    def objects(self) -> tuple[Drawable, ...]:
-        """The objects added with :meth:`add`, in drawing order."""
-        return tuple(self._objects)
-
-    def draw_objects(self, surface: pygame.Surface) -> None:
-        """Draw the objects added with :meth:`add`, their draggable handles on top.
-
-        Call it after :meth:`draw_grid` and any drawing of your own that
-        belongs below the objects; or call :meth:`draw` for everything.
-
-        Args:
-            surface: The surface to draw on.
-        """
-        self._draw_objects(surface)
-
-    def draw(self, surface: pygame.Surface) -> None:
-        """Draw the whole frame: the grid, the objects, then the draggable points.
-
-        This is the one call a program made of objects needs each frame. The
-        points made with :meth:`draggable` are drawn on top as well.
-
-        Args:
-            surface: The surface to draw on (usually the display surface).
-        """
-        self.draw_grid(surface)
-        shown = set(self._draw_objects(surface))
-        rest = [point for point in self._draggables if point not in shown]
-        if rest:
-            self.draw_draggables(surface, *rest)
-
-    def _draw_objects(self, surface: pygame.Surface) -> list[DraggablePoint]:
-        """Update and render every object, then draw their handles; return them."""
-        self._sync_rect(surface)
-        objects = list(self._objects)
-        for obj in objects:
-            obj.update(self)
-        for obj in objects:
-            obj.render(self, surface)
-        handles = [handle for obj in objects for handle in obj.handles(self)]
-        if handles:
-            self.draw_draggables(surface, *handles)
-        return handles
 
     # ------------------------------------------------------------------
     # Coordinates and view control

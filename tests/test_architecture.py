@@ -78,28 +78,6 @@ def test_core_layers_stay_apart(path: Path) -> None:
                 assert sub in ALLOWED_SUBPACKAGES[own], f"{relative} imports {name}"
 
 
-PACKAGE = ROOT / "src" / "pygridplot"
-LAYERS_ABOVE_THE_PLANE: dict[str, set[str]] = {
-    "objects": {"objects", "__init__.py", "quick.py"},
-}
-"""For each layer built on the plane, the parts of the package that may use it.
-
-Objects are drawn through the plane's public API: nothing below them
-(``core``, ``render``, the plane) imports them.
-"""
-
-
-@pytest.mark.parametrize(
-    "path", sorted(PACKAGE.rglob("*.py")), ids=lambda p: str(p.relative_to(PACKAGE))
-)
-def test_layers_above_the_plane_are_only_used_from_above(path: Path) -> None:
-    part = path.relative_to(PACKAGE).parts[0]
-    for name in imported_modules(path):
-        for layer, users in LAYERS_ABOVE_THE_PLANE.items():
-            if name == f"pygridplot.{layer}" or name.startswith(f"pygridplot.{layer}."):
-                assert part in users, f"{path.relative_to(PACKAGE)} imports {name}"
-
-
 def test_examples_have_a_main_function() -> None:
     for path in sorted((ROOT / "examples").glob("*.py")):
         namespace = runpy.run_path(str(path), run_name="not_main")

@@ -51,12 +51,10 @@ fade in smoothly.
 
 ## The frame loop
 
-The drawing methods are **immediate mode**: each frame you draw what you
-want to see, and the plane recomputes it from the current view. There is
-nothing to create, update or delete. Animation is just drawing something
+Everything is **immediate mode**: each frame you draw what you want to see,
+and the plane recomputes it from the current view. There are no plot
+objects to create, update or delete. Animation is just drawing something
 different each frame, and plots follow panning and zooming automatically.
-(If you would rather make each plot once and change it later, see
-[Objects](#objects) below.)
 
 Each frame does three things, in this order:
 
@@ -74,29 +72,6 @@ Each frame does three things, in this order:
 Then flip the display as usual. Anything drawn after the plots (captions,
 buttons, a heads-up display) appears on top of the plane.
 
-## Objects
-
-The same plots can be made once, as objects, and kept by the plane; you
-change their attributes when you want something different, and one call
-draws the whole frame:
-
-```python
-f = plane.add(pgp.Function(np.sin, color="crimson"))
-p = plane.add(pgp.Point((1, 1), draggable=True))
-g = plane.add(pgp.Function(lambda x: p.y * np.cos(x - p.x)))   # follows p
-
-running = True
-while running:
-    for event in pygame.event.get():
-        if event.type == pygame.QUIT:
-            running = False
-        plane.handle_event(event)
-    plane.draw(screen)        # the grid, f, g and p
-    pygame.display.flip()
-```
-
-Both styles mix on one plane; see [Objects](objects.md).
-
 ## Quick mode
 
 For a quick look at some functions, without writing a loop:
@@ -107,9 +82,8 @@ pgp.show(np.exp, lambda x: x**3, log_y=True, x_range=(0, 10))
 ```
 
 `show` opens a resizable window, plots the functions in palette colours and
-runs until the window is closed or Escape is pressed. It also takes
-objects (`pgp.show(pgp.ImplicitCurve(lambda x, y: x**2 + y**2, 9))`). It
-takes the same view options as `Plane` (`x_range`, `y_range`, `log_x`, `log_y`, `center`,
+runs until the window is closed or Escape is pressed. It takes the same
+view options as `Plane` (`x_range`, `y_range`, `log_x`, `log_y`, `center`,
 `scale`), plus `size`, `title`, `theme`, `width` and `fps`; see the
 [reference](reference.md#show).
 
@@ -117,8 +91,7 @@ takes the same view options as `Plane` (`x_range`, `y_range`, `log_x`, `log_y`, 
 
 - To control what the plane shows at first (for example x from 0 to 10),
   see [Setting up the view](the-plane.md#setting-up-the-view).
-- To plot your own functions and data, see [Plotting](plotting.md), or
-  [Objects](objects.md) to keep them as objects.
+- To plot your own functions and data, see [Plotting](plotting.md).
 - For log scales, see [Logarithmic axes](log-axes.md).
 - To change colours, line widths or the look of the grid, see
   [Styles and themes](styles-and-themes.md).

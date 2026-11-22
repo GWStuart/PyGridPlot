@@ -2,6 +2,10 @@
 
 ## Design principles
 
+These are the technical side of the [philosophy](../philosophy.md) (one
+way to do things, Python first, a library not a framework, immediate
+mode): how the code is arranged so that the library keeps its promises.
+
 1. **Library, not framework.** The user owns the main loop. The plane is an
    object they call (`handle_event`, `draw_grid`, `plot`, ...); it never
    takes control, never sleeps and never polls events itself.
@@ -9,9 +13,9 @@
    There is no retained scene to keep in sync, so animation and interaction
    come for free. The only state kept between frames is small and explicit:
    the view, the easing springs, snap hysteresis, the colour cycle's
-   position, the framing (home view, pending fits) and caches. The retained
-   layer, the [objects](objects.md), sits *on top* of the immediate API and
-   draws through it, so nothing below it knows it exists.
+   position, the framing (home view, pending fits), the draggable points
+   and caches. There are no retained plot objects (see
+   [Retired experiments](#retired-experiments)).
 3. **Pure maths, thin backend.** All geometry, sampling, layout and
    formatting lives in `pygridplot.core`, which never imports pygame. Code
    there describes *what* to draw as backend-neutral **primitives** in
@@ -37,8 +41,6 @@
         │
    pygridplot (__init__.py: the public API)
         │
-   objects/                persistent functions, curves, points (use plane.py's API)
-        │
    plane.py ── interaction.py ── dragging.py ── quick.py     pygame-specific integration
      │      │
      │      └── render/        the backend: primitives -> pixels
@@ -63,14 +65,9 @@ Within `core` there are two more rules, also enforced by
   ...) never import `core.grid` or `core.plot`. They are shared by both.
 - **`core.grid` and `core.plot` never import each other.** Each can change or
   grow without touching the other. `core.handles` (draggable points) builds
-  on both, and nothing in `core` imports it. Anything both grid and plot
-  need (such as the label text and marker vocabulary in `primitives.py`)
-  belongs in a foundation module.
-
-Above the plane, `pygridplot.objects` uses only the public plane API (the
-same calls a program makes) and `core`. The plane keeps objects through a
-small protocol of its own (`Drawable`), so the plane, the renderer and
-`core` never import them; the architecture tests check this.
+  on both, and nothing in `core` imports it. Anything both need (such as the label
+  text and marker vocabulary in `primitives.py`) belongs in a foundation
+  module.
 
 The boundary between `core` and a renderer is deliberately small:
 
@@ -85,19 +82,12 @@ The boundary between `core` and a renderer is deliberately small:
 
 ```text
 src/pygridplot/
-├── __init__.py          The public API: Plane, styles, themes, configs, View, objects, show
+├── __init__.py          The public API: Plane, styles, themes, configs, View, show
 ├── plane.py             Plane: the façade tying view, theme, controls and renderer together
 ├── interaction.py       pygame events -> pan/zoom (anchored drag, eased wheel and keys)
 ├── dragging.py          pygame events -> draggable points (hit test, drag, hover, cursor)
 ├── quick.py             show(): a ready-made main loop
 ├── py.typed             Marks the package as typed (PEP 561)
-├── objects/             Persistent objects, drawn through the plane's API
-│   ├── base.py          PlotObject (two-phase drawing, errors), StyledObject
-│   ├── values.py        Argument checks: functions, numbers, coordinates
-│   ├── curves.py        Function, ParametricCurve, PolarCurve, ImplicitCurve
-│   ├── points.py        Point: fixed, derived or draggable; handles kept in step
-│   ├── shapes.py        Points, Polyline, Polygon
-│   └── errors.py        PlotWarning, and warning at the program's own call
 ├── core/                PURE: stdlib + NumPy (+ contourpy) only
 │   ├── coords.py        ScreenRect, Bounds, Axis, ColorLike
 │   ├── pixels.py        The pixel-snapping conventions (single source of truth)
@@ -199,16 +189,6 @@ drags the point. Everything else goes on to
    `draw_markers`); [Rendering](rendering.md) explains how they become
    pixels.
 
-### `plane.draw(surface)` with objects
-
-`draw_grid` first, then the objects added with `plane.add`, in two phases
-(see [Drawing in two phases](objects.md#drawing-in-two-phases)): every
-object's `update` (a draggable point catches up with this frame's drag),
-then every object's `render` (one of
-the plotting methods above per visible object), then all the draggable
-handles on top with `draw_draggables`. From the plane's point of view the
-objects are a program like any other.
-
 ## Coordinates
 
 Three coordinate systems are involved, and **every conversion goes through
@@ -243,8 +223,25 @@ the default view puts grid lines exactly on pixels.
 | The previous frame's plots and grid | `PlotCache`, `Plane._grid_scene` | Reusing unchanged plots (exactly: checked against the functions' values). |
 | Coverage of reused primitives | `CoverageCache` (renderer) | Blending reused plots without rasterising them again. |
 | Fonts, label surfaces, marker stamps | renderer caches | Speed only; `clear_caches()` frees them. |
-| Objects and their palette slots | `Plane._objects`, each object | What to draw every frame, and its colour. |
-| A draggable `Point`'s handles | `Point._handles` (weak, by plane) | Keeping the point and the plane's handle in step. |
 
 Everything else is a pure function of these and the user's calls, which is
 what makes the property tests possible.
+
+## Retired experiments
+
+Three larger features were built on top of the plane, tried, and removed
+again, because they went against the [philosophy](../philosophy.md#explored-and-retired)
+(a second way to draw, or a second language next to Python). They are not
+planned to come back, and new features should not reintroduce them in
+another form. Their code is still in the history, for reference:
+
+| Feature | What it was | Last commit with it |
+|---|---|---|
+| Graphs | `pgp.Graph`: a Desmos-like list of named items written as lines of maths (`"y = a sin(x - P.x)"`), names usable in any order, errors per item, saving and loading JSON | `c609cfb` ("persistent plot objects"); first version in `45cd36c` ("support for expressions") |
+| The expression language | `core/expr`: a safe parser and compiler from text to NumPy functions, with exact derivatives (`f'(x)`), behind `pgp.expression` | `c609cfb` |
+| Retained plot objects | `pygridplot/objects`: `pgp.Function`, `pgp.Point`, ... kept by the plane (`plane.add`, `plane.draw`) and changed through their attributes | `21e2b31` ("updated docs and tests"), Python only; with text support in `c609cfb` |
+
+What they taught is kept: a draggable point no longer keeps its plane
+alive (`Plane.draggable` gives points a weak reference to their plane),
+and the derivative of a function is undefined wherever the function is
+(`Jet.constant`).

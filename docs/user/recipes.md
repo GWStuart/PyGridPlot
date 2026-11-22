@@ -258,13 +258,11 @@ The `examples/` folder has a runnable program for every topic:
 | Example | Shows |
 |---|---|
 | `basic_grid.py` | The smallest program: a plane in a window. |
-| `two_ways.py` | The same picture drawn in immediate mode and with objects, side by side, with comments comparing them. |
 | `functions.py` | The function test set and hard cases (`Space` switches sets). |
 | `curves.py` | Animated parametric and polar curves (`Space` switches, `P` pauses). |
 | `derivatives.py` | Tangent lines, Taylor polynomials and the osculating circle at a draggable point (`Space` switches). |
 | `draggable.py` | Draggable points: a wave shaped by handles and sliders, points on curves (`Space` switches). |
 | `implicit.py` | Implicit curves, contour lines, poles and jumps (`Space` switches, `P` pauses). |
-| `objects.py` | A picture made of objects: a wave shaped by a point and a slider, a tangent, a point on a circle (`Space` hides the circle). |
 | `shapes.py` | Points, polylines, polygons and fill rules. |
 | `log_axes.py` | Log-log, semi-log and range-based planes (`X`/`Y` toggle log). |
 | `animation.py` | Everything moving, every frame. |

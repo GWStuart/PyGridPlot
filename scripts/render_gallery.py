@@ -191,33 +191,6 @@ def scene_derivatives(plane: pgp.Plane, surface: pygame.Surface) -> None:
     plane.points(surface, (a, value), edge_color="white")
 
 
-def scene_objects(plane: pgp.Plane, surface: pygame.Surface) -> None:
-    """Draw a picture made of objects: points driving a wave, a tangent, a circle.
-
-    Args:
-        plane: The plane.
-        surface: The surface to draw on.
-    """
-    crest = pgp.Point((1.5, 2.0), draggable=True, coordinates="always")
-    height = pgp.Point((-6.0, 1.2), draggable=True, lock="x", y_range=(0, 3))
-    wave = pgp.Function(
-        lambda x: height.y * np.sin(x - crest.x + math.pi / 2) + crest.y - height.y,
-        width=3,
-    )
-    runner = pgp.Point(curve=wave, t=-1.0, draggable=True)
-    slope = wave.derivative()
-    tangent = pgp.Function(
-        lambda x: slope(runner.x) * (x - runner.x) + runner.y, width=1.5
-    )
-    circle = pgp.ParametricCurve(
-        lambda t: 4 + 1.5 * np.cos(t), lambda t: -3 + 1.5 * np.sin(t)
-    )
-    on_circle = pgp.Point(curve=circle, t=2.2, draggable=True)
-    radius = pgp.Polyline([(4, -3), (lambda: on_circle.x, lambda: on_circle.y)])
-    plane.add(wave, tangent, circle, radius, crest, height, runner, on_circle)
-    plane.draw_objects(surface)
-
-
 SCENES: dict[str, Scene] = {
     "test_set": scene_test_set,
     "hard": scene_hard,
@@ -227,7 +200,6 @@ SCENES: dict[str, Scene] = {
     "implicit": scene_implicit,
     "draggable": scene_draggable,
     "derivatives": scene_derivatives,
-    "objects": scene_objects,
 }
 
 
@@ -324,7 +296,6 @@ VIEWS: tuple[GalleryView, ...] = (
         scale=(2e3, 400.0),
         scene="derivatives",
     ),
-    GalleryView("52_objects", scale=60.0, scene="objects"),
 )
 
 

@@ -9,9 +9,7 @@ of the Desmos graph view but driven entirely from Python code. It gives you:
 - smooth, eased panning and zooming;
 - robust, antialiased plotting of functions (and their exact derivatives),
   parametric, polar and implicit curves, points, polylines and polygons;
-- draggable points: free, locked to an axis, or running along a curve;
-- objects: functions, curves and points made once and changed through
-  their attributes (`f = plane.add(pgp.Function(np.sin))`, `f.color = "red"`).
+- draggable points: free, locked to an axis, or running along a curve.
 
 PyGridPlot is a *library, not a framework*: your program owns the main loop,
 and the plane is an object you call each frame.
@@ -80,18 +78,6 @@ pgp.show(np.exp, log_y=True, x_range=(0, 10))               # semi-log, quick mo
   user can drag; read `a.x` and `a.y` every frame to drive your plots.
   Points can be free, locked to one axis (sliders) or kept on a parametric
   curve, which they follow through crossings without jumping.
-- **Objects you make once.** Every plotting method has an object that
-  keeps its arguments as attributes, read every frame: `pgp.Function`,
-  `pgp.ParametricCurve`, `pgp.Point`, ... Add them to the plane and draw
-  everything with one call; Python closures make objects follow each
-  other, and functions can be called and differentiated.
-
-  ```python
-  a = plane.add(pgp.Point((1, 2), draggable=True))
-  f = plane.add(pgp.Function(lambda x: a.y * np.sin(x - a.x)))  # follows a
-  f.color = "crimson"                         # change it whenever you like
-  plane.draw(screen)                          # each frame: grid, f, then a
-  ```
 - **Fast when little changes.** Plots that have not changed since the
   previous frame are reused automatically and exactly (their functions are
   checked at every sampled point), so idle frames cost a fraction of a
@@ -103,19 +89,19 @@ pgp.show(np.exp, log_y=True, x_range=(0, 10))               # semi-log, quick mo
 
 ## Documentation
 
-The [documentation](docs/index.md) has two parts:
+The [documentation](docs/index.md) starts with the
+[philosophy](docs/philosophy.md) behind the library (one way to do things,
+done well; Python first; a library, not a framework; immediate mode), then
+has two parts:
 
 - **[User guide](docs/user/index.md)**: [getting started](docs/user/getting-started.md),
   [the plane](docs/user/the-plane.md), [interaction](docs/user/interaction.md),
   [plotting](docs/user/plotting.md), [draggable points](docs/user/draggable-points.md),
-  [objects](docs/user/objects.md),
   [log axes](docs/user/log-axes.md),
   [styles and themes](docs/user/styles-and-themes.md), [recipes](docs/user/recipes.md),
   and the [API reference](docs/user/reference.md) generated from the code.
 - **[Developer guide](docs/dev/index.md)**: [architecture](docs/dev/architecture.md),
   [the grid](docs/dev/grid.md), [plotting](docs/dev/plotting.md),
-  [draggable points](docs/dev/dragging.md),
-  [objects](docs/dev/objects.md),
   [rendering](docs/dev/rendering.md), [testing and tools](docs/dev/testing.md)
   and [extending PyGridPlot](docs/dev/extending.md).
 
@@ -127,8 +113,6 @@ python examples/curves.py           # animated parametric and polar curves (Spac
 python examples/implicit.py         # implicit curves and contour lines (Space)
 python examples/draggable.py        # draggable points, sliders, points on curves (Space)
 python examples/derivatives.py      # tangents, Taylor polynomials, osculating circles (Space)
-python examples/two_ways.py         # immediate mode and objects, side by side
-python examples/objects.py          # a picture made of objects (Space, W)
 python examples/shapes.py           # points, polylines, polygons, fill rules
 python examples/log_axes.py         # log-log, semi-log and range-based planes (Space, X, Y)
 python examples/animation.py        # everything moving, every frame

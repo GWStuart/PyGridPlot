@@ -131,63 +131,6 @@ BIG, SMALL, PEN = 2.5, 0.9, 1.6
 """Wheel sizes of the spirograph (a hypotrochoid) case."""
 
 
-def wave(x: np.ndarray) -> np.ndarray:
-    """The function of the objects cases."""
-    return 1.5 * np.sin(x) + x / 4
-
-
-def by_hand_case() -> Case:
-    """Draw a typical picture with plane calls every frame.
-
-    A function, its derivative, the tangent at a draggable point on it, a
-    parametric, a polar and an implicit curve, and a point that follows.
-    :func:`objects_case` draws the same with objects.
-    """
-    plane = plane_for(scale=60.0)
-    point = plane.draggable(curve=(lambda t: t, wave, (-30.0, 30.0)), t=1.2)
-    slope = pgp.derivative(wave)
-
-    def run(surface: pygame.Surface) -> None:
-        plane.draw_grid(surface)
-        px, py = point.position
-        plane.plot(surface, wave)
-        plane.plot(surface, slope)
-        plane.plot(surface, lambda x: slope(px) * (x - px) + py)
-        plane.parametric(
-            surface,
-            lambda t: 3 * np.cos(t) + np.cos(3 * t),
-            lambda t: 2 * np.sin(t),
-            (0, 2 * math.pi),
-        )
-        plane.polar(surface, lambda th: 1 + np.cos(3 * th) / 2)
-        plane.implicit(surface, lambda x, y: x**2 / 9 + y**2 / 4, 1.0)
-        plane.points(surface, [(px + 1, wave(px + 1))])
-        plane.draw_draggables(surface, point)
-
-    return run
-
-
-def objects_case(*, cache: bool = False) -> Case:
-    """Draw the same picture as :func:`by_hand_case`, made of objects."""
-    plane = plane_for(scale=60.0, cache=cache)
-    f = pgp.Function(wave)
-    point = pgp.Point(curve=f, t=1.2, draggable=True)
-    slope = f.derivative()
-    plane.add(
-        f,
-        pgp.Function(slope),
-        pgp.Function(lambda x: slope(point.x) * (x - point.x) + point.y),
-        pgp.ParametricCurve(
-            lambda t: 3 * np.cos(t) + np.cos(3 * t), lambda t: 2 * np.sin(t)
-        ),
-        pgp.PolarCurve(lambda th: 1 + np.cos(3 * th) / 2),
-        pgp.ImplicitCurve(lambda x, y: x**2 / 9 + y**2 / 4, 1.0),
-        pgp.Point(lambda: (point.x + 1, f(point.x + 1))),
-        point,
-    )
-    return plane.draw
-
-
 def cases() -> dict[str, Case]:
     """Return every benchmark case by name."""
     test_set = (lambda x: 1 / x, np.tan, np.sqrt, np.log, np.floor, lambda x: x**2)
@@ -273,9 +216,6 @@ def cases() -> dict[str, Case]:
             ),
             scale=60.0,
         ),
-        "picture by hand": by_hand_case(),
-        "picture as objects": objects_case(),
-        "cached: idle objects": objects_case(cache=True),
         "points 2000": plot_case(
             lambda p, s: p.points(s, np.column_stack((xs, np.sin(xs))))
         ),

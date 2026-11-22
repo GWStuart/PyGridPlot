@@ -37,7 +37,7 @@ from typing import Any, Final, cast, overload
 import numpy as np
 from numpy.typing import NDArray
 
-from pygridplot.core.plot.evaluation import FunctionLike, evaluate_quietly
+from pygridplot.core.plot.evaluation import Function, evaluate_quietly
 from pygridplot.core.plot.jets import MAX_ORDER, Jet
 
 _EPS: Final = float(np.finfo(np.float64).eps)
@@ -60,7 +60,7 @@ class Derivative:
 
     __slots__ = ("func", "order")
 
-    def __init__(self, func: FunctionLike, order: int) -> None:
+    def __init__(self, func: Function, order: int) -> None:
         self.func = func
         self.order = order
 
@@ -97,7 +97,7 @@ class Derivative:
         return f"derivative({name}, {self.order})"
 
 
-def derivative(func: FunctionLike, n: int = 1) -> Derivative:
+def derivative(func: Function, n: int = 1) -> Derivative:
     """Return the ``n``-th derivative of a function of one variable.
 
     The result is a function of ``x`` like any other: plot it, call it at a
@@ -134,12 +134,12 @@ def derivative(func: FunctionLike, n: int = 1) -> Derivative:
 
 
 @overload
-def derivatives(func: FunctionLike, x: float, n: int) -> tuple[float, ...]: ...
+def derivatives(func: Function, x: float, n: int) -> tuple[float, ...]: ...
 @overload
 def derivatives(
-    func: FunctionLike, x: NDArray[np.float64], n: int
+    func: Function, x: NDArray[np.float64], n: int
 ) -> NDArray[np.float64]: ...
-def derivatives(func: FunctionLike, x: Any, n: int) -> Any:
+def derivatives(func: Function, x: Any, n: int) -> Any:
     """Return a function's value and its derivatives up to order ``n``.
 
     Computing them together costs little more than the highest one alone::
@@ -176,7 +176,7 @@ def derivatives(func: FunctionLike, x: Any, n: int) -> Any:
 
 
 def taylor_derivatives(
-    func: FunctionLike, xs: NDArray[np.float64], n: int
+    func: Function, xs: NDArray[np.float64], n: int
 ) -> NDArray[np.float64]:
     """Return ``f⁽ᵏ⁾(x)`` for ``k = 0 ... n`` at every point, by the best method.
 
@@ -222,7 +222,7 @@ def _check_order(n: object) -> int:
     return int(n)
 
 
-def _call(func: FunctionLike, jet: Jet) -> Jet | None:
+def _call(func: Function, jet: Jet) -> Jet | None:
     """Call a function with a jet; return its result as a jet, if it is one.
 
     Args:
@@ -259,7 +259,7 @@ def _call(func: FunctionLike, jet: Jet) -> Jet | None:
 
 
 def _vectorised(
-    func: FunctionLike, xs: NDArray[np.float64], n: int
+    func: Function, xs: NDArray[np.float64], n: int
 ) -> NDArray[np.float64] | None:
     """Differentiate exactly at all points with one call, if the function allows."""
     result = _call(func, Jet.variable(xs.copy(), n))
@@ -267,7 +267,7 @@ def _vectorised(
 
 
 def _point_by_point(
-    func: FunctionLike, xs: NDArray[np.float64], n: int
+    func: Function, xs: NDArray[np.float64], n: int
 ) -> NDArray[np.float64] | None:
     """Differentiate exactly one point at a time, if the function allows.
 
@@ -286,9 +286,7 @@ def _point_by_point(
     return result
 
 
-def _numerical(
-    func: FunctionLike, xs: NDArray[np.float64], n: int
-) -> NDArray[np.float64]:
+def _numerical(func: Function, xs: NDArray[np.float64], n: int) -> NDArray[np.float64]:
     """Differentiate by central differences with Richardson extrapolation.
 
     For order ``k`` the step is ``eps^(1 / (k + 4))`` times ``max(1, |x|)``,
@@ -306,7 +304,7 @@ def _numerical(
 
 
 def _central(
-    func: FunctionLike, xs: NDArray[np.float64], k: int, h: NDArray[np.float64]
+    func: Function, xs: NDArray[np.float64], k: int, h: NDArray[np.float64]
 ) -> NDArray[np.float64]:
     """Return the ``k``-th central difference quotient with steps ``h``.
 

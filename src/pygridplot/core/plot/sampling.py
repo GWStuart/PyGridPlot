@@ -36,7 +36,7 @@ from typing import Final
 import numpy as np
 from numpy.typing import NDArray
 
-from pygridplot.core.plot.evaluation import FunctionLike, evaluate_quietly
+from pygridplot.core.plot.evaluation import Function, evaluate_quietly
 
 _STEEP_PX: Final = 2.0
 """Pixel rise per sample above which a segment is always checked."""
@@ -91,7 +91,7 @@ DEFAULT_SAMPLING: Final = SamplingConfig()
 # Sampling
 # ----------------------------------------------------------------------
 def sample_function(
-    func: FunctionLike,
+    func: Function,
     x_range: tuple[float, float],
     scale: tuple[float, float],
     y_band: tuple[float, float],
@@ -150,7 +150,7 @@ def _initial_samples(
 
 
 def _refine(
-    func: FunctionLike,
+    func: Function,
     xs: NDArray[np.float64],
     ys: NDArray[np.float64],
     scale: tuple[float, float],
@@ -234,7 +234,7 @@ def _refine(
 
 
 def _settle(
-    func: FunctionLike,
+    func: Function,
     segments: tuple[
         NDArray[np.float64],
         NDArray[np.float64],
@@ -295,7 +295,7 @@ def _settle(
 
 
 def _classify_jumps(
-    func: FunctionLike,
+    func: Function,
     xa: NDArray[np.float64],
     ya: NDArray[np.float64],
     xb: NDArray[np.float64],
@@ -337,7 +337,7 @@ def _classify_jumps(
 
 
 def _chase(
-    func: FunctionLike,
+    func: Function,
     segments: tuple[
         NDArray[np.float64],
         NDArray[np.float64],

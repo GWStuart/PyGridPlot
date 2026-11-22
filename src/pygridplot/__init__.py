@@ -3,11 +3,8 @@
 The library draws an adaptive grid with axes and clean tick labels on
 linear or logarithmic axes, handles pan and zoom, and plots functions,
 parametric, polar and implicit curves, points, polylines and polygons, and
-lets the user drag points around. Everything can be drawn in immediate
-mode (``plane.plot(screen, f)`` each frame) or kept as objects with
-changeable attributes (``f = plane.add(pgp.Function(np.sin))``, then
-``plane.draw(screen)``). It stays out of your way: your program owns the
-main loop.
+lets the user drag points around. It stays out of your way: your program
+owns the main loop.
 
 Everything a program needs is importable from here: :class:`Plane` (the
 plane itself), the style classes (:class:`LineStyle`, :class:`PointStyle`,
@@ -17,12 +14,8 @@ plane itself), the style classes (:class:`LineStyle`, :class:`PointStyle`,
 :class:`CurveSampling`, :class:`ImplicitSampling`, :class:`ViewLimits`),
 the :class:`View` with its :class:`ViewState`, :class:`DraggablePoint`
 (made by :meth:`Plane.draggable`), :func:`derivative` and
-:func:`derivatives` (exact derivatives of any order), the objects
-(:class:`Function`, :class:`ParametricCurve`, :class:`PolarCurve`,
-:class:`ImplicitCurve`, :class:`Point`, :class:`Points`,
-:class:`Polyline`, :class:`Polygon`, with :class:`PlotWarning`), and
-:func:`show`. The objects' base classes are in ``pygridplot.objects``; the
-other subpackages (``pygridplot.core``, ``pygridplot.render``) are the
+:func:`derivatives` (exact derivatives of any order), and :func:`show`. The
+subpackages (``pygridplot.core``, ``pygridplot.render``) are the
 implementation; see ``docs/dev/index.md``.
 
 Typical use::
@@ -57,17 +50,6 @@ from pygridplot.core.plot.sampling import SamplingConfig
 from pygridplot.core.plot.style import LineStyle, PointStyle, PolygonStyle
 from pygridplot.core.view import View, ViewLimits, ViewState
 from pygridplot.interaction import InteractionConfig, KeyBindings
-from pygridplot.objects import (
-    Function,
-    ImplicitCurve,
-    ParametricCurve,
-    PlotWarning,
-    Point,
-    Points,
-    PolarCurve,
-    Polygon,
-    Polyline,
-)
 from pygridplot.plane import Plane
 from pygridplot.quick import show
 
@@ -79,24 +61,15 @@ __all__ = [
     "CacheStats",
     "CurveSampling",
     "DraggablePoint",
-    "Function",
     "GridTheme",
-    "ImplicitCurve",
     "ImplicitSampling",
     "InteractionConfig",
     "KeyBindings",
     "LineStyle",
     "NumberFormat",
-    "ParametricCurve",
     "Plane",
-    "PlotWarning",
-    "Point",
     "PointStyle",
-    "Points",
-    "PolarCurve",
-    "Polygon",
     "PolygonStyle",
-    "Polyline",
     "SamplingConfig",
     "View",
     "ViewLimits",

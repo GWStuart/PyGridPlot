@@ -8,28 +8,10 @@ follow [semantic versioning](https://semver.org/) once 1.0 is released.
 
 ### Added
 
-- **Objects**: persistent functions, curves and points, made once and
-  changed through their attributes: `pgp.Function`, `pgp.ParametricCurve`,
-  `pgp.PolarCurve`, `pgp.ImplicitCurve`, `pgp.Point`, `pgp.Points`,
-  `pgp.Polyline`, `pgp.Polygon`, each taking the arguments of the plane
-  method it mirrors and keeping them as attributes read every frame.
-  `plane.add(...)` keeps them and `plane.draw(screen)` draws the grid,
-  the objects and the draggable points in one call (`plane.remove`,
-  `plane.objects`, `plane.clear_objects`, `plane.draw_objects` to mix with
-  immediate drawing; `obj.draw(plane, screen)` for one object). Functions
-  are callable and differentiable (`f(2)`, `f.derivative()`,
-  `pgp.derivative(f)`); a `Point` is fixed, derived from other objects (a
-  function of nothing, per coordinate or whole) or draggable
-  (`draggable=True`, with `lock`, bounds, or `curve=` a function or curve
-  *object*), on any number of planes. Objects without a colour keep a
-  stable palette slot; one that the plane refuses to draw is skipped with
-  its reason in `obj.error` and a `pgp.PlotWarning` pointing at the
-  program's own line. Any class with `update`, `render`, `handles` and
-  `detach` can be added to a plane too. `examples/objects.py`,
-  `examples/two_ways.py` (immediate mode and objects side by side);
-  gallery view 52; benchmark cases.
-
-
+- `docs/philosophy.md`: the principles behind PyGridPlot (one way to do
+  things, done well; Python first; a library, not a framework; immediate
+  mode; ...), how features are judged, and the features that were tried
+  and retired.
 - **Reusing unchanged plots**: plotting calls whose view, style, inputs and
   function values are unchanged since the previous frame reuse their
   primitives and rasterised coverage, and the grid is reused while the view
@@ -83,9 +65,6 @@ follow [semantic versioning](https://semver.org/) once 1.0 is released.
 
 ### Changed
 
-- The type alias `Function` of `pygridplot.core.plot.evaluation` is now
-  `FunctionLike`, as `pgp.Function` is the object.
-
 - Log-axis grids are drawn about a third faster: the subdivisions of every
   whole decade on screen are worked out once per frame.
 
@@ -104,12 +83,10 @@ follow [semantic versioning](https://semver.org/) once 1.0 is released.
 
 - A draggable point no longer keeps its plane alive: a plane that is no
   longer used is freed even while its points are still referenced.
-
 - The derivatives of an undefined constant (NaN or infinite) inside a
   differentiated function are now undefined too, rather than 0, so
   `derivative(lambda x: np.where(x > 0, x**2, np.nan))` is undefined where
   the function is.
-
 - With several planes in one window, moving between their draggable points
   could leave the hand cursor stuck; the planes now share one cursor.
 

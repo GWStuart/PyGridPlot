@@ -24,7 +24,7 @@ from typing import Any, Final
 import numpy as np
 from numpy.typing import NDArray
 
-FunctionLike = Callable[[Any], Any]
+Function = Callable[[Any], Any]
 """A plottable function: it maps an x value (or an array of them) to y."""
 
 PlaneFunction = Callable[[Any, Any], Any]
@@ -34,7 +34,7 @@ _COMPLEX_TOLERANCE: Final = 1e-12
 """Largest relative imaginary part that still counts as a real result."""
 
 
-def evaluate(func: FunctionLike, xs: NDArray[np.float64]) -> NDArray[np.float64]:
+def evaluate(func: Function, xs: NDArray[np.float64]) -> NDArray[np.float64]:
     """Evaluate a user function at many points without ever raising.
 
     Args:
@@ -51,9 +51,7 @@ def evaluate(func: FunctionLike, xs: NDArray[np.float64]) -> NDArray[np.float64]
         return evaluate_quietly(func, xs)
 
 
-def evaluate_quietly(
-    func: FunctionLike, xs: NDArray[np.float64]
-) -> NDArray[np.float64]:
+def evaluate_quietly(func: Function, xs: NDArray[np.float64]) -> NDArray[np.float64]:
     """Evaluate like :func:`evaluate`, without silencing warnings itself.
 
     The samplers (:mod:`pygridplot.core.plot.sampling` and
