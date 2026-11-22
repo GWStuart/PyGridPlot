@@ -30,7 +30,7 @@ from pygridplot.core.pixels import line_starts
 from pygridplot.core.primitives import Orientation, TextItem
 from pygridplot.core.view import View
 
-from ...conftest import FakeMeasurer
+from ...conftest import FakeMeasurer, labels_by_axis
 
 RECT = ScreenRect(0, 0, 800, 600)
 
@@ -349,15 +349,15 @@ def test_thinning_opacity() -> None:
     assert thinning_opacity(55.0, 50.0, 50.0) == 1.0  # no fade zone
 
 
-def label_opacities(scene: GridScene) -> dict[str, float]:
-    """Map the text of every label fully inside the plane to its opacity.
+def label_opacities(scene: GridScene) -> dict[tuple[str, str], float]:
+    """Map every label fully inside the plane, by axis and text, to its opacity.
 
     Labels crossing the plane's edge are left out: sliding out of view is
     not a pop.
     """
     measurer = FakeMeasurer()
     inside = {}
-    for item in scene.labels:
+    for key, item in labels_by_axis(scene):
         size = measurer.measure_text(item.text, item.font)
         fully_inside = (
             item.left >= RECT.left
@@ -366,7 +366,7 @@ def label_opacities(scene: GridScene) -> dict[str, float]:
             and item.top + size.height <= RECT.bottom
         )
         if fully_inside:
-            inside[item.text.plain] = item.opacity
+            inside[key] = item.opacity
     return inside
 
 
@@ -395,24 +395,22 @@ def test_zooming_never_pops_labels(log_scale: float, cy: float) -> None:
     )
     before = label_opacities(grid_for(center=center, scale=10**log_scale))
     after = label_opacities(grid_for(center=center, scale=10**log_scale * 1.002))
-    for text in before.keys() & after.keys():
-        assert abs(before[text] - after[text]) < 0.15, (text, before[text], after[text])
+    for key in before.keys() & after.keys():
+        assert abs(before[key] - after[key]) < 0.15, (key, before[key], after[key])
     # A label that is fully inside in one frame but missing (or only partly
     # inside) in the other must be nearly transparent, unless it merely
     # crossed the edge.
-    after_all = {
-        i.text.plain
-        for i in grid_for(center=center, scale=10**log_scale * 1.002).labels
-    }
+    zoomed = grid_for(center=center, scale=10**log_scale * 1.002)
+    after_all = {key for key, _ in labels_by_axis(zoomed)}
     before_all = {
-        i.text.plain for i in grid_for(center=center, scale=10**log_scale).labels
+        key for key, _ in labels_by_axis(grid_for(center=center, scale=10**log_scale))
     }
-    for text, opacity in before.items():
-        if text not in after_all:
-            assert opacity < 0.15, text
-    for text, opacity in after.items():
-        if text not in before_all:
-            assert opacity < 0.15, text
+    for key, opacity in before.items():
+        if key not in after_all:
+            assert opacity < 0.15, key
+    for key, opacity in after.items():
+        if key not in before_all:
+            assert opacity < 0.15, key
 
 
 def test_partly_major_lines_blend_to_the_requested_opacity() -> None:

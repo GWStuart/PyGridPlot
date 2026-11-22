@@ -39,7 +39,7 @@ from pygridplot.core.pixels import line_starts
 from pygridplot.core.primitives import Orientation, TextItem
 from pygridplot.core.view import View
 
-from ...conftest import FakeMeasurer
+from ...conftest import FakeMeasurer, labels_by_axis
 
 RECT = ScreenRect(0, 0, 800, 600)
 
@@ -335,11 +335,15 @@ def test_zooming_never_pops_log_lines(cx: float, log_scale: float) -> None:
             assert abs(major - other_major) < 0.1, (key, major, other_major)
 
 
-def visible_label_opacities(view: View) -> dict[str, float]:
-    """Map the text of every label fully inside the plane to its opacity."""
+def visible_label_opacities(view: View) -> dict[tuple[str, str], float]:
+    """Map every label fully inside the plane, by axis and text, to its opacity.
+
+    Labels crossing the plane's edge are left out: sliding out of view is
+    not a pop.
+    """
     measurer = FakeMeasurer()
-    result = {}
-    for item in build_grid(view, LIGHT, measurer, GridState()).labels:
+    result: dict[tuple[str, str], float] = {}
+    for key, item in labels_by_axis(build_grid(view, LIGHT, measurer, GridState())):
         size = measurer.measure_text(item.text, item.font)
         if (
             item.left >= RECT.left
@@ -347,7 +351,7 @@ def visible_label_opacities(view: View) -> dict[str, float]:
             and item.top - size.overflow_top >= RECT.top
             and item.top + size.height <= RECT.bottom
         ):
-            result[item.text.plain] = max(item.opacity, result.get(item.text.plain, 0))
+            result[key] = max(item.opacity, result.get(key, 0.0))
     return result
 
 
@@ -359,13 +363,13 @@ def test_zooming_never_pops_log_labels(cx: float, cy: float, log_scale: float) -
     zoomed = log_view(10**log_scale * 1.002, center)
     before = visible_label_opacities(view)
     after = visible_label_opacities(zoomed)
-    for text in before.keys() & after.keys():
-        assert abs(before[text] - after[text]) < 0.15, (text, before[text], after[text])
-    before_all = {i.text.plain for i in scene_for(view).labels}
-    after_all = {i.text.plain for i in scene_for(zoomed).labels}
-    for text, opacity in before.items():
-        if text not in after_all:
-            assert opacity < 0.15, text
-    for text, opacity in after.items():
-        if text not in before_all:
-            assert opacity < 0.15, text
+    for key in before.keys() & after.keys():
+        assert abs(before[key] - after[key]) < 0.15, (key, before[key], after[key])
+    before_all = {key for key, _ in labels_by_axis(scene_for(view))}
+    after_all = {key for key, _ in labels_by_axis(scene_for(zoomed))}
+    for key, opacity in before.items():
+        if key not in after_all:
+            assert opacity < 0.15, key
+    for key, opacity in after.items():
+        if key not in before_all:
+            assert opacity < 0.15, key
