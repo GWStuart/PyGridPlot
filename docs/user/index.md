@@ -11,8 +11,9 @@ library works the way it does.
    converting coordinates, embedding a plane and using several.
 3. [Interaction](interaction.md): the built-in pan and zoom controls,
    configuring them, and moving the view from your own code.
-4. [Plotting](plotting.md): functions `y = f(x)` and their derivatives,
-   parametric, polar and implicit curves, contour lines, areas between
+4. [Plotting](plotting.md): functions `y = f(x)`, their derivatives and
+   integrals, Taylor polynomials and Fourier series, parametric, polar and
+   implicit curves, contour lines, areas between
    graphs, inequalities, vector and slope fields, points, polylines,
    polygons and arrows.
 5. [Draggable points](draggable-points.md): points the user drags, freely,

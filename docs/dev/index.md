@@ -13,8 +13,8 @@ that were tried and deliberately removed.
 2. [The grid](grid.md): choosing spacings, generating and painting lines,
    labels and their layout, and logarithmic axes.
 3. [Plotting](plotting.md): evaluating user functions robustly, the function
-   and curve samplers, finding implicit curves, exact derivatives, and
-   building primitives.
+   and curve samplers, finding implicit curves, exact derivatives,
+   adaptive quadrature for integrals and series, and building primitives.
 4. [Draggable points](dragging.md): the one stateful object, how events
    reach it, constraints, and following a curve without jumping branches.
 5. [Rendering](rendering.md): the renderer protocol, rasterising strokes,

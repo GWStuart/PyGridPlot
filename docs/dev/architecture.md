@@ -115,6 +115,9 @@ src/pygridplot/
 │   │   ├── curves.py        Adaptive sampling of parametric curves on screen
 │   │   ├── jets.py          Taylor arithmetic: exact derivatives through NumPy code
 │   │   ├── derivatives.py   derivative(), derivatives(): jets, point by point, numerical
+│   │   ├── quadrature.py    Adaptive Gauss-Kronrod quadrature, many integrals at once
+│   │   ├── integrals.py     integral(), antiderivative(): infinite limits, cumulative sums
+│   │   ├── series.py        taylor(), fourier(): Taylor polynomials, Fourier partial sums
 │   │   ├── lattice.py       Anchored coarse and fine grids, and their budget
 │   │   ├── implicit.py      Implicit curves F(x, y) = 0: marching squares (contourpy), checked
 │   │   ├── regions.py       Regions where a condition holds: filled contours, refined

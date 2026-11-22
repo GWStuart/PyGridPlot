@@ -5,7 +5,9 @@ linear or logarithmic axes, handles pan and zoom, and plots functions,
 parametric, polar and implicit curves, points, polylines and polygons,
 shades areas between graphs and regions where inequalities hold, draws
 arrows and vector and slope fields, and lets the user drag points around.
-It stays out of your way: your program owns the main loop.
+For calculus it differentiates and integrates functions and builds Taylor
+polynomials and Fourier series, all as functions to plot. It stays out of
+your way: your program owns the main loop.
 
 Everything a program needs is importable from here: :class:`Plane` (the
 plane itself), the style classes (:class:`LineStyle`, :class:`PointStyle`,
@@ -15,8 +17,10 @@ plane itself), the style classes (:class:`LineStyle`, :class:`PointStyle`,
 (:class:`InteractionConfig`, :class:`KeyBindings`, :class:`SamplingConfig`,
 :class:`CurveSampling`, :class:`ImplicitSampling`, :class:`ViewLimits`),
 the :class:`View` with its :class:`ViewState`, :class:`DraggablePoint`
-(made by :meth:`Plane.draggable`), :func:`derivative` and
-:func:`derivatives` (exact derivatives of any order), and :func:`show`. The
+(made by :meth:`Plane.draggable`), the calculus helpers :func:`derivative`
+and :func:`derivatives` (exact derivatives of any order), :func:`integral`
+and :func:`antiderivative`, :func:`taylor` and :func:`fourier`, and
+:func:`show`. The
 subpackages (``pygridplot.core``, ``pygridplot.render``) are the
 implementation; see ``docs/dev/index.md``.
 
@@ -47,8 +51,10 @@ from pygridplot.core.handles.point import DraggablePoint
 from pygridplot.core.plot.curves import CurveSampling
 from pygridplot.core.plot.derivatives import derivative, derivatives
 from pygridplot.core.plot.implicit import ImplicitSampling
+from pygridplot.core.plot.integrals import antiderivative, integral
 from pygridplot.core.plot.memo import CacheStats
 from pygridplot.core.plot.sampling import SamplingConfig
+from pygridplot.core.plot.series import fourier, taylor
 from pygridplot.core.plot.style import (
     ArrowStyle,
     FillStyle,
@@ -85,7 +91,11 @@ __all__ = [
     "ViewLimits",
     "ViewState",
     "__version__",
+    "antiderivative",
     "derivative",
     "derivatives",
+    "fourier",
+    "integral",
     "show",
+    "taylor",
 ]

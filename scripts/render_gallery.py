@@ -249,6 +249,60 @@ def scene_derivatives(plane: pgp.Plane, surface: pygame.Surface) -> None:
     plane.points(surface, (a, value), edge_color="white")
 
 
+def scene_integrals(plane: pgp.Plane, surface: pygame.Surface) -> None:
+    """Draw areas and antiderivatives of functions with jumps, kinks and poles.
+
+    The area under a function with a jump and a kink is shaded between two
+    bounds, with its antiderivative from the first bound passing through
+    the area's value at the second; the antiderivative of ``1/x`` from 1
+    (``log x``) ends at the pole; that of ``floor`` is piecewise linear; and
+    midpoint rectangles approximate an area.
+
+    Args:
+        plane: The plane.
+        surface: The surface to draw on.
+    """
+
+    def f(x: np.ndarray) -> np.ndarray:
+        return np.sin(x) + 0.3 * np.abs(x - 2) + np.where(x < -3, 1.0, 0.0)
+
+    a, b = -3.5, 2.0
+    plane.fill_between(surface, f, domain=(a, b))
+    plane.plot(surface, f)
+    plane.plot(surface, pgp.antiderivative(f, a), width=2.0)
+    plane.points(surface, (b, pgp.integral(f, a, b)), edge_color="white")
+    plane.plot(surface, pgp.antiderivative(lambda x: 1 / x, 1.0), width=2.0)
+    plane.plot(surface, pgp.antiderivative(np.floor, 4.0), width=1.5, domain=(4, 9))
+    x = np.linspace(-8.0, -5.0, 7)
+    h = np.cos((x[:-1] + x[1:]) / 2) - 3
+    gap = np.full(h.size, np.nan)
+    boxes = np.column_stack(
+        [x[:-1], 0 * h - 3, x[:-1], h, x[1:], h, x[1:], 0 * h - 3, gap, gap]
+    )
+    plane.polyline(surface, boxes.reshape(-1, 2), width=1.2)
+    plane.plot(surface, lambda t: np.cos(t) - 3, domain=(-9, -4))
+
+
+def scene_series(plane: pgp.Plane, surface: pygame.Surface) -> None:
+    """Draw Taylor polynomials of ``sin`` and Fourier sums of a square and a sawtooth.
+
+    The Taylor polynomials of degrees 1, 3, 5 and 7 about 0 peel away from
+    ``sin`` one after the other; the square wave's partial sum overshoots
+    at its jumps (the Gibbs phenomenon).
+
+    Args:
+        plane: The plane.
+        surface: The surface to draw on.
+    """
+    plane.plot(surface, np.sin, width=3.0, color=(40, 40, 40), opacity=0.5)
+    for degree in (1, 3, 5, 7):
+        plane.plot(surface, pgp.taylor(np.sin, 0.0, degree), width=1.8)
+    square = pgp.fourier(lambda x: np.sign(x) + 3, 15)
+    plane.plot(surface, square)
+    saw = pgp.fourier(lambda x: x / 2 - 3.5, 7)
+    plane.plot(surface, saw)
+
+
 SCENES: dict[str, Scene] = {
     "test_set": scene_test_set,
     "hard": scene_hard,
@@ -260,6 +314,8 @@ SCENES: dict[str, Scene] = {
     "fields": scene_fields,
     "draggable": scene_draggable,
     "derivatives": scene_derivatives,
+    "integrals": scene_integrals,
+    "series": scene_series,
 }
 
 
@@ -366,6 +422,13 @@ VIEWS: tuple[GalleryView, ...] = (
     GalleryView("57_fields_dark", scale=60.0, theme="dark", scene="fields"),
     GalleryView("58_fields_fading", scale=60.0 * 1.38, scene="fields"),
     GalleryView("59_fields_loglog", log_x=True, log_y=True, scene="fields"),
+    GalleryView("60_integrals", scale=60.0, scene="integrals"),
+    GalleryView("61_integrals_semilog_x", log_x=True, scene="integrals"),
+    GalleryView(  # the corner of the antiderivative where f jumps
+        "62_integrals_zoomed_kink", center=(-3.0, 1.34104), scale=3e4, scene="integrals"
+    ),
+    GalleryView("63_series", scale=60.0, scene="series"),
+    GalleryView("64_series_dark", scale=60.0, theme="dark", scene="series"),
 )
 
 

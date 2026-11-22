@@ -5,9 +5,10 @@ Press ``Space`` to switch between three sets:
 1. **The tangent line**: drag the point along the curve ``f``; its tangent
    line follows, and the graphs of ``f'`` and ``f''`` show the slope and the
    bending at that point.
-2. **Taylor polynomials**: drag the expansion point along the curve, and the
-   slider to change the degree; the polynomial hugs the curve near the point
-   and further away as the degree grows.
+2. **Taylor polynomials** (:func:`pygridplot.taylor`): drag the expansion
+   point along the curve, and the slider to change the degree; the
+   polynomial hugs the curve near the point and further away as the degree
+   grows.
 3. **The osculating circle**: the circle that best fits the curve at the
    point, with radius ``(1 + f'²)^(3/2) / |f''|``.
 
@@ -78,15 +79,7 @@ class Taylor:
         """Draw the set; return the caption lines."""
         a = self.point.x
         degree = round(self.degree.x)
-        coefficients = pgp.derivatives(f, a, degree)
-        factorials = [math.factorial(k) for k in range(degree + 1)]
-
-        def polynomial(x: np.ndarray) -> np.ndarray:
-            total = np.zeros_like(x)
-            for k in range(degree, -1, -1):  # Horner's rule in (x - a)
-                total = total * (x - a) + coefficients[k] / factorials[k]
-            return total
-
+        polynomial = pgp.taylor(f, a, degree)  # from the exact derivatives at a
         plane.polyline(screen, [(0, -4.5), (20, -4.5)], width=4, opacity=0.3)
         plane.plot(screen, f, color=(40, 90, 200))
         plane.plot(screen, polynomial, color=(210, 70, 60))

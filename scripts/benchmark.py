@@ -142,6 +142,8 @@ def cases() -> dict[str, Case]:
             5 * np.sin(np.linspace(0, 2 * math.pi, 200)),
         )
     )
+    square50 = pgp.fourier(np.sign, 50)
+    taylor10 = pgp.taylor(damped, 0.0, 10)
     return {
         "grid linear": grid_case(),
         "grid linear unequal": grid_case(x_range=(-3, 7), y_range=(-0.01, 0.02)),
@@ -241,6 +243,28 @@ def cases() -> dict[str, Case]:
         "plot 1st derivative (math)": plot_case(
             lambda p, s: p.plot(s, pgp.derivative(damped_math)), scale=60.0
         ),
+        "integral smooth (NumPy)": lambda s: pgp.integral(damped, -10, 10),
+        "integral smooth (math)": lambda s: pgp.integral(damped_math, -10, 10),
+        "integral 1/sqrt(x) from 0": lambda s: pgp.integral(
+            lambda x: 1 / np.sqrt(x), 0, 1
+        ),
+        "integral exp(-x²) to ±inf": lambda s: pgp.integral(
+            lambda x: np.exp(-(x**2)), -math.inf, math.inf
+        ),
+        "plot antiderivative (NumPy)": plot_case(
+            lambda p, s: p.plot(s, pgp.antiderivative(damped)), scale=60.0
+        ),
+        "plot antiderivative of 1/x": plot_case(
+            lambda p, s: p.plot(s, pgp.antiderivative(lambda x: 1 / x, 1.0)),
+            scale=60.0,
+        ),
+        "fourier 100 terms (create)": lambda s: pgp.fourier(np.sign, 100),
+        "plot fourier 50 terms": plot_case(
+            lambda p, s: p.plot(s, square50), scale=60.0
+        ),
+        "plot taylor degree 10": plot_case(
+            lambda p, s: p.plot(s, taylor10), scale=60.0
+        ),
         "drag along a spirograph": drag_case(),
         "draw 20 draggable points": plot_case(
             lambda p, s: p.draw_draggables(s), scale=60.0, draggables=20
@@ -256,6 +280,9 @@ def cases() -> dict[str, Case]:
         ),
         "cached: idle vector field": cached_case(
             lambda p, s: p.vector_field(s, lambda x, y: (-y, x)), scale=50.0
+        ),
+        "cached: idle antiderivative": cached_case(
+            lambda p, s: p.plot(s, pgp.antiderivative(damped)), scale=60.0
         ),
         "cached: idle inequality disc": cached_case(
             lambda p, s: p.inequality(s, lambda x, y: x**2 + y**2 < 16), scale=60.0

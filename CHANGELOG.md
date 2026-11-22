@@ -8,6 +8,42 @@ follow [semantic versioning](https://semver.org/) once 1.0 is released.
 
 ### Added
 
+- **Integrals**: `pgp.integral(f, a, b)` returns a definite integral,
+  computed by adaptive Gauss-Kronrod quadrature (21 points, QUADPACK's
+  error estimate) vectorised over all intervals at once: about 10
+  significant digits for smooth functions, jumps, kinks and integrable
+  singularities (`1/sqrt(x)`, `log x` at 0), with infinite limits mapped
+  onto finite ones. NaN rather than a wrong number when the integral
+  diverges or the function is undefined on part of the interval; a single
+  undefined point (`sin(x) / x` at 0) makes no difference. Bounded work, so
+  no integral can freeze a frame.
+- **Antiderivatives**: `pgp.antiderivative(f, a=0)` returns
+  `F(x) = ∫ₐˣ f(t) dt` as a function to plot or evaluate, computed by
+  cumulative quadrature over the points it is evaluated at (so plotting
+  one costs a few integrals, not one per point). `a` may be `-np.inf` (a
+  cumulative distribution), and `F` is undefined beyond a divergence (the
+  antiderivative of `1/x` from 1 is `log x` for `x > 0` only).
+  `pgp.derivative(F)` is `f` exactly. The plot cache checks an
+  antiderivative through its integrand, as its last digits depend on the
+  other points it is evaluated with, so unchanged antiderivatives are
+  reused like other plots.
+- **Taylor polynomials**: `pgp.taylor(f, a, n)` returns the Taylor
+  polynomial of degree `n` (up to 40) about `a`, from the exact
+  derivatives, with its `coefficients`.
+- **Fourier series**: `pgp.fourier(f, n, interval=(-π, π))` returns the
+  partial sum with `n` harmonics (up to 1000) of the Fourier series of a
+  function on an interval, repeated with the interval's length as period,
+  with its `cosines` and `sines`. The coefficients come from one adaptive
+  quadrature run, accurate at the jumps and kinks of square and sawtooth
+  waves.
+- Taylor polynomials and Fourier sums accept jets, so they differentiate
+  exactly. `examples/integrals.py` (the area between two draggable points
+  with its antiderivative, Riemann sums with a slider, improper integrals)
+  and `examples/series.py` (Fourier series with a slider, and their
+  spectrum in a second plane); `examples/derivatives.py` uses
+  `pgp.taylor`, and `examples/regions.py` measures its area with
+  `pgp.integral`. The API reference's "Derivatives" section is now
+  "Calculus".
 - **Vector fields**: `Plane.vector_field(surface, field)` draws a field
   `(u, v) = field(x, y)` as arrows on a lattice that is fixed to the plane
   (panning is rigid) and keeps its density on screen: the spacing is a

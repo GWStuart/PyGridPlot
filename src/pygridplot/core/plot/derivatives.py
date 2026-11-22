@@ -24,6 +24,11 @@ Derivatives are computed in the best way the function allows, tried in turn:
    beyond; next to a jump or a kink they see a steep slope that is not
    there, and at a domain edge they are undefined.
 
+The derivative of an antiderivative (:func:`~pygridplot.antiderivative`)
+is the function integrated, by the fundamental theorem of calculus, so it
+is taken exactly that way: ``derivative(antiderivative(f), n)`` is
+``derivative(f, n - 1)``.
+
 Like every function the library evaluates, a derivative never raises: it
 is NaN wherever it is undefined.
 """
@@ -38,6 +43,7 @@ import numpy as np
 from numpy.typing import NDArray
 
 from pygridplot.core.plot.evaluation import Function, evaluate_quietly
+from pygridplot.core.plot.integrals import Antiderivative
 from pygridplot.core.plot.jets import MAX_ORDER, Jet
 
 _EPS: Final = float(np.finfo(np.float64).eps)
@@ -126,10 +132,12 @@ def derivative(func: Function, n: int = 1) -> Derivative:
     if not callable(cast(object, func)):  # checked for callers without types
         msg = f"expected a function, got {func!r}"
         raise TypeError(msg)
-    order = _check_order(n)
+    order = check_order(n)
     if isinstance(func, Derivative):  # a derivative of a derivative
-        order = _check_order(func.order + order)
+        order = check_order(func.order + order)
         func = func.func
+    if isinstance(func, Antiderivative) and order >= 1:
+        return derivative(func.func, order - 1)  # F' = f
     return Derivative(func, order)
 
 
@@ -162,11 +170,11 @@ def derivatives(func: Function, x: Any, n: int) -> Any:
     if not callable(cast(object, func)):  # checked for callers without types
         msg = f"expected a function, got {func!r}"
         raise TypeError(msg)
-    order = _check_order(n)
+    order = check_order(n)
     offset = 0
     if isinstance(func, Derivative):
         offset = func.order
-        order = _check_order(offset + order)
+        order = check_order(offset + order)
         func = func.func
     values = np.asarray(x, dtype=np.float64)
     result = taylor_derivatives(func, values.ravel(), order)[offset:]
@@ -188,6 +196,10 @@ def taylor_derivatives(
     Returns:
         Shape ``(n + 1, len(xs))``, NaN where undefined (never infinite).
     """
+    if isinstance(func, Antiderivative) and n >= 1:
+        # The fundamental theorem of calculus: F' = f, exactly.
+        values = func(xs)[np.newaxis]
+        return np.concatenate([values, taylor_derivatives(func.func, xs, n - 1)])
     with np.errstate(all="ignore"), warnings.catch_warnings():
         warnings.simplefilter("ignore")
         if xs.size == 0:
@@ -200,8 +212,8 @@ def taylor_derivatives(
     return np.where(np.isfinite(result), result, np.nan)
 
 
-def _check_order(n: object) -> int:
-    """Validate a derivative order.
+def check_order(n: object) -> int:
+    """Validate a derivative order (or a Taylor polynomial's degree).
 
     Args:
         n: The order.

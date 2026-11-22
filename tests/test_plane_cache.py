@@ -46,6 +46,7 @@ class Scene:
         # A narrow spike, between the first samples: moving it must be seen.
         plane.plot(surface, lambda x: 2 * np.exp(-(((x - spike) / 0.002) ** 2)))
         plane.plot(surface, pgp.derivative(lambda x: x**3 / 9 - shift))
+        plane.plot(surface, pgp.antiderivative(lambda x: np.cos(x - shift), -1.0))
         plane.parametric(surface, np.cos, lambda t: np.sin(t) + shift, (0, 2 * math.pi))
         plane.implicit(surface, lambda x, y: x * y - shift, 1)
         plane.fill_between(surface, lambda x: np.cos(x) - shift, -0.5)
@@ -110,14 +111,33 @@ def test_unchanged_frames_are_reused() -> None:
     cached, _, surface, _ = planes()
     scene = Scene()
     scene.draw(cached, surface)
-    assert cached.cache_stats == pgp.CacheStats(hits=0, misses=14)
+    assert cached.cache_stats == pgp.CacheStats(hits=0, misses=15)
     scene.draw(cached, surface)
-    assert cached.cache_stats == pgp.CacheStats(hits=14, misses=14)
-    # Seven plots change with the shift. The derivative of x³/9 - shift does
+    assert cached.cache_stats == pgp.CacheStats(hits=15, misses=15)
+    # Eight plots change with the shift. The derivative of x³/9 - shift does
     # not: its values are the same, so it is reused, which is exactly right.
     scene.shift += 1.0
     scene.draw(cached, surface)
-    assert cached.cache_stats == pgp.CacheStats(hits=21, misses=21)
+    assert cached.cache_stats == pgp.CacheStats(hits=22, misses=23)
+
+
+def test_antiderivatives_are_reused_through_their_integrand() -> None:
+    """F's last digits depend on its other points, so its integrand is checked."""
+    cached, fresh, a, b = planes()
+    k = [1.0]
+    lower = [0.0]
+    for step in range(6):
+        if step == 3:
+            k[0] = 1.5  # the integrand changes
+        if step == 5:
+            lower[0] = 0.5  # the lower limit changes
+        for plane, surface in ((cached, a), (fresh, b)):
+            plane.draw_grid(surface)
+            # A new antiderivative object every frame, as in a real program.
+            anti = pgp.antiderivative(lambda x: k[0] * np.sign(x - 0.3), lower[0])
+            plane.plot(surface, anti)
+        assert np.array_equal(pixels(a), pixels(b)), step
+    assert cached.cache_stats == pgp.CacheStats(hits=3, misses=3)
 
 
 def test_changes_of_style_and_inputs_are_seen() -> None:
@@ -179,6 +199,28 @@ def test_recorders_check_every_recorded_value() -> None:
     assert recorder.evaluations == 3
     assert recorder.unchanged()
     k[0] = 2.000001
+    assert not recorder.unchanged()
+
+
+def test_recorders_check_antiderivatives_through_their_integrand() -> None:
+    k = [1.0]
+    recorder = Recorder(pgp.antiderivative(lambda x: k[0] * np.cos(x)))
+    with np.errstate(all="ignore"):
+        values = recorder(np.array([0.5, 1.0, 2.0]))
+    np.testing.assert_allclose(values, np.sin([0.5, 1.0, 2.0]), atol=1e-14)
+    assert recorder.evaluations == 3
+    assert recorder.unchanged()
+    recorder.func = pgp.antiderivative(lambda x: k[0] * np.cos(x))  # a new, equal one
+    assert recorder.unchanged()
+    recorder.func = pgp.antiderivative(lambda x: k[0] * np.cos(x), 0.25)
+    assert not recorder.unchanged()  # another lower limit: its values decide
+    recorder.func = pgp.antiderivative(lambda x: k[0] * np.cos(x))
+    k[0] = 1.0 + 1e-15
+    assert not recorder.unchanged()
+    recorder.func = np.sin  # no longer an antiderivative: its own values decide
+    k[0] = 1.0
+    assert recorder.unchanged()  # the quadrature of cos is sin, to the last bit here
+    recorder.func = np.cos
     assert not recorder.unchanged()
 
 

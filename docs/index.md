@@ -22,7 +22,7 @@ topic you need:
 | [Getting started](user/getting-started.md) | Installing, the first program, the frame loop, quick mode. |
 | [The plane](user/the-plane.md) | Creating a plane, setting up the view, coordinates, embedding, several planes. |
 | [Interaction](user/interaction.md) | The built-in controls, configuring them, moving the view from code. |
-| [Plotting](user/plotting.md) | Functions and their derivatives, parametric, polar and implicit curves, areas and inequalities, vector and slope fields, points, polylines, polygons and arrows. |
+| [Plotting](user/plotting.md) | Functions, their derivatives and integrals, Taylor polynomials and Fourier series, parametric, polar and implicit curves, areas and inequalities, vector and slope fields, points, polylines, polygons and arrows. |
 | [Draggable points](user/draggable-points.md) | Points the user drags: free, locked to an axis, or on a curve. |
 | [Logarithmic axes](user/log-axes.md) | Log and semi-log planes, how their grid and labels behave. |
 | [Styles and themes](user/styles-and-themes.md) | Colours, reusable styles, the palette, themes and number formats. |
@@ -38,7 +38,7 @@ how to extend it:
 |---|---|
 | [Architecture](dev/architecture.md) | Design principles, layers, the package map, what happens in a frame. |
 | [The grid](dev/grid.md) | Spacing, lines, labels, layout and log axes, step by step. |
-| [Plotting](dev/plotting.md) | Robust evaluation, the samplers, exact derivatives (Taylor arithmetic), building primitives. |
+| [Plotting](dev/plotting.md) | Robust evaluation, the samplers, exact derivatives (Taylor arithmetic), adaptive quadrature, building primitives. |
 | [Draggable points](dev/dragging.md) | Events, constraints, following curves, labels. |
 | [Rendering](dev/rendering.md) | The renderer protocol, rasterising, compositing, text and performance. |
 | [Testing and tools](dev/testing.md) | How the code is tested, and the visual and benchmark tools. |

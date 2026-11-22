@@ -11,7 +11,7 @@ setting with its parameters and defaults.
 **Contents:**
 
 - The plane: [`Plane`](#plane), [`show`](#show)
-- Derivatives: [`derivative`](#derivative), [`derivatives`](#derivatives)
+- Calculus: [`derivative`](#derivative), [`derivatives`](#derivatives), [`integral`](#integral), [`antiderivative`](#antiderivative), [`taylor`](#taylor), [`fourier`](#fourier)
 - Draggable points: [`DraggablePoint`](#draggablepoint)
 - Styles: [`LineStyle`](#linestyle), [`PointStyle`](#pointstyle), [`PolygonStyle`](#polygonstyle), [`FillStyle`](#fillstyle), [`ArrowStyle`](#arrowstyle)
 - Themes: [`GridTheme`](#gridtheme), [`LIGHT`](#light), [`DARK`](#dark), [`NumberFormat`](#numberformat)
@@ -819,9 +819,9 @@ Each function gets the next colour of the theme's palette. The view options are 
 - `width`: Line width in pixels for the functions (default 2.5).
 - `fps`: Frame-rate cap.
 
-## Derivatives
+## Calculus
 
-Derivatives of any order of functions of one variable, exact for functions written with NumPy.
+Derivatives (exact for functions written with NumPy), integrals, antiderivatives, Taylor polynomials and Fourier series of functions of one variable. Those that return functions return ordinary callables, to plot or evaluate like any other.
 
 ### derivative
 
@@ -880,6 +880,132 @@ value, slope, curvature = derivatives(f, 1.5, 2)
 
 - `TypeError`: If `func` is not callable.
 - `ValueError`: If `n` is not a whole number in `[0, 40]`.
+
+### integral
+
+```py
+pgp.integral(func: Function, a: float, b: float) -> float
+```
+
+Return the definite integral of a function from `a` to `b`.
+
+For example:
+
+```py
+area = integral(np.sin, 0, np.pi)                  # 2.0
+integral(lambda x: np.exp(-x**2), -np.inf, np.inf)  # √π
+integral(f, p.x, q.x)          # between two draggable points
+```
+
+The integral is computed adaptively, to about 10 significant digits for smooth functions, jumps, kinks and integrable singularities such as `1/sqrt(x)` at 0. Either limit may be infinite, and `b < a` gives the negative of the integral from `b` to `a`.
+
+*Parameters:*
+
+- `func`: The function, written with NumPy or `math` (or anything `Plane.plot` accepts).
+- `a`: The lower limit.
+- `b`: The upper limit.
+
+*Returns:* The integral, or NaN if it diverges (`1/x` from -1 to 1), if the function is undefined on part of the interval (`sqrt(x)` from -1 to 1), if a limit is NaN, or if it cannot be computed accurately (an integrand oscillating many thousands of times). A point where the function is undefined on its own (`sin(x) / x` at 0) does not matter.
+
+*Raises:*
+
+- `TypeError`: If `func` is not callable or a limit is not a number.
+
+### antiderivative
+
+```py
+pgp.antiderivative(func: Function, a: float = 0.0) -> Antiderivative
+```
+
+Return the antiderivative `F(x) = ∫ₐˣ f(t) dt` of a function.
+
+The result is a function of `x` like any other: plot it, call it at a point, or differentiate it (exactly: the derivative of an antiderivative is the function itself):
+
+```py
+F = antiderivative(np.cos)                         # sin
+plane.plot(screen, F)
+cdf = antiderivative(lambda x: np.exp(-x**2 / 2) / np.sqrt(2 * np.pi), -np.inf)
+cdf(1.96)                                          # 0.975
+```
+
+*Parameters:*
+
+- `func`: The function, written with NumPy or `math`.
+- `a`: The lower limit, where `F` is 0 (`-np.inf` for a cumulative distribution). Choose it where the function is defined: the antiderivative of `1/x` from 0 is undefined everywhere.
+
+*Returns:* The antiderivative. It is NaN where the integral from `a` is undefined, as for `integral`: beyond a point where it diverges, or across a stretch where the function is undefined.
+
+*Raises:*
+
+- `TypeError`: If `func` is not callable or `a` is not a number.
+- `ValueError`: If `a` is NaN.
+
+### taylor
+
+```py
+pgp.taylor(func: Function, a: float, n: int) -> TaylorPolynomial
+```
+
+Return the Taylor polynomial of degree `n` of a function about `a`.
+
+The polynomial `Σ f⁽ᵏ⁾(a) (x - a)ᵏ / k!` is a function of `x` like any other:
+
+```py
+p = taylor(np.sin, 0, 5)           # x - x³/6 + x⁵/120
+plane.plot(screen, p)
+p.coefficients                     # [0, 1, 0, -1/6, 0, 1/120]
+```
+
+Its coefficients come from the exact derivatives of `derivatives` (to rounding, for functions written with NumPy; numerical differences for `math` functions, which are only good to the first few orders).
+
+*Parameters:*
+
+- `func`: The function.
+- `a`: The point to expand about.
+- `n`: The degree, a whole number in `[0, 40]`.
+
+*Returns:* The polynomial, with `center` (`a`) and `coefficients` (`f⁽ᵏ⁾(a) / k!` for `k = 0 ... n`) as attributes. Its values are NaN if the function cannot be differentiated at `a`.
+
+*Raises:*
+
+- `TypeError`: If `func` is not callable or `a` is not a number.
+- `ValueError`: If `a` is not finite or `n` is not a whole number in `[0, 40]`.
+
+### fourier
+
+```py
+pgp.fourier(
+    func: Function,
+    n: int,
+    interval: tuple[float, float] | None = None,
+) -> FourierSeries
+```
+
+Return the partial sum with `n` harmonics of a function's Fourier series.
+
+The series is that of the function on `interval`, repeated with the interval's length as period: a function given on `(-π, π)`, such as `np.sign` (a square wave) or `lambda x: x` (a sawtooth), need not be periodic itself. The partial sum is a function of `x` like any other:
+
+```py
+square = fourier(np.sign, 9)                      # 9 harmonics
+plane.plot(screen, square)
+wave = fourier(lambda x: x * (1 - x), 5, (0, 1))  # period 1
+square.sines[1]                                    # 4/π
+```
+
+The coefficients are integrals over the interval, computed accurately (to about 10 digits) for smooth functions and for functions with jumps and kinks, as a square wave has.
+
+*Parameters:*
+
+- `func`: The function, written with NumPy or `math`.
+- `n`: The number of harmonics, a whole number in `[0, 1000]` (0 gives the mean).
+- `interval`: `(start, end)`, one period. The default (`None`) is `(-π, π)`.
+
+*Returns:* The partial sum `a₀/2 + Σ (aₖ cos kωx + bₖ sin kωx)`, `ω = 2π/T`, with `cosines` (`a₀ ... aₙ`), `sines` (`b₀ ... bₙ`), `interval` and `period` as attributes. Its values are NaN if the function's integral over the interval is undefined (it diverges, or the function is undefined on part of it).
+
+*Raises:*
+
+- `TypeError`: If `func` is not callable or the interval's ends are not numbers.
+- `ValueError`: If the interval is not two finite numbers with `start < end`, or `n` is not a whole number in `[0, 1000]`.
 
 ## Draggable points
 

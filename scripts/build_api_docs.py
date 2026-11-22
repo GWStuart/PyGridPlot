@@ -40,10 +40,19 @@ SECTIONS: list[tuple[str, str, list[str]]] = [
         ["Plane", "show"],
     ),
     (
-        "Derivatives",
-        "Derivatives of any order of functions of one variable, exact for "
-        "functions written with NumPy.",
-        ["derivative", "derivatives"],
+        "Calculus",
+        "Derivatives (exact for functions written with NumPy), integrals, "
+        "antiderivatives, Taylor polynomials and Fourier series of functions of "
+        "one variable. Those that return functions return ordinary callables, "
+        "to plot or evaluate like any other.",
+        [
+            "derivative",
+            "derivatives",
+            "integral",
+            "antiderivative",
+            "taylor",
+            "fourier",
+        ],
     ),
     (
         "Draggable points",

@@ -528,3 +528,44 @@ def test_fields_move_rigidly_when_panning(dx: int, dy: int) -> None:
     shifted = np.roll(np.roll(before, dy, axis=0), dx, axis=1)
     np.testing.assert_allclose(after[inner], shifted[inner], atol=2 / 255)
     assert before.max() > 0.5
+
+
+def test_calculus_results_plot_like_the_functions_they_equal() -> None:
+    """An antiderivative, a Taylor polynomial and a Fourier sum are just functions."""
+    cases = [
+        (pgp.antiderivative(np.cos), np.sin),
+        (pgp.antiderivative(lambda x: 2 * x, -1.0), lambda x: x**2 - 1),
+        (pgp.taylor(lambda x: x**3 - x, 0.5, 3), lambda x: x**3 - x),
+        (pgp.fourier(lambda x: np.cos(2 * x), 3), lambda x: np.cos(2 * x)),
+    ]
+    for computed, exact in cases:
+        a, b = (blank_plane(scale=37.0) for _ in range(2))
+        a[0].plot(a[1], computed, color=BLACK)
+        b[0].plot(b[1], exact, color=BLACK)
+        assert ink(a[1]).max() > 0.9
+        np.testing.assert_allclose(ink(a[1]), ink(b[1]), atol=2 / 255)
+
+
+def test_antiderivatives_end_where_their_integral_diverges() -> None:
+    plane, surface = blank_plane()
+    plane.plot(surface, pgp.antiderivative(lambda x: 1 / x, 1.0), color=BLACK)  # log x
+    image = ink(surface)
+    assert image[:, : SIZE[0] // 2 - 1].max() == 0.0  # nothing for x < 0
+    assert image[:, SIZE[0] // 2 + 2 :].max() > 0.9
+
+
+@pytest.mark.parametrize(("dx", "dy"), [(11, 0), (-6, 13)])
+def test_antiderivatives_move_rigidly_when_panning(dx: int, dy: int) -> None:
+    plane, _ = blank_plane(center=(0.21, -0.4), scale=45.0)
+
+    def draw(surface: pygame.Surface) -> None:
+        plane.plot(surface, pgp.antiderivative(np.sign, 0.3), color=BLACK)  # |x - 0.3|
+        plane.plot(surface, pgp.fourier(np.sign, 7), color=BLACK)
+
+    before = capture(plane, draw)
+    plane.view.pan_pixels(dx, dy)
+    after = capture(plane, draw)
+    m = 30
+    old = before[m - dy : SIZE[1] - m - dy, m - dx : SIZE[0] - m - dx]
+    new = after[m : SIZE[1] - m, m : SIZE[0] - m]
+    np.testing.assert_allclose(new, old, atol=2 / 255)

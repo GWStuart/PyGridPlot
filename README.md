@@ -11,6 +11,8 @@ of the Desmos graph view but driven entirely from Python code. It gives you:
   parametric, polar and implicit curves, points, polylines and polygons;
 - shaded areas between graphs, and regions where inequalities hold;
 - arrows, and vector and slope fields;
+- calculus to plot: integrals and antiderivatives, Taylor polynomials and
+  Fourier series;
 - draggable points: free, locked to an axis, or running along a curve.
 
 PyGridPlot is a *library, not a framework*: your program owns the main loop,
@@ -86,8 +88,16 @@ pgp.show(np.exp, log_y=True, x_range=(0, 10))               # semi-log, quick mo
 - **Exact derivatives of any order.** `pgp.derivative(f, n)` is the
   `n`-th derivative of a NumPy function, exact to rounding (Taylor-mode
   automatic differentiation, no dependencies), with clean jumps at kinks
-  and steps; plot it or evaluate it, for tangent lines and Taylor
-  polynomials at a draggable point.
+  and steps; plot it or evaluate it, for tangent lines at a draggable
+  point.
+- **Integrals and series.** `pgp.integral(f, a, b)` is a definite integral
+  to about 10 digits (adaptive Gauss-Kronrod quadrature), with infinite
+  limits, jumps and integrable singularities, and NaN rather than a wrong
+  number when it diverges. `pgp.antiderivative(f, a)` is a function to
+  plot, `pgp.taylor(f, a, n)` a Taylor polynomial from the exact
+  derivatives, and `pgp.fourier(f, n)` a partial Fourier sum, with its
+  coefficients. Together with draggable points: areas between two points,
+  Riemann sums, Gibbs' overshoot as you add harmonics.
 - **Draggable points.** `a = plane.draggable((1, 2))` creates a point the
   user can drag; read `a.x` and `a.y` every frame to drive your plots.
   Points can be free, locked to one axis (sliders) or kept on a parametric
@@ -129,6 +139,8 @@ python examples/regions.py          # inequalities and areas between graphs (Spa
 python examples/fields.py           # vector and slope fields, arrows (Space)
 python examples/draggable.py        # draggable points, sliders, points on curves (Space)
 python examples/derivatives.py      # tangents, Taylor polynomials, osculating circles (Space)
+python examples/integrals.py        # areas, antiderivatives, Riemann sums, improper integrals (Space, R)
+python examples/series.py           # Fourier series with a slider, and their spectrum (Space)
 python examples/shapes.py           # points, polylines, polygons, fill rules
 python examples/log_axes.py         # log-log, semi-log and range-based planes (Space, X, Y)
 python examples/animation.py        # everything moving, every frame

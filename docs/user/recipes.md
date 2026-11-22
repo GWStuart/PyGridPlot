@@ -287,6 +287,10 @@ The `examples/` folder has a runnable program for every topic:
 | `functions.py` | The function test set and hard cases (`Space` switches sets). |
 | `curves.py` | Animated parametric and polar curves (`Space` switches, `P` pauses). |
 | `derivatives.py` | Tangent lines, Taylor polynomials and the osculating circle at a draggable point (`Space` switches). |
+| `integrals.py` | The area between two draggable points with its antiderivative, Riemann sums with a slider (`R` switches the rule), improper integrals (`Space` switches). |
+| `series.py` | Fourier partial sums with a slider for the harmonics, and their spectrum in a second plane (`Space` switches the function). |
+| `regions.py` | Inequalities, the area between two graphs between draggable bounds, and hard cases (`Space` switches, `P` pauses). |
+| `fields.py` | Vector and slope fields, a solution through a draggable point, and arrows for vector addition and motion (`Space` switches, `F` and `M` change the field, `P` pauses). |
 | `draggable.py` | Draggable points: a wave shaped by handles and sliders, points on curves (`Space` switches). |
 | `implicit.py` | Implicit curves, contour lines, poles and jumps (`Space` switches, `P` pauses). |
 | `shapes.py` | Points, polylines, polygons and fill rules. |

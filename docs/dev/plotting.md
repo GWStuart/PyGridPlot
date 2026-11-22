@@ -16,6 +16,9 @@ are its building blocks.
 | `curves.py` | Adaptive sampling of parametric curves (and so polar ones) on screen. |
 | `jets.py` | Taylor arithmetic: the `Jet` number type that carries derivatives through NumPy code. |
 | `derivatives.py` | `derivative` and `derivatives`: exact via jets, point by point, or numerical. |
+| `quadrature.py` | Adaptive Gauss-Kronrod quadrature of many integrals (pieces) at once, vectorised per round. |
+| `integrals.py` | `integral` and `antiderivative`: definite integrals (infinite limits mapped to finite ones) and cumulative quadrature. |
+| `series.py` | `taylor` and `fourier`: Taylor polynomials from exact derivatives, Fourier partial sums from one quadrature run. |
 | `memo.py` | `PlotCache`: reusing a plotting call's result between frames, exactly. |
 | `lattice.py` | The anchored coarse and fine grids shared by implicit curves and regions, and their evaluation budget. |
 | `implicit.py` | Finding implicit curves `F(x, y) = c` on a grid: marching squares (contourpy), checked and refined. |
@@ -457,6 +460,147 @@ changes; `derivative(derivative(f, a), b)` collapses to
 `derivative(f, a + b)`. A derivative called with a jet (a derivative inside
 a function being differentiated) raises `TypeError`, which sends that case
 to the numerical path.
+
+## Integrals: `quadrature.py` and `integrals.py`
+
+Integrals are the other half of calculus, and the library computes them
+numerically, like the derivatives of `math` functions but with an
+accuracy that does not degrade: **adaptive Gauss-Kronrod quadrature**
+(QUADPACK's 21-point rule, `qk21`, and its error estimate), written for
+NumPy rather than ported loop by loop.
+
+`quadrature.integrate(func, lo, hi, piece, pieces)` integrates one robust
+integrand over several *pieces* at once (one for `integral`, one per gap
+between points for an antiderivative), each starting from one or more
+intervals. Every round evaluates the integrand once, at the 21 nodes of
+every interval being refined, so a NumPy function is called a handful of
+times in all, and the work per round is a few matrix products. The rest
+follows from the cases it must get right:
+
+- **Global error control per piece.** A piece is done when the sum of its
+  intervals' errors is at most `TOLERANCE` (1e-10) times its integral of
+  `|f|`. Relative to `∫|f|`, not `|∫f|`, so `sin` over a period converges,
+  and the result is independent of units. Per piece rather than per
+  interval, because at an integrable singularity (`1/sqrt(x)` at 0) the
+  interval touching it always has a large error *relative to its own
+  size*; only its share of the whole shrinks.
+- **Which intervals to cut.** Those whose error exceeds an equal share of
+  the piece's tolerance. Rounds cost NumPy overhead (100 to 150 µs each)
+  while evaluations are cheap, so how intervals are cut depends on how
+  many need it. When one or two do, they are usually troubled at an end (a
+  singularity, the lower limit of an antiderivative, a domain edge), so
+  they are cut *graded*: into eighths, with further cuts at `2⁻⁴`, `2⁻⁸`,
+  ..., `2⁻²⁴` of the width from each end (20 parts, closing in on an end by
+  24 halvings per round). Up to 16 are cut into eighths (jumps, kinks);
+  more are halved (oscillation, where halving wastes least). Graded cuts
+  that would leave parts too narrow for distinct nodes (near an end away
+  from 0) are left out.
+- **When the two rules agree by chance.** QUADPACK's estimate rests on one
+  difference, Kronrod minus Gauss. For an integrand that is not smooth
+  (kinks, jumps, cusps), both rules have errors of similar size, and their
+  difference crosses zero at particular positions of the feature: about 1%
+  of kink positions get an estimate a thousand times too small (a
+  property test found one). So the error is at least `TAIL_FACTOR` (8)
+  times the half width times `|(c₁₉, c₂₀)|`, the interpolant's two highest
+  Legendre coefficients (a fixed `(21, 2)` matrix of the node values). They
+  do not decay at such features, and an odd and an even one do not vanish
+  together, so the bound caught every one of 160,000 positions of kinks,
+  jumps and cusps tested; for smooth integrands they are at rounding level
+  by the time the rules agree. The bound is not applied to intervals too
+  narrow to cut: there, next to a singularity away from 0, rounded node
+  positions look like roughness that cannot be refined away, and the bound
+  would turn arcsine-type integrals into NaN.
+- **What neither rule sees.** The outermost nodes are 0.43% of the half
+  width from the ends, so a jump or kink in those slivers is invisible to
+  both rules, which then agree and report a tiny error for a wrong value
+  (QUADPACK has the same blind spot). Each interval is therefore probed
+  near both ends, and `|probe - P(probe)|` times the sliver's width (with
+  `P` the nodes' interpolating polynomial, whose extrapolation weights
+  are well conditioned) is added to its error. The probes sit 4e-6 of the
+  half width inside the ends, not at them: a jump exactly at an end is a
+  single point (`floor` integrated up to 1), and from the ends alone it
+  would look like one just inside, needing refinement forever. A probe
+  that rounds onto its end (a very narrow interval away from 0) tells
+  nothing. 23 evaluations per interval in all.
+- **Undefined points.** An interval with one undefined node has an
+  infinite error and is cut, which turns the point into an end of the
+  parts (never evaluated): `sin(x) / x` at the middle node of `[-1, 1]`
+  vanishes after one round. Two or more undefined nodes mean the function
+  is undefined on a stretch, and the piece is NaN at once (one evaluation
+  for `sqrt` from -1, not a budget's worth).
+- **Divergence.** A piece whose error has not halved in `STALL_ROUNDS` (8)
+  rounds is given up: at `1/x` the error of the interval touching 0 never
+  shrinks. Rounds (`MAX_ROUNDS`) and evaluations (`MAX_NEW_INTERVALS`) are
+  bounded too, so no integral can freeze a frame.
+- **Floating-point limits.** Next to a singularity away from 0
+  (`1 / sqrt(1 - x²)` at 1) intervals cannot be cut below about `1e-13`,
+  and the error stays above the target. A piece that missed the target
+  keeps its value if its error is within `ACCEPTABLE` (1e-6) of `∫|f|`
+  (there it is good to about 8 digits) and is NaN otherwise.
+- **Speed for the common case.** If every piece converges on the first
+  evaluation (smooth integrands), the result is returned without the
+  refinement bookkeeping: about 0.1 ms for one integral, 0.7 ms for the
+  1,100 gaps of an antiderivative's first sampler call.
+
+The process is deterministic, as the plot cache requires, but pieces are
+not independent bit for bit: how intervals are cut depends on how many
+are cut in all.
+
+`integrals.integral` validates the limits (NaN limits give NaN, equal ones
+0, reversed ones the negative), wraps the user's function in robust
+evaluation, and maps infinite limits onto finite intervals:
+`x = c + 1/t - 1` for `t` in `(0, 1]` covers `[c, ∞)`, `x = c + 1/t + 1` for
+`t` in `[-1, 0)` covers `(-∞, c]`, and both together the whole line, with
+the integrand `f(x(t)) / t²`. The tail lands next to `t = 0`, where floats
+are densest, so `1/x^1.5` converges and `1/x` is found to diverge. It starts
+from 8 equal parts, so a narrow feature is less likely to fall between the
+first nodes.
+
+`Antiderivative` evaluates `F(x) = ∫ₐˣ f` by **cumulative quadrature**: the
+query points and `a` are sorted, the gaps between neighbours are the pieces
+of one run (each starting from parts in proportion to its share of the
+range, so a long first gap from a distant `a` is not undersampled), and `F`
+is their running sum outwards from `a` (`np.cumsum`, negated to the left).
+A NaN gap makes `F` NaN beyond it, which is right: beyond a divergence the
+integral from `a` does not exist. Infinite limits and points add tails
+computed like `integral`'s. `derivative(F, n)` collapses to
+`derivative(f, n - 1)` and `taylor_derivatives` handles antiderivatives the
+same way, so `F'` is `f` exactly; a jet passed to `F` (inside a function
+being differentiated) raises `TypeError`, falling back to numerical
+differences, as for `Derivative`.
+
+**Antiderivatives and the plot cache.** `F(x)` is a sum over the gaps
+between the points it is evaluated with, so its last digits depend on
+them: it is not bit-for-bit pointwise, and the cache's check (all recorded
+points in one call) would never match. `Recorder` therefore sees through an
+`Antiderivative`: it evaluates `Antiderivative(Recorder(f), a)`, recording
+the *integrand's* evaluations, and a later frame's antiderivative is
+unchanged if its lower limit is the same bit for bit and its integrand
+gives the same values at every recorded node. Since the quadrature is
+deterministic, the plot would then be computed exactly as before. An
+antiderivative wrapped in a lambda (`lambda x: F(x) + 1`) is checked like
+any function, and is drawn again every frame.
+
+## Series: `series.py`
+
+`taylor(f, a, n)` takes `derivatives(f, a, n)`, divides by the factorials
+and returns a `TaylorPolynomial`, evaluated by Horner's rule in `x - a`.
+`fourier(f, n, interval)` returns a `FourierSeries`. Both are computed when
+created, are cheap callables afterwards, keep their coefficients as
+read-only arrays, and accept jets, so they differentiate exactly.
+
+The Fourier coefficients `aₖ, bₖ = (2/T) ∫ f(x) (cos, sin)(kωx) dx` all come
+from **one** quadrature run over `f` alone, with `samples=True`: the run
+starts from `max(8, 2n)` equal parts, so every part spans at most half a
+period of the highest harmonic (on which the 21-point rule integrates
+`cos` to rounding), and refines wherever `f` needs it (the jumps of a square
+wave). Then `Σ w f(x) e^{-ikωx}` over all the final nodes gives every
+coefficient, with the powers of `e^{-iωx}` built by repeated
+multiplication (rounding grows like `kε`), not `2n` trigonometric calls per
+node. Evaluating reduces `x` into the interval (the sum has period `T`) and
+sums `Re Σ cₖ zᵏ` with a `cumprod` of `z = e^{iωx}`, in blocks of at most
+`2¹⁷` entries; jets take a term-by-term loop instead, as they are not
+complex.
 
 ## Reusing plots between frames: `memo.py`
 

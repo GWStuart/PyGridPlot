@@ -33,6 +33,16 @@ The one assumption is that a function is *pointwise*: its value at ``x``
 does not depend on which other points it is evaluated with. Functions that
 violate it (normalising by the maximum of their input, say) are not well
 defined as plots anyway; at worst they are drawn again every frame.
+
+Antiderivatives (:class:`~pygridplot.core.plot.integrals.Antiderivative`)
+are pointwise only to rounding: ``F(x)`` is a sum over the gaps between
+the points it is evaluated with, so its last digits depend on them. They
+are checked through their *integrand* instead: the recorder evaluates the
+antiderivative with the integrand wrapped in a recorder of its own, and a
+later frame's antiderivative is unchanged if it has the same lower limit
+and its integrand gives the same values at every point where the
+integrand was evaluated. As the quadrature is deterministic, the plot
+would then be computed exactly as before.
 """
 
 from __future__ import annotations
@@ -50,6 +60,7 @@ from pygridplot.core.plot.evaluation import (
     evaluate_vectors_quietly,
     evaluate_xy_quietly,
 )
+from pygridplot.core.plot.integrals import Antiderivative
 
 PROBE_POINTS: Final = 32
 """Recorded points re-evaluated first, to reject a changed function cheaply."""
@@ -75,7 +86,7 @@ class Recorder:
             (functions of ``(x, y)`` returning a pair ``(u, v)``).
     """
 
-    __slots__ = ("_calls", "arity", "func", "outputs")
+    __slots__ = ("_calls", "_integrand", "_lower", "arity", "func", "outputs")
 
     def __init__(
         self, func: Callable[..., Any], arity: int = 1, outputs: int = 1
@@ -86,6 +97,9 @@ class Recorder:
         self._calls: list[
             tuple[tuple[NDArray[np.float64], ...], NDArray[np.float64]]
         ] = []
+        # For an antiderivative: its lower limit, and a recorder of its integrand.
+        self._lower = 0.0
+        self._integrand: Recorder | None = None
 
     def __call__(self, *args: Any) -> NDArray[np.float64]:
         """Evaluate the function and record the call.
@@ -100,7 +114,15 @@ class Recorder:
             them straight through.
         """
         arrays = tuple(np.array(a, dtype=np.float64, ndmin=1) for a in args)
-        values = self._evaluate(arrays)
+        func = self.func
+        if isinstance(func, Antiderivative) and self.arity == 1:
+            if self._integrand is None or not _same_number(func.lower, self._lower):
+                self._integrand, self._lower = Recorder(func.func), func.lower
+            self._integrand.func = func.func
+            recording = Antiderivative(self._integrand, func.lower)
+            values = evaluate_quietly(recording, arrays[0])
+        else:
+            values = self._evaluate(arrays)
         self._calls.append((arrays, values.copy()))
         return values if self.outputs == 1 else values.T
 
@@ -110,10 +132,20 @@ class Recorder:
         A few points spread over the record are checked first, then all.
 
         Returns:
-            ``True`` if every value is bit for bit what was recorded.
+            ``True`` if every value is bit for bit what was recorded (for an
+            antiderivative with the same lower limit: if its integrand gives
+            every value recorded for it).
         """
         if not self._calls:
             return True
+        func = self.func
+        if (
+            self._integrand is not None
+            and isinstance(func, Antiderivative)
+            and _same_number(func.lower, self._lower)
+        ):
+            self._integrand.func = func.func
+            return self._integrand.unchanged()
         inputs = tuple(
             np.concatenate([call[0][k] for call in self._calls])
             for k in range(self.arity)
@@ -144,6 +176,11 @@ class Recorder:
         with np.errstate(all="ignore"), warnings.catch_warnings():
             warnings.simplefilter("ignore")
             return self._evaluate(arrays)
+
+
+def _same_number(a: float, b: float) -> bool:
+    """Return whether two floats are the same, bit for bit (NaN equals NaN)."""
+    return bool(_identical(np.array([a]), np.array([b])))
 
 
 def _identical(a: NDArray[np.float64], b: NDArray[np.float64]) -> bool:

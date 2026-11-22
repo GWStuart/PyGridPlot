@@ -97,8 +97,7 @@ class Area:
         plane.plot(screen, self.f, color=BLUE)
         plane.plot(screen, self.g, color=GREEN)
         plane.draw_draggables(screen, *self.points)
-        xs = np.linspace(low, high, 2001)
-        value = float(np.trapezoid(self.f(xs) - self.g(xs), xs))
+        value = pgp.integral(lambda x: self.f(x) - self.g(x), low, high)
         bounds = f"from {low:.2f} to {high:.2f}"
         return f"area between sin x + 1.5 and x²/4 {bounds}: {value:.4f}"
 

@@ -9,7 +9,7 @@ automatically, so frames where little changes stay cheap.
 
 | Method | Draws |
 |---|---|
-| [`plot(surface, f)`](#functions) | The graph of `y = f(x)`, or of a [derivative](#derivatives). |
+| [`plot(surface, f)`](#functions) | The graph of `y = f(x)`, or of a [derivative](#derivatives), an [antiderivative](#integrals-and-antiderivatives), a [Taylor polynomial or a Fourier series](#taylor-polynomials-and-fourier-series). |
 | [`parametric(surface, x, y, t_range)`](#parametric-curves) | The curve `(x(t), y(t))`. |
 | [`polar(surface, r)`](#polar-curves) | The curve `r = r(θ)`. |
 | [`implicit(surface, F)`](#implicit-curves) | The curve `F(x, y) = 0` (or `= c`). |
@@ -172,17 +172,196 @@ plane.plot(screen, lambda x: value + slope * (x - p.x))
 plane.draw_draggables(screen)
 ```
 
-A Taylor polynomial of degree `n` uses the first `n` derivatives:
+A Taylor polynomial of degree `n` uses the first `n` derivatives, and
+[`pgp.taylor`](#taylor-polynomials-and-fourier-series) builds it:
 
 ```python
-a, n = p.x, 5
-coefficients = pgp.derivatives(f, a, n)
-taylor = lambda x: sum(c * (x - a) ** k / math.factorial(k)
-                       for k, c in enumerate(coefficients))
-plane.plot(screen, taylor)
+plane.plot(screen, pgp.taylor(f, p.x, 5))       # degree 5, about the point
 ```
 
 `examples/derivatives.py` shows both, and the osculating circle.
+
+## Integrals and antiderivatives
+
+```py
+pgp.integral(func, a, b)           # ∫ₐᵇ f(x) dx, a number
+pgp.antiderivative(func, a=0)      # F(x) = ∫ₐˣ f(t) dt, a function of x
+```
+
+```python
+area = pgp.integral(np.sin, 0, np.pi)                            # 2.0
+bell = pgp.integral(lambda x: np.exp(-x**2), -np.inf, np.inf)    # √π
+F = pgp.antiderivative(np.cos)                                   # sin, as F(0) = 0
+plane.plot(screen, F)
+value = F(1.0)                                                   # a number, for a number
+```
+
+`integral` computes a definite integral adaptively (Gauss-Kronrod
+quadrature, spending the effort where the function needs it), to about 10
+significant digits for smooth functions, for functions with jumps
+(`np.floor`) and kinks (`np.abs`), and for singularities that can be
+integrated, such as `1/sqrt(x)` or `log(x)` at 0. Either limit may be
+infinite, and `b < a` gives the negative of the integral from `b` to `a`.
+Functions are written as for `plot`, with NumPy or `math`, and may raise
+or return NaN.
+
+When there is no honest number to give, the result is NaN rather than a
+wrong one: when the integral diverges (`1/x` across 0, or from 1 to
+infinity) and when the function is undefined on part of the interval
+(`np.sqrt` from -1). A single point where the function is undefined, like
+`sin(x) / x` at 0, makes no difference to an integral and is ignored.
+
+`antiderivative` returns `F(x) = ∫ₐˣ f(t) dt`, with `F(a) = 0`: a function
+to plot, evaluate or pass on, like a [derivative](#derivatives). Choose `a`
+where the function is defined: the antiderivative of `1/x` from 1 is
+`log x`, while from 0 it would be undefined everywhere. Beyond a point where
+the integral from `a` diverges, `F` is undefined, so that antiderivative
+has no graph for `x < 0`. `a = -np.inf` gives a cumulative distribution,
+and `F(np.inf)` the integral to infinity:
+
+```python
+normal = lambda x: np.exp(-x**2 / 2) / np.sqrt(2 * np.pi)
+cdf = pgp.antiderivative(normal, -np.inf)
+plane.plot(screen, cdf)
+cdf(1.96)                                       # 0.975
+log = pgp.antiderivative(lambda x: 1 / x, 1)    # log x, for x > 0
+```
+
+The derivative of an antiderivative is the function itself, and
+`pgp.derivative(F)` gives exactly that: `pgp.derivative(F)` is `cos`, not a
+numerical difference of `F`.
+
+Plotting an antiderivative costs about as much as integrating over the
+plotted range a few times, not once per point: the plotted points are
+integrated between neighbours, and `F` is their running total from `a`.
+Unchanged antiderivatives are [reused](#reusing-unchanged-plots) like
+other plots.
+
+### The area under a curve
+
+`fill_between` shades the area and `integral` measures it. With two
+[draggable points](draggable-points.md) on the curve, both follow the
+points:
+
+```python
+p = plane.draggable(curve=(lambda t: t, f, (-10, 10)), t=-1.0)   # before the loop
+q = plane.draggable(curve=(lambda t: t, f, (-10, 10)), t=2.0)
+
+plane.fill_between(screen, f, domain=(min(p.x, q.x), max(p.x, q.x)))
+plane.plot(screen, f)
+plane.draw_draggables(screen, p, q)
+area = pgp.integral(f, p.x, q.x)        # below the x axis counts as negative
+```
+
+Show `area` with a pygame font, as `examples/integrals.py` does. For the
+area between two graphs, integrate their difference:
+`pgp.integral(lambda x: f(x) - g(x), a, b)`, or `np.abs` of it for the
+area regardless of which graph is on top.
+
+### Riemann sums
+
+A Riemann sum is a few lines of NumPy, and its rectangles are a step
+function for `fill_between` and their outlines one `polyline` (NaN
+vertices separate them):
+
+```python
+a, b, n = 0.0, 3.0, 12
+x = np.linspace(a, b, n + 1)
+h = f(x[:-1])                       # left ends; f(x[1:]) right, f((x[:-1] + x[1:]) / 2) midpoints
+riemann = h.sum() * (b - a) / n     # tends to pgp.integral(f, a, b) as n grows
+
+step = lambda t: h[np.clip(np.searchsorted(x, t, side="right") - 1, 0, n - 1)]
+plane.fill_between(screen, step, domain=(a, b), color="steelblue")
+gap = np.full(n, np.nan)
+boxes = np.column_stack([x[:-1], 0 * h, x[:-1], h, x[1:], h, x[1:], 0 * h, gap, gap])
+plane.polyline(screen, boxes.reshape(-1, 2), width=1.5, color="steelblue")
+plane.plot(screen, f)
+```
+
+With a [slider](draggable-points.md) for `n`, the rectangles close in on the
+area as you drag; `examples/integrals.py` does this, with left, right and
+midpoint sums and the trapezoidal rule (whose trapezoids are
+`fill_between(screen, lambda t: np.interp(t, x, f(x)), domain=(a, b))`).
+
+### What integrals cannot do
+
+- **Integrals that converge only by cancellation**, such as `sin(x) / x`
+  from 0 to infinity, are NaN: the integrand oscillates forever without
+  decaying fast enough to be added up piece by piece.
+- **Integrands that oscillate many thousands of times** over the interval
+  (`sin(10**6 * x)` from 0 to 1) are NaN: the work is limited, so that no
+  integral can freeze a frame.
+- **Singularities at an end away from 0**, such as `1 / sqrt(1 - x**2)` at
+  1, are integrated to about 8 digits rather than 10, and are NaN beyond
+  about ±10, because floating point cannot get closer to the singularity
+  than about `1e-13` times its distance from 0. Move the singularity to 0:
+  `pgp.integral(lambda t: 1 / np.sqrt(t), 0, 1)` rather than
+  `pgp.integral(lambda x: 1 / np.sqrt(x - 10), 10, 11)`.
+- **A feature much narrower than the interval** (a spike a millionth as wide)
+  can be missed if no sample lands on it, as with any numerical integration.
+  Integrate over a shorter interval around it.
+- **An antiderivative's last digits** can differ between calls, as `F(x)`
+  depends a little on the other points it is evaluated with. The values
+  agree to about 10 digits, which is invisible in a plot.
+- **Singular integrands at the lower limit** (the antiderivative of
+  `1/sqrt(x)` from 0) need more work at every point, so plotting one takes
+  around 15 ms when it is not reused.
+
+## Taylor polynomials and Fourier series
+
+```py
+pgp.taylor(func, a, n)                     # the Taylor polynomial of degree n about a
+pgp.fourier(func, n, interval=None)        # the Fourier series with n harmonics, on (-π, π)
+```
+
+```python
+p5 = pgp.taylor(np.sin, 0, 5)              # x - x³/6 + x⁵/120
+plane.plot(screen, np.sin)
+plane.plot(screen, p5)
+p5.coefficients                            # [0, 1, 0, -1/6, 0, 1/120]
+
+square = pgp.fourier(np.sign, 15)          # a square wave: sign on (-π, π), repeated
+plane.plot(screen, square)
+square.sines[:4]                           # [0, 4/π, 0, 4/(3π)]
+```
+
+Both return functions of `x`, to plot, evaluate or differentiate like any
+other. They are computed once, when created, and are then cheap to
+evaluate.
+
+`taylor(func, a, n)` is the polynomial `Σ f⁽ᵏ⁾(a) (x - a)ᵏ / k!`, up to
+degree 40, from the [exact derivatives](#derivatives) at `a` (to rounding,
+for functions written with NumPy; for `math` functions the derivatives are
+numerical, good only to the first few orders). Its `coefficients` are
+`f⁽ᵏ⁾(a) / k!`, lowest first, and its `center` is `a`.
+
+`fourier(func, n, interval)` is the partial sum
+
+`S(x) = a₀/2 + Σₖ (aₖ cos kωx + bₖ sin kωx)`,  `k = 1 ... n`,  `ω = 2π/T`,
+
+of the Fourier series of the function on `interval` (default `(-π, π)`),
+whose length `T` is the period. The function need not be periodic: its
+values on the interval are repeated, so `np.sign` gives a square wave,
+`lambda x: x` a sawtooth and `np.abs` a triangle wave. Its `cosines` are
+`a₀ ... aₙ` and its `sines` `b₀ ... bₙ` (with `b₀ = 0`), for plotting a
+spectrum, say. The coefficients are integrals over the interval, computed
+accurately for smooth functions and for jumps and kinks alike. Near a jump
+the partial sums overshoot by about 9% however many harmonics there are:
+that is the Gibbs phenomenon, a property of the series, not of the
+drawing. `n` can be up to 1000; 100 harmonics take about a millisecond to
+compute.
+
+```python
+saw = pgp.fourier(lambda x: x, 25)                       # period 2π
+wave = pgp.fourier(lambda x: x * (1 - x), 5, (0, 1))     # period 1
+plane.plot(screen, saw)
+plane.plot(screen, wave)
+```
+
+With a [slider](draggable-points.md) for `n` or the degree, the
+approximations can be watched converging; `examples/series.py` does this for
+Fourier series, and `examples/derivatives.py` for Taylor polynomials at a
+draggable point.
 
 ## Parametric curves
 
@@ -692,13 +871,18 @@ slower. That is useful to measure how long drawing takes, and needed only
 for functions that are not *pointwise*, whose value at `x` depends on the
 other points they are evaluated with (normalising by the largest value of
 their input, say), which are not well-defined plots anyway.
+[Antiderivatives](#integrals-and-antiderivatives) are pointwise only to the
+last few digits, so they are checked through the function they integrate
+instead: a plotted antiderivative is reused when its lower limit is the
+same and its integrand gives the same values everywhere it was evaluated.
 
 What is reused:
 
 - function plots, parametric, polar and implicit curves, derivatives,
-  areas between graphs, inequalities, vector and slope fields, and points,
-  polylines, polygons and arrows (their data is compared, and may be
-  changed in place);
+  antiderivatives, Taylor polynomials and Fourier series, areas between
+  graphs, inequalities, vector and slope fields, and points, polylines,
+  polygons and arrows (their data is compared, and may be changed in
+  place);
 - the rasterised pixels of each reused stroke and fill, so only blending
   remains;
 - the grid, while the view and the theme stay the same.
