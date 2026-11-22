@@ -1,7 +1,7 @@
 # Testing and tools
 
 ```bash
-pytest                                   # everything, headless, about 15 s
+pytest                                   # everything, headless, about 25 s
 pytest tests/core/grid                   # one area
 pytest -k log                            # by name
 ruff check . && ruff format --check .    # lint (Google docstrings required) and formatting
@@ -92,15 +92,19 @@ presses some of the keys the examples use, zooms, and closes the window.
 
 Some qualities can only be judged by eye, or are about speed:
 
-- `python scripts/render_gallery.py --out DIR` renders 51 tricky views
-  (deep zooms, far offsets, axes at the edges, cross-fades, themes,
-  functions, derivatives, shapes, log axes, ranges, curves, implicit curves
-  and draggable points) to PNG files plus a contact sheet `_sheet.png`.
-  Render before and after a change and compare. `--only NAME ...` renders
-  a subset.
+- `python scripts/render_gallery.py --out DIR` renders the gallery of
+  tricky views (deep zooms, far offsets, axes at the edges, cross-fades,
+  themes, functions, derivatives, shapes, log axes, ranges, curves,
+  implicit curves, draggable points, inequalities and areas, vector and
+  slope fields and arrows) to PNG files plus a contact sheet `_sheet.png`.
+  Render before and after a change and compare; for refactors, the views
+  must stay pixel-identical ([`AGENTS.md`](../../AGENTS.md#verifying-a-change-visually-the-gallery-comparison)
+  shows how to render a baseline from the last commit and compare).
+  `--only NAME ...` renders a subset.
 - `python scripts/benchmark.py` prints the median time of the main
-  per-frame operations (grids, functions, curves, implicit curves, points,
-  fills, dragging, derivatives); `--only TEXT` selects cases and
+  per-frame operations (grids, functions, curves, implicit curves,
+  inequalities and areas, vector and slope fields, arrows, points, fills,
+  dragging, derivatives, and idle frames reused by the cache); `--only TEXT` selects cases and
   `--repeat N` steadies the numbers. Compare on the same machine, over a
   few runs.
 - `python examples/zoom_sweep.py --save-frames DIR` dumps frames of an

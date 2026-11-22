@@ -9,7 +9,8 @@
   ``np``, ``math``, ``pygame``, ``pgp``, a display ``screen`` (also called
   ``surface``) and a ``plane`` already defined. Main loops end after a few
   frames: the event queue is replaced by one that quits.
-* Every relative link and in-page anchor must resolve.
+* Every relative link and in-page anchor must resolve (in ``AGENTS.md`` too,
+  the context file for AI agents, so that it cannot point at moved pages).
 """
 
 from __future__ import annotations
@@ -28,7 +29,7 @@ import pytest
 import pygridplot as pgp
 
 ROOT = Path(__file__).resolve().parents[1]
-PAGES = sorted([ROOT / "README.md", *(ROOT / "docs").rglob("*.md")])
+PAGES = sorted([ROOT / "README.md", ROOT / "AGENTS.md", *(ROOT / "docs").rglob("*.md")])
 RUNNABLE = re.compile(r"^```python\n(.*?)^```", re.S | re.M)
 
 

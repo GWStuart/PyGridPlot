@@ -33,7 +33,7 @@ give the overview and the reasoning that spans modules.
 ```bash
 python -m venv venv && source venv/bin/activate
 pip install -e ".[dev]"
-pytest                                   # ~700 tests, about 20 s, headless
+pytest                                   # ~900 tests, about 25 s, headless
 ruff check . && ruff format --check .    # lint and formatting
 mypy                                     # strict type checking of src/
 python scripts/build_api_docs.py         # after changing a public docstring
@@ -41,6 +41,8 @@ python scripts/build_api_docs.py         # after changing a public docstring
 
 Looking for something to work on? The [roadmap](../../ROADMAP.md) lists
 ideas for new features and known limitations, with the top picks first.
+[`AGENTS.md`](../../AGENTS.md) is a one-page map of the project, its rules
+and its history, written for AI agents and handy for anyone new to it.
 
 All four checks must pass before a change is done; [Testing and
 tools](testing.md#the-checklist) has the full checklist.
