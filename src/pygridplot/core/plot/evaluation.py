@@ -28,7 +28,7 @@ from numpy.typing import NDArray
 Function = Callable[[Any], Any]
 """A plottable function: it maps an x value (or an array of them) to y."""
 
-PlaneFunction = Callable[[Any, Any], Any]
+XYFunction = Callable[[Any, Any], Any]
 """A function of two variables, ``F(x, y)``, as used for implicit curves."""
 
 VectorFunction = Callable[[Any, Any], Any]
@@ -77,7 +77,7 @@ def evaluate_quietly(func: Function, xs: NDArray[np.float64]) -> NDArray[np.floa
 
 
 def evaluate_xy(
-    func: PlaneFunction, xs: NDArray[np.float64], ys: NDArray[np.float64]
+    func: XYFunction, xs: NDArray[np.float64], ys: NDArray[np.float64]
 ) -> NDArray[np.float64]:
     """Evaluate a function of two variables at many points without ever raising.
 
@@ -100,7 +100,7 @@ def evaluate_xy(
 
 
 def evaluate_xy_quietly(
-    func: PlaneFunction, xs: NDArray[np.float64], ys: NDArray[np.float64]
+    func: XYFunction, xs: NDArray[np.float64], ys: NDArray[np.float64]
 ) -> NDArray[np.float64]:
     """Evaluate like :func:`evaluate_xy`, without silencing warnings itself.
 

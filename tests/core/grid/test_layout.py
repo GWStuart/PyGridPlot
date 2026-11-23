@@ -14,9 +14,12 @@ from pygridplot.core.grid.layout import (
     fade_collisions,
     place_origin_label,
     place_x_labels,
+    place_x_title,
     place_y_labels,
+    place_y_title,
     resolve_overlaps,
     separation,
+    title_box,
     x_labels_top,
     y_label_left,
 )
@@ -177,3 +180,44 @@ def test_resolve_overlaps_keeps_the_more_opaque_label() -> None:
     weak = PlacedLabel(TEXT, 10, 0, size, opacity=0.2)
     apart = PlacedLabel(TEXT, 60, 0, size, opacity=0.1)
     assert resolve_overlaps([weak, strong, apart], padding=4) == [strong, apart]
+
+
+# --- Axis titles -----------------------------------------------------------
+TITLE = LabelText((TextRun("time"),))
+TITLE_SIZE = TextSize(40, 10, descent=3)
+
+
+def test_a_title_box_counts_the_descent() -> None:
+    assert title_box(TITLE_SIZE) == TextSize(40, 13)
+
+
+def test_the_x_title_sits_right_aligned_just_above_the_axis() -> None:
+    # A 2-px axis centred on y=100 covers rows 100 and 101.
+    title = place_x_title(TITLE, TITLE_SIZE, 100.0, RECT, SPACING, 0, None)
+    assert title.left == 400 - 3 - 40
+    assert title.top + 13 == 100 - 4  # letters, descent included, clear the gap
+    raised = place_x_title(TITLE, TITLE_SIZE, 100.0, RECT, SPACING, 5, None)
+    assert raised.top == title.top - 5  # clearance for an arrowhead
+
+
+def test_the_x_title_rides_above_the_tick_labels_and_stays_inside() -> None:
+    # The axis below the plane, with the tick labels pinned at row 288.
+    title = place_x_title(TITLE, TITLE_SIZE, 5000.0, RECT, SPACING, 0, 288)
+    assert title.top + 13 == 288 - 4
+    clear = place_x_title(TITLE, TITLE_SIZE, 5000.0, RECT, SPACING, 0, 288, 10)
+    assert clear.top + 13 == 288 - 10  # out of reach of the labels' fades
+    above = place_x_title(TITLE, TITLE_SIZE, -5000.0, RECT, SPACING, 0, 3)
+    assert above.top == 3  # pinned to the top edge
+    wide = TextSize(500, 10, descent=3)
+    assert place_x_title(TITLE, wide, 100.0, RECT, SPACING, 0, None).left == 3
+
+
+def test_the_y_title_sits_at_the_top_just_right_of_the_axis() -> None:
+    # A 2-px axis centred on x=200 covers columns 200 and 201.
+    title = place_y_title(TITLE, TITLE_SIZE, 200.0, RECT, SPACING, 0)
+    assert (title.left, title.top) == (202 + 4, 3)
+    assert place_y_title(TITLE, TITLE_SIZE, 200.0, RECT, SPACING, 4).left == 210
+    # Labels end 4 px left of the axis (column 196): 12 px clear of them.
+    assert place_y_title(TITLE, TITLE_SIZE, 200.0, RECT, SPACING, 0, 12).left == 208
+    assert place_y_title(TITLE, TITLE_SIZE, -900.0, RECT, SPACING, 0).left == 3
+    assert place_y_title(TITLE, TITLE_SIZE, 900.0, RECT, SPACING, 0).left == 357

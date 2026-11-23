@@ -9,9 +9,12 @@ the point was grabbed) into the point's new position:
   It works in *transformed* coordinates, so a point dragged on a log axis
   follows the cursor exactly and can never reach zero or below.
 * :class:`CurveConstraint` keeps the point on a parametric curve
-  ``(x(t), y(t))``: the curve is sampled on screen and followed from where
-  the point is (see :mod:`pygridplot.core.handles.tracking`). The point is
-  then placed exactly at ``(x(t), y(t))``.
+  ``(x(t), y(t))``: the curve is sampled on screen, and a dragged point
+  goes to the point of the curve at the cursor's x if the curve is a graph
+  (``(t, f(t))``, anything running steadily left to right), or else follows
+  the curve from where it is towards the cursor (see
+  :mod:`pygridplot.core.handles.tracking`). The point is then placed
+  exactly at ``(x(t), y(t))``.
 """
 
 from __future__ import annotations
@@ -24,7 +27,12 @@ from typing import Final, Literal, TypeAlias
 import numpy as np
 
 from pygridplot.core.coords import ScreenRect
-from pygridplot.core.handles.tracking import nearest_on_curve, segment_span
+from pygridplot.core.handles.tracking import (
+    along_axis,
+    graph_axis,
+    nearest_on_curve,
+    segment_span,
+)
 from pygridplot.core.plot.builders import (
     CurveComponent,
     WorldCurve,
@@ -218,7 +226,11 @@ class CurveConstraint:
         self._world: WorldCurve = world_curve(x, y)
         self._sampling = sampling
         self._cache_key: object = None
-        self._cache: tuple[list[CurvePiece], bool] = ([], False)
+        self._cache: tuple[list[CurvePiece], bool, Literal["x", "y"] | None] = (
+            [],
+            False,
+            None,
+        )
 
     def at(self, t: float) -> Placement:
         """Return the point of the curve at parameter ``t`` (clamped to the range).
@@ -279,28 +291,44 @@ class CurveConstraint:
     def _track(
         self, view: View, target: tuple[float, float], current_t: float | None
     ) -> Placement | None:
-        """Follow the curve towards a target (see :func:`nearest_on_curve`).
+        """Follow the curve towards a target.
+
+        A point being dragged on a graph goes to the point level with the
+        target (see :func:`along_axis`); otherwise it follows the curve from
+        where it is (:func:`nearest_on_curve`), and a point being placed goes
+        to the nearest point.
 
         Args:
             view: The view.
             target: The screen point.
-            current_t: The point's parameter, or ``None`` for the nearest point.
+            current_t: The point's parameter while dragged, or ``None`` for
+                the nearest point.
 
         Returns:
             The position, or ``None`` if the curve has no defined points.
         """
-        pieces, closed = self._pieces(view)
-        t = nearest_on_curve(
-            pieces, target, current_t, closed=closed, switch_px=SWITCH_PX
-        )
+        pieces, closed, axis = self._pieces(view)
+        if current_t is None:
+            axis = None
+        if axis is not None:
+            t = along_axis(pieces, target, axis)
+        else:
+            t = nearest_on_curve(
+                pieces, target, current_t, closed=closed, switch_px=SWITCH_PX
+            )
         if t is None:
             return None
-        t = self._refine(view, target, t, segment_span(pieces, t))
+        t = self._refine(view, target, t, segment_span(pieces, t), axis)
         placement = self.at(t)
         return placement if math.isfinite(placement.x) else None
 
     def _refine(
-        self, view: View, target: tuple[float, float], t: float, span: float
+        self,
+        view: View,
+        target: tuple[float, float],
+        t: float,
+        span: float,
+        axis: Literal["x", "y"] | None = None,
     ) -> float:
         """Move ``t`` to the point of the real curve nearest the target.
 
@@ -312,6 +340,8 @@ class CurveConstraint:
             target: The screen point.
             t: The parameter found on the sampled curve.
             span: The parameter width of its segment.
+            axis: Measure only along this screen axis (for a graph: the
+                point level with the target), or ``None`` for the distance.
 
         Returns:
             The refined parameter (``t`` itself if nothing nearer is found).
@@ -331,20 +361,27 @@ class CurveConstraint:
                 xs, ys = self._world(candidates)
                 px, py = view.to_screen(xs, ys)
                 distance = np.hypot(px - target[0], py - target[1])
+                if axis is not None:  # still defined there, but level with it
+                    level = np.abs(px - target[0] if axis == "x" else py - target[1])
+                    distance = np.where(np.isfinite(distance), level, np.nan)
                 if not np.isfinite(distance).any():
                     return t
                 best = float(candidates[int(np.nanargmin(distance))])
                 width *= 2.0 / (_REFINE_SAMPLES - 1)
         return best
 
-    def _pieces(self, view: View) -> tuple[list[CurvePiece], bool]:
-        """Return the curve sampled on screen, and whether it is closed.
+    def _pieces(
+        self, view: View
+    ) -> tuple[list[CurvePiece], bool, Literal["x", "y"] | None]:
+        """Return the curve sampled on screen, whether it is closed, and its graph axis.
 
         Args:
             view: The view.
 
         Returns:
-            The pieces and the closed flag, cached for the view.
+            The pieces, the closed flag and the screen axis the curve is a
+            graph over (see :func:`graph_axis`; ``None`` if neither, or if it
+            is closed), cached for the view.
         """
         key = (
             view.center,
@@ -365,7 +402,8 @@ class CurveConstraint:
             screen, self.t_range, _sampling_box(view.rect), self._sampling
         )
         closed = _is_closed(pieces, self.t_range)
-        self._cache_key, self._cache = key, (pieces, closed)
+        axis = None if closed else graph_axis(pieces)
+        self._cache_key, self._cache = key, (pieces, closed, axis)
         return self._cache
 
 

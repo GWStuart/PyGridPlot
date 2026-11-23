@@ -20,23 +20,29 @@ Pipeline for each axis (see :func:`axis_grid`):
    :mod:`pygridplot.core.grid.loglabels`).
 
 Then, for both axes together: paint the lines as line batches
-(:mod:`pygridplot.core.grid.gridlines`), add the axes, and place the labels
-(:mod:`pygridplot.core.grid.layout`) with their collision rules (x labels
-win over the ``0``, which wins over y labels).
+(:mod:`pygridplot.core.grid.gridlines`), add the axes and their arrowheads,
+and place the labels and the axis titles
+(:mod:`pygridplot.core.grid.layout`) with their collision rules (the
+titles win over x labels, which win over the ``0``, which wins over y
+labels).
 
 Painter's order: minor-style lines, then major-style lines, then the axes,
-then labels.
+then their arrowheads, then labels and titles.
 """
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, replace
 from typing import Final, Literal
 
 from pygridplot.core.coords import Axis, ColorLike, ScreenRect
+from pygridplot.core.grid.categories import Categories, category_candidates
 from pygridplot.core.grid.formatting import ZERO_LABEL
 from pygridplot.core.grid.gridlines import (
     AxisLines,
+    arrow_overhang,
+    axis_arrows,
     axis_batches,
     line_batches,
     linear_axis_lines,
@@ -48,7 +54,9 @@ from pygridplot.core.grid.layout import (
     fade_collisions,
     place_origin_label,
     place_x_labels,
+    place_x_title,
     place_y_labels,
+    place_y_title,
     resolve_overlaps,
     soften_overlaps,
     x_labels_top,
@@ -59,7 +67,15 @@ from pygridplot.core.grid.spacing import SnapTracker, SpacingChoice, choose_fade
 from pygridplot.core.grid.theme import GridTheme
 from pygridplot.core.grid.ticklabels import LABEL_MARGIN_PX, label_candidates
 from pygridplot.core.grid.ticks import compute_axis_ticks
-from pygridplot.core.primitives import FontSpec, LineBatch, TextItem, TextMeasurer
+from pygridplot.core.primitives import (
+    Fill,
+    FontSpec,
+    LabelText,
+    LineBatch,
+    TextItem,
+    TextMeasurer,
+    TextRun,
+)
 from pygridplot.core.view import View
 
 COLLISION_PADDING_PX: Final = 2
@@ -111,25 +127,30 @@ class AxisGrid:
 
 @dataclass(frozen=True, slots=True)
 class AxisLabels:
-    """The tick labels of one frame, grouped by what they label.
+    """The tick labels and axis titles of one frame, grouped by what they label.
 
     Attributes:
         x: Labels of the x axis.
         zero: The single ``0`` label, if it is shown.
         y: Labels of the y axis.
+        x_title: The x axis' title, if it has one.
+        y_title: The y axis' title, if it has one (and it is not hidden by
+            the x axis' title, in a corner).
     """
 
     x: tuple[TextItem, ...] = ()
     zero: tuple[TextItem, ...] = ()
     y: tuple[TextItem, ...] = ()
+    x_title: tuple[TextItem, ...] = ()
+    y_title: tuple[TextItem, ...] = ()
 
     def all(self) -> tuple[TextItem, ...]:
-        """Return every label in drawing order (x, then zero, then y).
+        """Return every label in drawing order (x, zero, y, then the titles).
 
         Returns:
             All labels.
         """
-        return (*self.x, *self.zero, *self.y)
+        return (*self.x, *self.zero, *self.y, *self.x_title, *self.y_title)
 
 
 @dataclass(frozen=True, slots=True, eq=False)
@@ -140,9 +161,11 @@ class GridScene:
         rect: The screen rectangle the grid covers.
         background: Fill colour for the plane, or ``None`` for no fill.
         lines: Line batches in painter's order (axes last).
-        axis_labels: Positioned tick labels grouped by axis.
+        axis_labels: Positioned tick labels and titles grouped by axis.
         x_spacing: The major spacing chosen for the x axis.
         y_spacing: The major spacing chosen for the y axis.
+        arrows: The axes' arrowheads, drawn after the lines (see
+            :attr:`GridTheme.show_arrows`).
     """
 
     rect: ScreenRect
@@ -151,10 +174,11 @@ class GridScene:
     axis_labels: AxisLabels
     x_spacing: SpacingChoice
     y_spacing: SpacingChoice
+    arrows: tuple[Fill, ...] = ()
 
     @property
     def labels(self) -> tuple[TextItem, ...]:
-        """All tick labels in drawing order (drawn after all lines)."""
+        """All labels and titles in drawing order (drawn after all lines)."""
         return self.axis_labels.all()
 
 
@@ -194,6 +218,11 @@ def build_grid(
     theme: GridTheme,
     measurer: TextMeasurer,
     state: GridState | None = None,
+    *,
+    x_title: str | None = None,
+    y_title: str | None = None,
+    x_labels: Categories | None = None,
+    y_labels: Categories | None = None,
 ) -> GridScene:
     """Build the grid, axes and labels for the current view.
 
@@ -203,6 +232,11 @@ def build_grid(
         measurer: Reports label sizes (normally the renderer).
         state: Memory for ``"snap"`` hysteresis. Without it, snapping has no
             hysteresis.
+        x_title: The x axis' title (``None`` or ``""`` for none).
+        y_title: The y axis' title (``None`` or ``""`` for none).
+        x_labels: Names for positions along the x axis, in place of its
+            numbers (see :mod:`pygridplot.core.grid.categories`), or ``None``.
+        y_labels: Likewise for the y axis.
 
     Returns:
         The primitives to draw, in painter's order.
@@ -222,11 +256,30 @@ def build_grid(
     ranked.sort(key=lambda item: item[0])  # stable: x before y at equal rank
     lines = [batch for _, batch in ranked]
     lines.extend(axis_batches(view, theme))
+    arrows = tuple(axis_arrows(view, theme))
 
+    named = x_labels is not None or y_labels is not None
+    if named and theme.show_labels:
+        x_grid, y_grid = _with_categories(
+            view, theme, measurer, x_grid, y_grid, x_labels, y_labels
+        )
     labels = AxisLabels()
-    if theme.show_labels:
-        labels = _build_labels(view, theme, measurer, x_grid, y_grid)
-    return GridScene(rect, theme.background, tuple(lines), labels, x_choice, y_choice)
+    if theme.show_labels or x_title or y_title:
+        titles = (x_title or None, y_title or None)
+        first: Axis = "y" if y_labels is not None and x_labels is None else "x"
+        labels = _build_labels(
+            view,
+            theme,
+            measurer,
+            x_grid,
+            y_grid,
+            titles,
+            shared_zero=not named,
+            names_first=first,
+        )
+    return GridScene(
+        rect, theme.background, tuple(lines), labels, x_choice, y_choice, arrows
+    )
 
 
 def axis_grid(
@@ -294,14 +347,70 @@ def choose_axis_spacing(
     return decade_choice(choice) if view.axis_transform(axis).is_log else choice
 
 
+def _with_categories(
+    view: View,
+    theme: GridTheme,
+    measurer: TextMeasurer,
+    x_grid: AxisGrid,
+    y_grid: AxisGrid,
+    x_labels: Categories | None,
+    y_labels: Categories | None,
+) -> tuple[AxisGrid, AxisGrid]:
+    """Put category names in place of an axis' numbers, and zero on the other.
+
+    A categorical axis has no shared ``0`` at the origin, so the other axis,
+    if numeric (and linear), gets a label of its own at zero.
+
+    Args:
+        view: The view being drawn.
+        theme: Supplies label settings.
+        measurer: Measures the labels.
+        x_grid: The x axis' lines and label candidates.
+        y_grid: The y axis' lines and label candidates.
+        x_labels: The x axis' categories, or ``None``.
+        y_labels: The y axis' categories, or ``None``.
+
+    Returns:
+        The two axes' grids, with their labels replaced or added to.
+    """
+    font = theme.label_font_spec
+    grids: dict[Axis, AxisGrid] = {"x": x_grid, "y": y_grid}
+    names: dict[Axis, Categories | None] = {"x": x_labels, "y": y_labels}
+    pairs: tuple[tuple[Axis, Axis], ...] = (("x", "y"), ("y", "x"))
+    for axis, _ in pairs:
+        categories = names[axis]
+        if categories is not None:
+            labels = category_candidates(axis, categories, view, theme, measurer, font)
+            grids[axis] = AxisGrid(grids[axis].lines, labels, None)
+    for axis, other in pairs:
+        if names[axis] is None or names[other] is not None:
+            continue
+        if view.axis_transform(other).is_log:
+            continue  # no zero on a log axis
+        position = float(view.axis_to_screen(other, 0.0))
+        rect = view.rect
+        low, high = (rect.left, rect.right) if other == "x" else (rect.top, rect.bottom)
+        if low - LABEL_MARGIN_PX <= position <= high + LABEL_MARGIN_PX:
+            zero = LabelCandidate(
+                position, ZERO_LABEL, measurer.measure_text(ZERO_LABEL, font)
+            )
+            labels = sorted([*grids[other].labels, zero], key=lambda c: c.position)
+            grids[other] = replace(grids[other], labels=labels)
+    return grids["x"], grids["y"]
+
+
 def _build_labels(
     view: View,
     theme: GridTheme,
     measurer: TextMeasurer,
     x_grid: AxisGrid,
     y_grid: AxisGrid,
+    titles: tuple[str | None, str | None],
+    *,
+    shared_zero: bool = True,
+    names_first: Axis = "x",
 ) -> AxisLabels:
-    """Place all tick labels.
+    """Place all tick labels and the axis titles.
 
     Args:
         view: The view being drawn.
@@ -309,11 +418,17 @@ def _build_labels(
         measurer: Reports label sizes.
         x_grid: The x axis' lines and label candidates.
         y_grid: The y axis' lines and label candidates.
+        titles: The x and y axis' titles, or ``None`` for none.
+        shared_zero: Whether to label the origin with one ``0`` for both
+            axes (not when an axis names categories).
+        names_first: The axis whose labels win where the two axes' labels
+            meet: ``"x"``, unless only the y axis names categories (names
+            win over numbers).
 
     Returns:
-        The positioned labels. Priority is x labels, then the ``0`` label, then
-        y labels: each group fades out where it comes close to a group before
-        it.
+        The positioned labels. Priority is the titles (x, then y), then x
+        labels, then the ``0`` label, then y labels: each group fades out
+        where it comes close to a group before it.
 
     The single ``0`` label stays while at least one axis is on screen. With
     the other axis pinned it labels the visible axis line, and it only fades
@@ -322,36 +437,83 @@ def _build_labels(
     rect = view.rect
     font = theme.label_font_spec
     spacing = LabelSpacing(theme.label_gap, theme.label_edge_margin, theme.axis_width)
-    zero = measurer.measure_text(ZERO_LABEL, font)
     axis_x = _axis_line_position(view, "x")
     axis_y = _axis_line_position(view, "y")
 
-    overflow = max((c.size.overflow_top for c in x_grid.labels), default=0)
-    top = x_labels_top(axis_y, rect, zero.height, overflow, spacing)
-    fixed = _settle_overlaps(
-        place_x_labels(x_grid.labels, top, hang_minus=theme.hang_minus), x_grid
-    )
-    y_placed = _settle_overlaps(
-        place_y_labels(y_grid.labels, axis_x, rect, spacing), y_grid
-    )
-
+    fixed: list[PlacedLabel] = []
+    y_placed: list[PlacedLabel] = []
     origins: list[PlacedLabel] = []
-    presence = max(
-        _axis_presence(axis_x, rect.left, rect.right),
-        _axis_presence(axis_y, rect.top, rect.bottom),
-    )
-    if presence > 0.0:
-        origin = place_origin_label(ZERO_LABEL, zero, axis_x, rect, top, spacing)
-        origins = [replace(origin, opacity=presence)]
+    row_top = None
+    if theme.show_labels:
+        zero = measurer.measure_text(ZERO_LABEL, font)
+        overflow = max((c.size.overflow_top for c in x_grid.labels), default=0)
+        top = x_labels_top(axis_y, rect, zero.height, overflow, spacing)
+        row_top = top - overflow
+        fixed = _settle_overlaps(
+            place_x_labels(x_grid.labels, top, hang_minus=theme.hang_minus), x_grid
+        )
+        y_placed = _settle_overlaps(
+            place_y_labels(y_grid.labels, axis_x, rect, spacing), y_grid
+        )
+        presence = max(
+            _axis_presence(axis_x, rect.left, rect.right),
+            _axis_presence(axis_y, rect.top, rect.bottom),
+        )
+        if presence > 0.0 and shared_zero:
+            origin = place_origin_label(ZERO_LABEL, zero, axis_x, rect, top, spacing)
+            origins = [replace(origin, opacity=presence)]
+
     pad, fade = COLLISION_PADDING_PX, COLLISION_FADE_PX
-    # Priority: x labels, then the 0 label, then y labels.
-    origins = fade_collisions(fixed, origins, pad, fade)
-    y_placed = fade_collisions([*fixed, *origins], y_placed, pad, fade)
+    title_font = theme.title_font_spec
+    clearance = math.ceil(arrow_overhang(theme))
+    clear = pad + math.ceil(fade)  # where labels stop fading for a title
+    x_titles: list[PlacedLabel] = []
+    y_titles: list[PlacedLabel] = []
+    x_title, y_title = titles
+    if x_title is not None:
+        text = _title_text(x_title)
+        size = measurer.measure_text(text, title_font)
+        x_titles = [
+            place_x_title(text, size, axis_y, rect, spacing, clearance, row_top, clear)
+        ]
+    if y_title is not None:
+        text = _title_text(y_title)
+        size = measurer.measure_text(text, title_font)
+        y_titles = fade_collisions(
+            x_titles,
+            [place_y_title(text, size, axis_x, rect, spacing, clearance, clear)],
+            pad,
+            fade,
+        )
+    above = [*x_titles, *y_titles]
+    if names_first == "y":
+        # Names win over numbers: the titles, then y labels, then x labels.
+        y_placed = fade_collisions(above, y_placed, pad, fade)
+        fixed = fade_collisions([*above, *y_placed], fixed, pad, fade)
+    else:
+        # The titles, then x labels, then the 0 label, then y labels.
+        fixed = fade_collisions(above, fixed, pad, fade)
+        origins = fade_collisions([*above, *fixed], origins, pad, fade)
+        y_placed = fade_collisions([*above, *fixed, *origins], y_placed, pad, fade)
     return AxisLabels(
         x=tuple(_text_item(label, theme, font) for label in fixed),
         zero=tuple(_text_item(label, theme, font) for label in origins),
         y=tuple(_text_item(label, theme, font) for label in y_placed),
+        x_title=tuple(_text_item(label, theme, title_font) for label in x_titles),
+        y_title=tuple(_text_item(label, theme, title_font) for label in y_titles),
     )
+
+
+def _title_text(title: str) -> LabelText:
+    """Return an axis title as label text: one run, as written.
+
+    Args:
+        title: The title.
+
+    Returns:
+        The text to measure and draw.
+    """
+    return LabelText((TextRun(title),))
 
 
 def _settle_overlaps(placed: list[PlacedLabel], grid: AxisGrid) -> list[PlacedLabel]:

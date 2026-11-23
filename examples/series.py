@@ -11,7 +11,7 @@ The faded curve is the function, the bold one the partial sum
 by about 9% however many harmonics there are (the Gibbs phenomenon), while
 at a kink (the triangle wave) they converge quickly. The lower plane shows
 the amplitude of each harmonic, ``√(aₖ² + bₖ²)``, the series'
-``amplitudes``, drawn with :meth:`pygridplot.Plane.sequence`: they fall
+``amplitudes``, drawn with :meth:`pygridplot.Grid.sequence`: they fall
 off like ``1/k`` for jumps and like ``1/k²`` for kinks. Both planes pan and
 zoom on their own.
 """
@@ -78,9 +78,9 @@ def main() -> None:
     pygame.display.set_caption("PyGridPlot: Fourier series")
     font = pygame.font.Font(bundled_font_path(), 14)
     upper, lower = layout(screen)
-    plane = pgp.Plane(upper, x_range=(-10, 10))
-    spectrum = pgp.Plane(lower, x_range=(-1, 33), y_range=(-0.25, 2.25))
-    harmonics = plane.slider("harmonics", (1, 128), value=7, step=1, log=True)
+    grid = pgp.Grid(upper, x_range=(-10, 10))
+    spectrum = pgp.Grid(lower, x_range=(-1, 33), y_range=(-0.25, 2.25))
+    harmonics = grid.slider("harmonics", (1, 128), value=7, step=1, log=True)
     current = 0
     terms = -1
     series = pgp.fourier(FUNCTIONS[0][1], 0)
@@ -92,11 +92,11 @@ def main() -> None:
             if event.type == pygame.QUIT:
                 running = False
             elif event.type == pygame.WINDOWSIZECHANGED:
-                plane.rect, spectrum.rect = layout(screen)
+                grid.rect, spectrum.rect = layout(screen)
             elif event.type == pygame.KEYDOWN and event.key == pygame.K_SPACE:
                 current = (current + 1) % len(FUNCTIONS)
                 terms = -1  # compute the series again
-            plane.handle_event(event)
+            grid.handle_event(event)
             spectrum.handle_event(event)
 
         name, func = FUNCTIONS[current]
@@ -104,12 +104,12 @@ def main() -> None:
             terms = harmonics.value
             series = pgp.fourier(func, terms)
 
-        plane.draw_grid(screen)
-        plane.plot(screen, periodic(func), style=FADED, color=BLUE)
-        plane.plot(screen, series, color=RED)
-        plane.draw_draggables(screen)
+        grid.draw(screen)
+        grid.plot(screen, periodic(func), style=FADED, color=BLUE)
+        grid.plot(screen, series, color=RED)
+        grid.draw_controls(screen)
 
-        spectrum.draw_grid(screen)
+        spectrum.draw(screen)
         spectrum.sequence(screen, series.amplitudes, width=3, color=RED)  # k = 0 ... n
 
         draw_caption(

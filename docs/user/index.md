@@ -8,16 +8,19 @@ library works the way it does.
 1. [Getting started](getting-started.md): installing, the first program, the
    frame loop and quick mode.
 2. [The plane](the-plane.md): creating a plane, setting up what it shows,
-   converting coordinates, embedding a plane and using several.
+   axis titles and arrowheads, categories on an axis, converting
+   coordinates, embedding a plane and using several.
 3. [Interaction](interaction.md): the built-in pan and zoom controls,
    configuring them, and moving the view from your own code.
 4. [Plotting](plotting.md): functions `y = f(x)`, their derivatives and
    integrals, Taylor polynomials and Fourier series, parametric, polar and
    implicit curves, contour lines, areas between
-   graphs, inequalities, vector and slope fields, points, polylines,
-   polygons and arrows.
-5. [Draggable points](draggable-points.md): points the user drags, freely,
-   along one axis or along a curve.
+   graphs, inequalities, vector and slope fields, sequences, points,
+   polylines, polygons and arrows; data plots (scatter plots with error
+   bars and colour by value, step plots, bar charts, histograms, box and
+   violin plots); text and legends.
+5. [Draggable points and sliders](draggable-points.md): points the user
+   drags, freely, along one axis or along a curve, and sliders for values.
 6. [Logarithmic axes](log-axes.md): log-log and semi-log planes.
 7. [Styles and themes](styles-and-themes.md): colours, reusable styles, the
    palette, themes and how numbers are written.

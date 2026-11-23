@@ -6,11 +6,13 @@ import pytest
 
 from pygridplot.core.plot.style import (
     ArrowStyle,
+    BarStyle,
     ColorCycle,
     FillStyle,
     LineStyle,
     PointStyle,
     PolygonStyle,
+    SequenceStyle,
     with_overrides,
 )
 
@@ -23,6 +25,13 @@ def test_default_styles_are_valid() -> None:
     assert FillStyle().color is None
     assert ArrowStyle().head_size is None  # automatic
     assert ArrowStyle(head_size=0).head_size == 0  # no head
+    assert (SequenceStyle().width, SequenceStyle().radius) == (2.0, 3.5)
+    assert SequenceStyle(width=0).radius > 0  # markers alone
+    assert SequenceStyle(radius=0).width > 0  # stems alone
+    assert PointStyle(radius=0).radius == 0  # error bars alone
+    assert (PointStyle().error_width, PointStyle().error_cap) == (1.5, 8.0)
+    assert (BarStyle().opacity, BarStyle().edge_width) == (0.5, 1.5)
+    assert BarStyle(edge_width=0).edge_width == 0  # no outline
 
 
 @pytest.mark.parametrize(
@@ -43,6 +52,16 @@ def test_default_styles_are_valid() -> None:
         lambda: ArrowStyle(head_size=-1),
         lambda: ArrowStyle(head_size=float("inf")),
         lambda: ArrowStyle(opacity=2),
+        lambda: SequenceStyle(width=0, radius=0),  # nothing to draw
+        lambda: SequenceStyle(width=-1),
+        lambda: SequenceStyle(radius=float("inf")),
+        lambda: SequenceStyle(marker="star"),  # type: ignore[arg-type]
+        lambda: SequenceStyle(opacity=-1),
+        lambda: PointStyle(error_width=0),
+        lambda: PointStyle(error_cap=-1),
+        lambda: BarStyle(opacity=1.5),
+        lambda: BarStyle(edge_width=-1),
+        lambda: BarStyle(edge_width=float("nan")),
     ],
 )
 def test_invalid_styles_are_rejected(make: object) -> None:

@@ -149,6 +149,18 @@ class FourierSeries:
         """The period ``T``, the length of the interval."""
         return self.interval[1] - self.interval[0]
 
+    @property
+    def amplitudes(self) -> NDArray[np.float64]:
+        """The amplitude of each harmonic, ``k = 0 ... n``: the series' spectrum.
+
+        ``√(aₖ² + bₖ²)``, the size of the harmonic ``aₖ cos kωx + bₖ sin kωx``,
+        and ``|a₀| / 2`` (the mean's) for ``k = 0``. A new array each time;
+        draw it with :meth:`~pygridplot.Grid.sequence`.
+        """
+        amplitudes = np.hypot(self.cosines, self.sines)
+        amplitudes[0] = abs(self.cosines[0]) / 2
+        return amplitudes
+
     @overload
     def __call__(self, x: float) -> float: ...
     @overload
@@ -215,7 +227,7 @@ def taylor(func: Function, a: float, n: int) -> TaylorPolynomial:
     other::
 
         p = taylor(np.sin, 0, 5)           # x - x³/6 + x⁵/120
-        plane.plot(screen, p)
+        grid.plot(screen, p)
         p.coefficients                     # [0, 1, 0, -1/6, 0, 1/120]
 
     Its coefficients come from the exact derivatives of
@@ -259,8 +271,8 @@ def fourier(
     periodic itself. The partial sum is a function of ``x`` like any other::
 
         square = fourier(np.sign, 9)                      # 9 harmonics
-        plane.plot(screen, square)
-        wave = fourier(lambda x: x * (1 - x), 5, (0, 1))  # period 1
+        grid.plot(screen, square)
+        wave = fourier(lambda x: x * (1 - x), 5, (0, 1))   # period 1
         square.sines[1]                                    # 4/π
 
     The coefficients are integrals over the interval, computed accurately
@@ -277,7 +289,8 @@ def fourier(
     Returns:
         The partial sum ``a₀/2 + Σ (aₖ cos kωx + bₖ sin kωx)``, ``ω = 2π/T``,
         with ``cosines`` (``a₀ ... aₙ``), ``sines`` (``b₀ ... bₙ``),
-        ``interval`` and ``period`` as attributes. Its values are NaN if the
+        ``amplitudes`` (the spectrum), ``interval`` and ``period`` as
+        attributes. Its values are NaN if the
         function's integral over the interval is undefined (it diverges, or
         the function is undefined on part of it).
 

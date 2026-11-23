@@ -58,9 +58,15 @@ class GridTheme:
             so the grid has no gaps.
         show_axes: Whether to draw the axes.
         show_labels: Whether to draw tick labels.
+        show_arrows: Whether to end each axis in an arrowhead at its positive
+            end (the right of the x axis, the top of the y axis), as in
+            textbook diagrams. The heads grow with :attr:`axis_width`.
         label_font: Font for labels: ``None`` for the bundled DejaVu Sans,
             a path to a font file, or a system font name.
         label_size: Label font size in points.
+        title_size: Font size of the axis titles in points (see
+            :meth:`pygridplot.Grid.draw`). They use the label font,
+            colour and halo.
         label_halo_width: Thickness of the label halo in pixels (0 disables).
         label_gap: Distance in pixels between an axis and its labels.
         label_edge_margin: Smallest distance in pixels between a label pinned
@@ -97,9 +103,11 @@ class GridTheme:
     show_major: bool = True
     show_axes: bool = True
     show_labels: bool = True
+    show_arrows: bool = False
 
     label_font: str | None = None
     label_size: int = 12
+    title_size: int = 14
     label_halo_width: int = 2
     label_gap: int = 4
     label_edge_margin: int = 4
@@ -133,6 +141,9 @@ class GridTheme:
         if self.label_size < 1 or self.label_halo_width < 0:
             msg = "label_size must be positive and label_halo_width non-negative"
             raise ValueError(msg)
+        if self.title_size < 1:
+            msg = "title_size must be positive"
+            raise ValueError(msg)
         if not self.palette:
             msg = "palette needs at least one colour"
             raise ValueError(msg)
@@ -141,6 +152,11 @@ class GridTheme:
     def label_font_spec(self) -> FontSpec:
         """The label font as a :class:`~pygridplot.core.primitives.FontSpec`."""
         return FontSpec(self.label_font, self.label_size)
+
+    @property
+    def title_font_spec(self) -> FontSpec:
+        """The axis titles' font as a :class:`~pygridplot.core.primitives.FontSpec`."""
+        return FontSpec(self.label_font, self.title_size)
 
     @property
     def resolved_halo_color(self) -> ColorLike | None:

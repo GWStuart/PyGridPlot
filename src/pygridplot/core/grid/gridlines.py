@@ -7,12 +7,14 @@ style). Linear axes derive them from their classified candidate lines (see
 compute them line by line (see :mod:`pygridplot.core.grid.logticks`). This
 module then groups lines that share a paint into
 :class:`~pygridplot.core.primitives.LineBatch` primitives, and adds the two
-axes.
+axes, with an arrowhead at each one's positive end if the theme asks for it
+(:func:`axis_arrows`).
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Final
 
 import numpy as np
 from numpy.typing import NDArray
@@ -23,6 +25,7 @@ from pygridplot.core.grid.ticks import AxisTicks, LineClass
 from pygridplot.core.pixels import line_start
 from pygridplot.core.primitives import (
     FULL_OPACITY,
+    Fill,
     LineBatch,
     Orientation,
     PaintLayer,
@@ -200,8 +203,64 @@ def _paint_for(
     return layers, width, 2
 
 
+ARROW_LENGTH_PER_WIDTH: Final = 3.0
+"""An axis arrowhead is this many axis widths long, plus :data:`ARROW_LENGTH_BASE`."""
+
+ARROW_LENGTH_BASE: Final = 6.0
+"""Pixels added to the length of every axis arrowhead."""
+
+ARROW_ASPECT: Final = 0.8
+"""The width of an axis arrowhead across its barbs, as a fraction of its length.
+
+The same proportions as plotted arrows (see :mod:`pygridplot.core.plot.arrows`).
+"""
+
+ARROW_INSET_PX: Final = 1.0
+"""How far inside the plane's edge an axis arrowhead's tip is."""
+
+ARROW_OVERLAP_PX: Final = 2.0
+"""How far an axis line runs on under its arrowhead, so they join without a seam.
+
+The head is wider than the line for this far (by much more), so the line
+never shows beside it.
+"""
+
+
+def arrow_head(theme: GridTheme) -> tuple[float, float]:
+    """Return the length and width of the axes' arrowheads, in pixels.
+
+    Args:
+        theme: Supplies the axis width.
+
+    Returns:
+        ``(length, width)``, the width measured across the barbs.
+    """
+    length = ARROW_LENGTH_PER_WIDTH * theme.axis_width + ARROW_LENGTH_BASE
+    return length, ARROW_ASPECT * length
+
+
+def arrow_overhang(theme: GridTheme) -> float:
+    """Return how far the axes' arrowheads reach beyond the sides of the axis lines.
+
+    Axis titles keep this much further from the axes, so they clear the heads.
+
+    Args:
+        theme: Supplies the axis settings.
+
+    Returns:
+        The overhang in pixels (0 without arrowheads).
+    """
+    if not (theme.show_axes and theme.show_arrows):
+        return 0.0
+    _, width = arrow_head(theme)
+    return max(0.0, (width - theme.axis_width) / 2.0)
+
+
 def axis_batches(view: View, theme: GridTheme) -> list[LineBatch]:
     """Return line batches for whichever axes are on screen.
+
+    With arrowheads (:attr:`GridTheme.show_arrows`) each axis stops just
+    under its head, at its positive end, instead of running to the edge.
 
     Args:
         view: The view being drawn.
@@ -216,18 +275,85 @@ def axis_batches(view: View, theme: GridTheme) -> list[LineBatch]:
     rect = view.rect
     width = theme.axis_width
     paint = (PaintLayer(theme.axis_color),)
+    shorten = 0.0
+    if theme.show_arrows:
+        length, _ = arrow_head(theme)
+        shorten = ARROW_INSET_PX + length - ARROW_OVERLAP_PX
     batches = []
-    axis_y = view.to_screen_y(0.0)
-    if not view.log_y and _line_visible(axis_y, width, rect.top, rect.bottom):
-        span = (float(rect.left), float(rect.right))
+    axis_y = _visible_axis(view, "x", width)
+    if axis_y is not None:
+        span = (float(rect.left), rect.right - shorten)
         positions = np.array([axis_y])
         batches.append(LineBatch(Orientation.HORIZONTAL, positions, span, paint, width))
-    axis_x = view.to_screen_x(0.0)
-    if not view.log_x and _line_visible(axis_x, width, rect.left, rect.right):
-        span = (float(rect.top), float(rect.bottom))
+    axis_x = _visible_axis(view, "y", width)
+    if axis_x is not None:
+        span = (rect.top + shorten, float(rect.bottom))
         positions = np.array([axis_x])
         batches.append(LineBatch(Orientation.VERTICAL, positions, span, paint, width))
     return batches
+
+
+def axis_arrows(view: View, theme: GridTheme) -> list[Fill]:
+    """Return the arrowheads at the positive ends of the axes on screen.
+
+    Each head is a triangle centred on its axis line's pixels (so on the
+    line exactly, whatever its width), with its tip just inside the plane's
+    edge. The two heads are separate fills, so neither is rasterised over
+    the whole plane.
+
+    Args:
+        view: The view being drawn.
+        theme: Supplies the axis colour, width and the switch.
+
+    Returns:
+        Zero, one or two fills (none unless :attr:`GridTheme.show_arrows`).
+    """
+    if not (theme.show_axes and theme.show_arrows):
+        return []
+    rect = view.rect
+    width = theme.axis_width
+    length, head_width = arrow_head(theme)
+    half = head_width / 2.0
+    heads = []
+    axis_y = _visible_axis(view, "x", width)
+    if axis_y is not None:
+        center = line_start(axis_y, width) + (width - 1) / 2.0
+        tip = rect.right - 0.5 - ARROW_INSET_PX
+        base = tip - length
+        ring = np.array([[tip, center], [base, center + half], [base, center - half]])
+        heads.append(Fill((ring,), theme.axis_color))
+    axis_x = _visible_axis(view, "y", width)
+    if axis_x is not None:
+        center = line_start(axis_x, width) + (width - 1) / 2.0
+        tip = rect.top - 0.5 + ARROW_INSET_PX
+        base = tip + length
+        ring = np.array([[center, tip], [center - half, base], [center + half, base]])
+        heads.append(Fill((ring,), theme.axis_color))
+    return heads
+
+
+def _visible_axis(view: View, axis: Axis, width: int) -> float | None:
+    """Return the screen position of an axis line, if it is drawn.
+
+    Args:
+        view: The view being drawn.
+        axis: ``"x"`` for the x axis (the line ``y = 0``, horizontal) or
+            ``"y"`` for the y axis (the line ``x = 0``, vertical).
+        width: The axis line's thickness in pixels.
+
+    Returns:
+        The line's continuous screen coordinate across it, or ``None`` if
+        it is off screen, or does not exist because the other axis is
+        logarithmic (which has no zero).
+    """
+    rect = view.rect
+    if axis == "x":
+        position = view.to_screen_y(0.0)
+        drawn = not view.log_y and _line_visible(position, width, rect.top, rect.bottom)
+    else:
+        position = view.to_screen_x(0.0)
+        drawn = not view.log_x and _line_visible(position, width, rect.left, rect.right)
+    return position if drawn else None
 
 
 def _line_visible(position: float, width: int, low: int, high: int) -> bool:

@@ -49,39 +49,39 @@ OVERLAYS = ("none", "functions", "shapes", "power laws", "curves")
 """What the P key cycles through."""
 
 
-def draw_plots(plane: pgp.Plane, screen: pygame.Surface, overlay: str) -> None:
+def draw_plots(grid: pgp.Grid, screen: pygame.Surface, overlay: str) -> None:
     """Draw the chosen set of plots on top of the grid.
 
     Args:
-        plane: The plane.
+        grid: The plane.
         screen: The display surface.
         overlay: One of :data:`OVERLAYS`.
     """
     if overlay == "functions":
         for func in (lambda x: 1 / x, np.tan, np.sqrt, np.log, np.floor, math.gamma):
-            plane.plot(screen, func)
+            grid.plot(screen, func)
     elif overlay == "shapes":
         angles = np.pi / 2 + np.arange(5) * 4 * np.pi / 5
         star = np.column_stack((2 * np.cos(angles), 2 * np.sin(angles)))
-        plane.polygon(screen, star)
-        plane.polygon(screen, star + np.array([5.0, 0.0]), fill_rule="evenodd")
+        grid.polygon(screen, star)
+        grid.polygon(screen, star + np.array([5.0, 0.0]), fill_rule="evenodd")
         xs = np.linspace(-8, 8, 81)
-        plane.polyline(screen, np.column_stack((xs, np.sin(xs) - 3)), width=1.5)
-        plane.points(screen, np.column_stack((xs, np.sin(xs) - 3)), radius=3)
-        plane.points(screen, [(-4, 3), (-3, 3), (-2, 3)], marker="diamond", radius=7)
+        grid.polyline(screen, np.column_stack((xs, np.sin(xs) - 3)), width=1.5)
+        grid.points(screen, np.column_stack((xs, np.sin(xs) - 3)), radius=3)
+        grid.points(screen, [(-4, 3), (-3, 3), (-2, 3)], marker="diamond", radius=7)
     elif overlay == "power laws":  # straight lines on log-log axes
         for power in (-1.0, 0.5, 1.0, 2.0, 3.0):
-            plane.plot(screen, lambda x, k=power: x**k)
-        plane.plot(screen, np.exp)
+            grid.plot(screen, lambda x, k=power: x**k)
+        grid.plot(screen, np.exp)
         xs = np.geomspace(0.01, 100, 15)
-        plane.points(screen, np.column_stack((xs, 2 * xs**1.5)), edge_color="white")
+        grid.points(screen, np.column_stack((xs, 2 * xs**1.5)), edge_color="white")
     elif overlay == "curves":  # parametric and polar curves
-        plane.polar(screen, lambda a: 3 * np.cos(4 * a))
-        plane.polar(screen, lambda a: 3 * np.sqrt(np.cos(2 * a)))
-        plane.parametric(
+        grid.polar(screen, lambda a: 3 * np.cos(4 * a))
+        grid.polar(screen, lambda a: 3 * np.sqrt(np.cos(2 * a)))
+        grid.parametric(
             screen, lambda t: t - np.sin(t), lambda t: 1 - np.cos(t), (-9, 9)
         )
-        plane.parametric(screen, np.tan, lambda t: -3 + 0.3 * t, (-4, 4))
+        grid.parametric(screen, np.tan, lambda t: -3 + 0.3 * t, (-4, 4))
 
 
 def describe_spacing(choice: SpacingChoice) -> str:
@@ -98,17 +98,17 @@ def describe_spacing(choice: SpacingChoice) -> str:
     return f"{choice.fine} -> {choice.coarse} ({choice.blend:.0%})"
 
 
-def toggle_theme_setting(plane: pgp.Plane, key: int) -> bool:
+def toggle_theme_setting(grid: pgp.Grid, key: int) -> bool:
     """Apply a theme-changing hotkey to the plane.
 
     Args:
-        plane: The plane to restyle.
+        grid: The plane to restyle.
         key: The pressed key.
 
     Returns:
         ``True`` if the key changed the theme.
     """
-    theme = plane.theme
+    theme = grid.theme
     flags = {
         pygame.K_n: "show_minor",
         pygame.K_j: "show_major",
@@ -117,10 +117,10 @@ def toggle_theme_setting(plane: pgp.Plane, key: int) -> bool:
     }
     if key in flags:
         name = flags[key]
-        plane.theme = replace(theme, **{name: not getattr(theme, name)})
+        grid.theme = replace(theme, **{name: not getattr(theme, name)})
     elif key == pygame.K_t:
         base = pgp.LIGHT if theme.background == pgp.DARK.background else pgp.DARK
-        plane.theme = replace(
+        grid.theme = replace(
             base,
             transition=theme.transition,
             spacing_rule=theme.spacing_rule,
@@ -128,18 +128,16 @@ def toggle_theme_setting(plane: pgp.Plane, key: int) -> bool:
         )
     elif key == pygame.K_f:
         mode = "snap" if theme.transition == "fade" else "fade"
-        plane.theme = replace(theme, transition=mode)
+        grid.theme = replace(theme, transition=mode)
     elif key == pygame.K_r:
         rule = "ceil" if theme.spacing_rule == "nearest" else "nearest"
-        plane.theme = replace(theme, spacing_rule=rule)
+        grid.theme = replace(theme, spacing_rule=rule)
     elif key == pygame.K_h:
-        plane.theme = replace(
-            theme, label_halo_width=0 if theme.label_halo_width else 2
-        )
+        grid.theme = replace(theme, label_halo_width=0 if theme.label_halo_width else 2)
     elif key in (pygame.K_LEFTBRACKET, pygame.K_RIGHTBRACKET):
         factor = 1.1 if key == pygame.K_RIGHTBRACKET else 1 / 1.1
         target = min(max(theme.target_major_px * factor, 30.0), 400.0)
-        plane.theme = replace(theme, target_major_px=target)
+        grid.theme = replace(theme, target_major_px=target)
     else:
         return False
     return True
@@ -148,7 +146,7 @@ def toggle_theme_setting(plane: pgp.Plane, key: int) -> bool:
 def draw_overlay(
     screen: pygame.Surface,
     font: pygame.font.Font,
-    plane: pgp.Plane,
+    grid: pgp.Grid,
     frame_ms: float,
     grid_ms: float,
     plot_ms: float,
@@ -159,16 +157,16 @@ def draw_overlay(
     Args:
         screen: The display surface.
         font: Font for the overlay text.
-        plane: The plane being inspected.
+        grid: The plane being inspected.
         frame_ms: Smoothed total frame time in milliseconds.
-        grid_ms: Smoothed time spent in ``draw_grid`` in milliseconds.
+        grid_ms: Smoothed time spent in ``grid.draw`` in milliseconds.
         plot_ms: Smoothed time spent drawing plots in milliseconds.
         reused: Plotting calls reused from the previous frame, and all calls,
             in the last frame.
     """
-    view = plane.view
-    grid = plane.last_grid
-    theme = plane.theme
+    view = grid.view
+    scene = grid.last_scene
+    theme = grid.theme
     bounds = view.bounds
     units = ["px/decade" if log else "px/unit" for log in (view.log_x, view.log_y)]
     lines = [
@@ -177,15 +175,15 @@ def draw_overlay(
         f"view   x [{bounds.x_min:.6g}, {bounds.x_max:.6g}]"
         f"   y [{bounds.y_min:.6g}, {bounds.y_max:.6g}]",
     ]
-    if grid is not None:
-        lines.append(f"x step {describe_spacing(grid.x_spacing)}")
-        lines.append(f"y step {describe_spacing(grid.y_spacing)}")
+    if scene is not None:
+        lines.append(f"x step {describe_spacing(scene.x_spacing)}")
+        lines.append(f"y step {describe_spacing(scene.y_spacing)}")
     lines += [
         f"mode   {theme.transition} / {theme.spacing_rule}"
         f" / target {theme.target_major_px:.0f}px"
-        f" / smooth {'on' if plane.interaction.smoothing else 'off'}",
+        f" / smooth {'on' if grid.interaction.smoothing else 'off'}",
         f"frame  {frame_ms:5.2f} ms   grid {grid_ms:5.2f} ms   plots {plot_ms:5.2f} ms",
-        f"cache  {'on' if plane.cache else 'off'}"
+        f"cache  {'on' if grid.cache else 'off'}"
         f"   {reused[0]} of {reused[1]} plotting calls reused",
         HELP,
     ]
@@ -206,7 +204,7 @@ def main() -> None:
     pygame.init()
     screen = pygame.display.set_mode((1100, 720), pygame.RESIZABLE)
     pygame.display.set_caption("PyGridPlot: grid playground")
-    plane = pgp.Plane()
+    grid = pgp.Grid()
     font = pygame.font.Font(bundled_font_path(), 13)
     clock = pygame.time.Clock()
     show_overlay = True
@@ -226,33 +224,33 @@ def main() -> None:
                     show_overlay = not show_overlay
                 elif event.key == pygame.K_s:
                     default = pgp.InteractionConfig().smoothing
-                    smoothing = 0.0 if plane.interaction.smoothing else default
-                    plane.interaction = replace(plane.interaction, smoothing=smoothing)
+                    smoothing = 0.0 if grid.interaction.smoothing else default
+                    grid.interaction = replace(grid.interaction, smoothing=smoothing)
                 elif event.key == pygame.K_c:
-                    plane.cache = not plane.cache
+                    grid.cache = not grid.cache
                 elif event.key == pygame.K_p:
                     overlay = (overlay + 1) % len(OVERLAYS)
                 elif event.key == pygame.K_x:
-                    plane.log_x = not plane.log_x
+                    grid.log_x = not grid.log_x
                 elif event.key == pygame.K_y:
-                    plane.log_y = not plane.log_y
-                elif toggle_theme_setting(plane, event.key):
+                    grid.log_y = not grid.log_y
+                elif toggle_theme_setting(grid, event.key):
                     pass
-            plane.handle_event(event)
+            grid.handle_event(event)
 
         start = time.perf_counter()
-        plane.draw_grid(screen)
+        grid.draw(screen)
         middle = time.perf_counter()
-        before = plane.cache_stats
-        draw_plots(plane, screen, OVERLAYS[overlay])
-        after = plane.cache_stats
+        before = grid.cache_stats
+        draw_plots(grid, screen, OVERLAYS[overlay])
+        after = grid.cache_stats
         end = time.perf_counter()
         hits = after.hits - before.hits
         reused = (hits, hits + after.misses - before.misses)
         grid_ms = 0.9 * grid_ms + 0.1 * (middle - start) * 1000
         plot_ms = 0.9 * plot_ms + 0.1 * (end - middle) * 1000
         if show_overlay:
-            draw_overlay(screen, font, plane, frame_ms, grid_ms, plot_ms, reused)
+            draw_overlay(screen, font, grid, frame_ms, grid_ms, plot_ms, reused)
         pygame.display.flip()
         clock.tick(120)
         now = time.perf_counter()

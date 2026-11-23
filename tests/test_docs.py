@@ -7,7 +7,7 @@
   fragments are fenced as ```` ```py ```` and are not run. The examples of one
   page run in order in a shared namespace, like a doctest session, with
   ``np``, ``math``, ``pygame``, ``pgp``, a display ``screen`` (also called
-  ``surface``) and a ``plane`` already defined. Main loops end after a few
+  ``surface``) and a ``grid`` already defined. Main loops end after a few
   frames: the event queue is replaced by one that quits.
 * Every relative link and in-page anchor must resolve (in ``AGENTS.md`` too,
   the context file for AI agents, so that it cannot point at moved pages).
@@ -69,7 +69,7 @@ def test_examples_run(
         "pgp": pgp,
         "screen": screen,
         "surface": screen,
-        "plane": pgp.Plane(),
+        "grid": pgp.Grid(),
     }
     for number, code in enumerate(blocks, 1):
         try:

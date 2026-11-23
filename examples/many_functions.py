@@ -24,7 +24,7 @@ def main() -> None:
     pygame.init()
     screen = pygame.display.set_mode((1100, 720), pygame.RESIZABLE)
     pygame.display.set_caption("PyGridPlot: a family of curves")
-    plane = pgp.Plane(scale=70)
+    grid = pgp.Grid(scale=70)
     clock = pygame.time.Clock()
     t = 0.0
 
@@ -33,16 +33,16 @@ def main() -> None:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 running = False
-            plane.handle_event(event)
+            grid.handle_event(event)
         t += clock.tick(60) / 1000
 
-        plane.draw_grid(screen)
+        grid.draw(screen)
         family = [
             lambda x, k=k, t=t: np.sin(x - 0.6 * k * t) * k / 4
             for k in range(1, COUNT + 1)
         ]
         for func in family:
-            plane.plot(screen, func, width=2.0)
+            grid.plot(screen, func, width=2.0)
         pygame.display.flip()
     pygame.quit()
 

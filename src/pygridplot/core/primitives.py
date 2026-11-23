@@ -14,7 +14,9 @@ Current primitives:
 * :class:`Stroke`: polylines drawn with a round pen (function curves,
   polylines and polygon outlines).
 * :class:`Fill`: filled polygons (closed rings).
-* :class:`Markers`: points drawn as fixed-size markers.
+* :class:`Markers`: points drawn as fixed-size markers (of one size and
+  colour, or each its own).
+* :class:`Image`: pixels drawn as they are (a colour bar's gradient).
 
 and the vocabulary they are described in: :class:`LabelText` (a label made
 of typeset :class:`TextRun` pieces), :data:`MarkerShape` and
@@ -191,14 +193,16 @@ class Stroke:
 
     Attributes:
         paths: The polylines, each an array of shape ``(N, 2)``. A path with a
-            single point is drawn as a dot.
+            single point is drawn as a dot. Many polylines of the same length
+            (error bars, stems) may come as one array of shape ``(M, N, 2)``
+            instead, which is faster to rasterise.
         color: Pen colour.
         width: Pen width in pixels.
         opacity: Opacity in ``[0, 1]``. Overlapping parts of one stroke do not
             darken each other.
     """
 
-    paths: tuple[NDArray[np.float64], ...]
+    paths: tuple[NDArray[np.float64], ...] | NDArray[np.float64]
     color: ColorLike
     width: float
     opacity: float = 1.0
@@ -226,7 +230,11 @@ class Fill:
 
 @dataclass(frozen=True, slots=True, eq=False)
 class Markers:
-    """Points drawn as identical fixed-size markers.
+    """Points drawn as fixed-size markers of one shape.
+
+    Every marker has the same colour and size, unless ``colors`` or ``radii``
+    give each its own (a scatter plot coloured or sized by a value). They
+    are drawn in order, each on top of the ones before.
 
     Attributes:
         positions: Marker centres, shape ``(N, 2)``.
@@ -237,6 +245,11 @@ class Markers:
         edge_color: Outline colour, or ``None`` for no outline.
         edge_width: Outline thickness in pixels.
         opacity: Opacity in ``[0, 1]``.
+        colors: A fill colour per marker, replacing ``color``: ``N`` colour
+            values, or an ``(N, 4)`` array of RGBA bytes; or ``None``.
+        radii: A size per marker (shape ``(N,)``, positive), replacing
+            ``radius``, or ``None``. Renderers may round them to a quarter
+            of a pixel.
     """
 
     positions: NDArray[np.float64]
@@ -245,6 +258,30 @@ class Markers:
     color: ColorLike
     edge_color: ColorLike | None = None
     edge_width: float = 0.0
+    opacity: float = 1.0
+    colors: tuple[ColorLike, ...] | NDArray[np.uint8] | None = None
+    radii: NDArray[np.float64] | None = None
+
+
+@dataclass(frozen=True, slots=True, eq=False)
+class Image:
+    """Pixels drawn as they are, at a place on screen.
+
+    For what is computed pixel by pixel rather than shaped: a colour bar's
+    gradient (and, in time, heatmaps). Its pixels are blended over what is
+    underneath by their alpha.
+
+    Attributes:
+        pixels: RGBA bytes, shape ``(height, width, 4)``, the first row at
+            the top.
+        left: Screen x of the image's left column of pixels.
+        top: Screen y of its top row.
+        opacity: Opacity in ``[0, 1]``, multiplying the pixels' alpha.
+    """
+
+    pixels: NDArray[np.uint8]
+    left: int
+    top: int
     opacity: float = 1.0
 
 
@@ -282,12 +319,18 @@ class TextSize:
         height: Height of the digit box in pixels.
         sign_width: Width of a leading minus-sign run (0 if there is none).
         overflow_top: Extra pixels above the digit box taken by superscripts.
+        descent: How far below the baseline the font's letters may reach (g,
+            y, brackets). Digits never do, so tick labels ignore it; text
+            with letters (titles, legends, annotations) keeps clear of it.
+            It is the font's, not the text's, so text sits the same whatever
+            letters it contains.
     """
 
     width: int
     height: int
     sign_width: int = 0
     overflow_top: int = 0
+    descent: int = 0
 
 
 @dataclass(frozen=True, slots=True)

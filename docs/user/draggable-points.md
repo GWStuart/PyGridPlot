@@ -1,29 +1,31 @@
-# Draggable points
+# Draggable points and sliders
 
 Draggable points are points the user moves with the mouse: handles that
-reshape a curve, sliders that set a value, a point that runs round a circle.
-They are the one thing on a plane that keeps state between frames, so they
-work a little differently from the plotting methods. You **create** each
-point once, before the main loop; the plane **drags** it in `handle_event`;
-your code **reads** its position every frame and uses it like any number;
-and you **draw** the points, usually last, with `draw_draggables`.
+reshape a curve, a point that runs round a circle, the bounds of an area.
+[Sliders](#sliders) set values that are not positions: an amplitude, a
+number of terms. They are the things on a plane that keep state between
+frames, so they work a little differently from the plotting methods. You
+**create** each one once, before the main loop; the plane **drags** it in
+`handle_event`; your code **reads** its position or value every frame and
+uses it like any number; and you **draw** them, usually last, with
+`draw_controls`.
 
 ```python
-a = plane.draggable((1, 2))                             # free
-s = plane.draggable((-3, 0.5), lock="x", y_range=(0, 1))   # a vertical slider
-c = plane.draggable(curve=(np.cos, np.sin, (0, 2 * np.pi)))  # on the unit circle
+a = grid.draggable((1, 2))                                  # free
+s = grid.draggable((-3, 0.5), lock="x", y_range=(0, 1))     # slides up and down
+c = grid.draggable(curve=(np.cos, np.sin, (0, 2 * np.pi)))  # on the unit circle
 
 running = True
 while running:
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
             running = False
-        plane.handle_event(event)        # drags a point under the cursor, else pans
+        grid.handle_event(event)        # drags a point under the cursor, else pans
 
-    plane.draw_grid(screen)
-    plane.plot(screen, lambda x: s.y * np.sin(x - a.x) + a.y)
-    plane.polyline(screen, [(0, 0), c.position])
-    plane.draw_draggables(screen)
+    grid.draw(screen)
+    grid.plot(screen, lambda x: s.y * np.sin(x - a.x) + a.y)
+    grid.polyline(screen, [(0, 0), c.position])
+    grid.draw_controls(screen)
     pygame.display.flip()
 ```
 
@@ -32,14 +34,93 @@ usual, and zooming works in the middle of a drag (the point stays under the
 cursor). The point keeps the offset at which you grabbed it, so it never
 jumps, and it cannot be dragged out of the plane.
 
+## Sliders
+
+```py
+grid.slider(label, value_range, *, value=None, step=None, log=False,
+             color=None, corner="bottom-left", enabled=True)
+```
+
+```python
+amplitude = grid.slider("a", (0, 3), value=1.5)             # before the loop
+terms = grid.slider("n", (1, 20), value=5, step=1)          # whole numbers
+rate = grid.slider("r", (0.01, 100), value=1, log=True)     # a geometric track
+
+grid.plot(screen, lambda x: amplitude.value * np.sin(x))
+grid.plot(screen, pgp.taylor(np.cos, 0, terms.value))       # terms.value is an int
+grid.draw_controls(screen)                                  # points and sliders
+```
+
+A slider is a value the user sets by dragging a handle along a track. It
+is drawn in a panel in a corner of the plane, with its label and value
+(`a = 1.5`), and stays where it is while the plane is panned and zoomed:
+use one for anything that is not a position in the plane. Press the track
+to move the handle there, drag the handle (grabbing it never makes it
+jump), or turn the mouse wheel over the slider to move it a step. A press
+on a panel never pans the plane, and the wheel over a panel never zooms
+it; sliders are above draggable points, which cannot be grabbed through a
+panel.
+
+Read the value every frame from `slider.value`, or set it from code.
+
+| Parameter | Default | Meaning |
+|---|---|---|
+| `label` | | The name shown before the value (`""` for the value alone). |
+| `value_range` | | `(low, high)`, the values at the ends of the track. |
+| `value` | `low` | The starting value. |
+| `step` | `None` | The spacing of the allowed values, counted from `low`. An `int` (`step=1`) makes an integer slider, whose `value` is an `int`. |
+| `log` | `False` | Make the track geometric, for values over several powers of ten (`low` must be positive). |
+| `color` | a palette colour | The handle and the filled part of the track; each slider takes the next palette colour, in creation order. |
+| `corner` | `"bottom-left"` | `"bottom-left"`, `"bottom-right"`, `"top-left"` or `"top-right"`: which corner's panel the slider is in. |
+| `enabled` | `True` | A disabled slider is drawn faded and cannot be moved. |
+
+Values are exact. With a step, the value is `low + k · step`, computed in
+decimal, so a step of 0.1 gives `0.3`, never `0.30000000000000004`, and an
+integer slider gives `int`s, ready for `range`, `pgp.taylor` or
+`pgp.fourier`. Without a step, a dragged value is rounded to what one
+pixel of the track can set (`1.25` rather than `1.2481203`), and shown
+that way. A value set from code is kept within the range and on the step.
+On a log slider, equal distances along the track multiply the value by
+equal factors; with `step=1` it gives whole numbers spread evenly over
+the powers of ten, as `n` from 1 to 1000.
+
+```python
+terms.value = 8           # moves the handle
+if amplitude.moved:       # changed since the previous frame
+    print(f"a is now {amplitude.value}")
+```
+
+| Attribute | Meaning |
+|---|---|
+| `value` | The value (an `int` for an integer slider). Assign to move the handle. |
+| `moved` | Whether the value changed since the previous frame (stable while you draw). |
+| `dragging`, `hovered` | Whether the slider is being dragged, or the cursor is over its track. |
+| `label`, `color`, `corner`, `enabled` | As created; assign to change them. |
+| `value_range`, `step`, `log`, `integer` | As created (read only). |
+
+Sliders in the same corner are stacked in the order they are drawn,
+which is the order they were created unless you pass them to
+`draw_controls` yourself. Only the sliders drawn in a frame can be
+dragged until the next one, so leaving a slider out of `draw_controls`
+hides it and switches it off: a program with several scenes simply draws
+each scene's sliders, `grid.draw_controls(screen, *scene_sliders)`.
+`slider.remove()` takes a slider off the plane for good, and
+`grid.sliders` lists the plane's sliders. A [legend](plotting.md#legends)
+in the same corner as sliders goes beyond their panel, so the sliders stay
+where they are.
+
+The panel takes its colours from the theme (its background, the major
+grid line colour for the border and the tracks, the label font and
+colour), so it suits light and dark themes alike.
+
 ## Four kinds of point
 
 | Kind | Created with | Moves |
 |---|---|---|
-| Free | `plane.draggable((x, y))` | Anywhere. |
-| x locked | `plane.draggable((x, y), lock="x")` | Up and down only: x stays fixed. |
-| y locked | `plane.draggable((x, y), lock="y")` | Left and right only: y stays fixed. |
-| On a curve | `plane.draggable(curve=(x, y, t_range))` | Along the parametric curve `(x(t), y(t))`. |
+| Free | `grid.draggable((x, y))` | Anywhere. |
+| x locked | `grid.draggable((x, y), lock="x")` | Up and down only: x stays fixed. |
+| y locked | `grid.draggable((x, y), lock="y")` | Left and right only: y stays fixed. |
+| On a curve | `grid.draggable(curve=(x, y, t_range))` | Along the parametric curve `(x(t), y(t))`. |
 
 A point on a curve takes the curve's components exactly as
 [`parametric`](plotting.md#parametric-curves) does: functions of `t`
@@ -47,21 +128,36 @@ A point on a curve takes the curve's components exactly as
 `t_range`), or at the point of the curve nearest a `position` you give:
 
 ```python
-on_circle = plane.draggable(curve=(np.cos, np.sin, (0, 2 * np.pi)), t=np.pi / 4)
-on_parabola = plane.draggable(curve=(lambda t: t, lambda t: t**2, (-3, 3)),
+on_circle = grid.draggable(curve=(np.cos, np.sin, (0, 2 * np.pi)), t=np.pi / 4)
+on_parabola = grid.draggable(curve=(lambda t: t, lambda t: t**2, (-3, 3)),
                               position=(1, 1))
-on_spiral = plane.draggable(curve=(lambda t: 0.2 * t * np.cos(t),
+on_spiral = grid.draggable(curve=(lambda t: 0.2 * t * np.cos(t),
                                    lambda t: 0.2 * t * np.sin(t), (0, 6 * np.pi)))
 ```
 
-While dragged, the point follows the curve from where it is to the point
-nearest the cursor, so it passes through crossings (a figure-eight, a
-spirograph) and between the turns of a spiral without jumping. It jumps to
-another part of the curve only when that part is clearly closer to the
-cursor (by about 10 pixels), so it can still be pulled straight across to
-another branch. On a closed curve such as a circle, dragging past the end
-continues from the start. The point's `t` tells you where on the curve it
-is: on the circle above, it is the angle.
+How a point follows the cursor depends on the curve, as it looks on
+screen:
+
+- **On a graph**, a curve that runs steadily from left to right (or right
+  to left) such as `(t, f(t))` or a cycloid, every x has one point, and the
+  dragged point is the one at the cursor's x. It stays level with the
+  cursor however far above or below the curve the cursor is, moves exactly
+  as the cursor moves sideways, passes straight through jumps (`floor`)
+  and asymptotes (`tan`), and waits at a domain edge (`sqrt` at 0) while
+  the cursor is beyond it. A curve that runs steadily up or down instead,
+  such as the sideways parabola `(t**2, t)`, follows the cursor's y.
+- **On any other curve** (a circle, a spiral, a figure-eight), the point
+  follows the curve from where it is to the point nearest the cursor, so
+  it passes through crossings (a figure-eight, a spirograph) and between
+  the turns of a spiral without jumping. It jumps to another part of the
+  curve only when that part is clearly closer to the cursor (by about 10
+  pixels), so it can still be pulled straight across to another branch. On
+  a closed curve such as a circle, dragging past the end continues from
+  the start.
+
+Placing a point from code (`position=`) always takes the nearest point of
+the curve. The point's `t` tells you where on the curve it is: on the
+circle above, it is the angle.
 
 ## Reading and setting the position
 
@@ -85,7 +181,7 @@ if a.moved:
 ```
 
 Use `moved` to recompute something expensive only when a point has
-changed. A frame starts at `draw_grid`, so `moved` keeps its value while
+changed. A frame starts at `grid.draw`, so `moved` keeps its value while
 you draw.
 
 ## Bounds
@@ -95,8 +191,8 @@ dragging and when set from code. A point on a curve is kept within its
 `t_range` instead.
 
 ```python
-amplitude = plane.draggable((-6, 1), lock="x", y_range=(0.1, 3))
-plane.polyline(screen, [(-6, 0.1), (-6, 3)], width=4, opacity=0.3)  # a track
+amplitude = grid.draggable((-6, 1), lock="x", y_range=(0.1, 3))
+grid.polyline(screen, [(-6, 0.1), (-6, 3)], width=4, opacity=0.3)  # a track
 ```
 
 On a [log axis](log-axes.md) a point can never be dragged to zero or below.
@@ -110,7 +206,7 @@ points were created (so colours do not change with what else you draw).
 Change any of it when creating the point, or later through its attributes:
 
 ```python
-handle = plane.draggable((2, 1), color="crimson",
+handle = grid.draggable((2, 1), color="crimson",
                          style=pgp.PointStyle(radius=8, marker="square"))
 handle.color = (40, 120, 200)
 ```
@@ -122,17 +218,17 @@ default zoom, `(1.2346, -0.5)` zoomed in a hundred times. `coordinates=`
 chooses when they show: `"hover"` (the default), `"always"` or `"never"`.
 The label uses the theme's number format and label font.
 
-`draw_draggables(screen)` draws every point of the plane; pass some points
-to draw only those (`plane.draw_draggables(screen, a, c)`). Draw them after
+`draw_controls(screen)` draws every point of the plane; pass some points
+to draw only those (`grid.draw_controls(screen, a, c)`). Draw them after
 the plots so they sit on top.
 
 ## Turning points off and removing them
 
 `point.enabled = False` keeps a point visible but stops it being dragged.
-`point.remove()` takes it off the plane for good. `plane.draggables` lists
-the plane's points, and `plane.dragged` is the one being dragged, if any.
+`point.remove()` takes it off the plane for good. `grid.draggables` lists
+the plane's points, and `grid.dragged` is the one being dragged, if any.
 
-`plane.interactive = False` switches off only panning and zooming:
+`grid.interactive = False` switches off only panning and zooming:
 draggable points still work, which suits a fixed view with handles on it.
 
 ## Settings
@@ -161,11 +257,15 @@ on_circle.curve = (lambda t: radius * np.cos(t), lambda t: radius * np.sin(t),
 
 ## Limits
 
-- Points are dragged with the mouse only; there is no keyboard nudging or
-  snapping to a step yet.
+- Points and sliders are moved with the mouse only (and the wheel, for
+  sliders); there is no keyboard focus or nudging yet, and points cannot
+  snap to a step.
+- Sliders are always in a corner of the plane, inside it: a program that
+  wants controls elsewhere (a sidebar) draws its own.
 - A point on a curve follows the curve as it is drawn, sampled finely on
   screen; on a part of the curve that is far off screen it follows a coarser
   version until that part comes into view.
 
 See `examples/draggable.py` for a sine wave shaped by a free point and two
-sliders, and points running round a circle and a spirograph.
+points locked to lines, and points running round a circle and a
+spirograph; `examples/sliders.py` for sliders of every kind.

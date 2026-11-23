@@ -1,19 +1,22 @@
 # The grid
 
-`core.grid.scene.build_grid(view, theme, measurer, state)` turns the view
-into a `GridScene`: line batches in painter's order, positioned labels, and
-the spacing chosen for each axis. It is a pure function of its arguments;
-the small `GridState` only carries hysteresis for `"snap"` mode.
+`core.grid.scene.build_grid(view, theme, measurer, state, x_title=,
+y_title=)` turns the view into a `GridScene`: line batches in painter's
+order, the axes' arrowheads, positioned labels and axis titles, and the
+spacing chosen for each axis. It is a pure function of its arguments; the
+small `GridState` only carries hysteresis for `"snap"` mode.
 
 ```text
                  for each axis                                        both axes
  ┌──────────────────────────────────────────────────────────────┐  ┌─────────────────────┐
  │ spacing.py ──> ticks.py ──> gridlines.linear_axis_lines ─┐   │  │ gridlines.line_     │
  │  (choose)      (classify)                                ├─> AxisLines ─>  batches   │
- │                logticks.py (three tiers) ────────────────┘   │  │ + axis_batches      │
+ │                logticks.py (three tiers) ────────────────┘   │  │ + axis_batches,     │
+ │                                                              │  │   axis_arrows       │
  │                                                              │  │                     │
- │ ticklabels.py / loglabels.py ──> LabelCandidates ────────────┼─>│ layout.py: place,   │
- │  (which labels, how opaque)                                  │  │ resolve collisions  │
+ │ ticklabels.py / loglabels.py ──> LabelCandidates ────────────┼─>│ layout.py: place    │
+ │  (which labels, how opaque)                                  │  │ labels and titles,  │
+ │                                                              │  │ resolve collisions  │
  └──────────────────────────────────────────────────────────────┘  └─────────────────────┘
 ```
 
@@ -89,6 +92,18 @@ style (`major`, between 0 and `total`).
   (painter's order).
 - `axis_batches` adds the axis lines, unless the perpendicular axis is
   logarithmic (it has no zero).
+- With `GridTheme.show_arrows`, `axis_arrows` adds an arrowhead at each
+  drawn axis' positive end: a triangle `ARROW_LENGTH_PER_WIDTH × width +
+  ARROW_LENGTH_BASE` long, with the proportions of plotted arrows (their
+  geometry is in `core.plot`, which the grid may not import), centred on
+  the axis line's actual pixels (`line_start + (width − 1) / 2`), its tip
+  `ARROW_INSET_PX` inside the edge. The axis line then stops
+  `ARROW_OVERLAP_PX` under the head, where the head is still wider than
+  the line, so the line never shows beside the tip and there is no seam.
+  The heads are `Fill`s (`GridScene.arrows`), one per axis, so neither is
+  rasterised over the whole plane; the plane hands the renderer last
+  frame's head when one has not moved, so panning along an axis does not
+  rasterise its head again.
 
 The renderer flattens each stack against the background into one solid
 colour, so grid lines stay crisp 1-pixel rectangles.
@@ -153,6 +168,48 @@ its own label.
   (`soften_overlaps`): each keeps `Π(1 − closeness × other.opacity)` of its
   opacity.
 
+### Axis titles
+
+`build_grid(..., x_title=, y_title=)` places the titles with the labels, at
+the axes' positive ends on the side away from the tick labels, the
+textbook convention: `place_x_title` right-aligns the x title at the right
+edge, just above the x axis; `place_y_title` puts the y title at the top
+edge, just right of the y axis. Both are pushed and pinned into the plane
+like the labels, and keep `arrow_overhang(theme)` further from the axis
+with arrowheads. A title's box counts the font's descent
+(`TextSize.descent`, `title_box`), as titles are words and their letters
+reach below the baseline; digits never do, so tick labels ignore it.
+
+Titles have the highest priority in the collision fades (x title, then y
+title, then x labels, `0`, y labels), so tick labels fade out where a
+title comes onto their row or column, and the y title fades where it meets
+the x title. To keep labels from fading for a title that is merely
+*near* them, the titles keep `COLLISION_PADDING_PX + COLLISION_FADE_PX`
+(10 px) from the tick labels' row and column: on screen that is exactly
+the gap, axis and gap between them, and with the x axis below the plane
+the x title rides that far above the row of pinned labels. Only when a
+title is pinned onto the labels' row (the x axis above the plane) or
+column (the y axis off to the side) do labels near it fade.
+
+### Category labels
+
+`build_grid(..., x_labels=, y_labels=)` takes named positions
+(`categories.check_categories` turns a sequence or a mapping into sorted
+`(position, name)` pairs) and replaces that axis' numeric label
+candidates with `categories.category_candidates`, which the rest of the
+pipeline places like any labels. Thinning keeps every `stride`-th name,
+`stride` the smallest power of two that leaves the largest name
+(`label_length`, weighted by distance from the plane like numbers) and
+`MIN_LABEL_GAP_PX` between kept names, the gap measured as the smallest
+between neighbouring names near the plane; the names the next doubling
+would remove fade with `thinning_opacity`, as numbers do, so no name pops.
+Strides count from the first category, so panning never changes which
+names are kept. A categorical axis has no shared `0` at the origin
+(`shared_zero=False`); a numeric, linear other axis gets a `0` candidate of
+its own (`_with_categories`). Where the axes' labels meet, names win over
+numbers: with only the y axis named, y labels take priority over x labels
+in the collision fades (`names_first="y"`).
+
 All positions are snapped with `core/pixels.py`, so a label sits a fixed
 number of pixels from its line and never wobbles while zooming. The fades
 above, however, measure distances between the labels' *exact* positions
@@ -209,7 +266,9 @@ never changes while panning.
 |---|---|
 | Lines stay in the plane; opacities in `(0, 1]` | `test_lines_stay_inside_the_plane`, `test_lines_stay_inside_and_opacities_are_valid` |
 | Major spacing stays near the target | `test_major_spacing_stays_near_the_target` |
-| Labels never overlap (overlapping opacities sum to at most 1) | `test_labels_never_overlap`, `test_log_labels_never_overlap` |
+| Labels never overlap (overlapping opacities sum to at most 1) | `test_labels_never_overlap`, `test_log_labels_never_overlap`, `test_titles_never_overlap_labels_and_stay_inside` |
+| Titles move rigidly with their axes | `test_titles_move_rigidly_with_their_axes` |
+| Category names never overlap other labels or titles | `test_names_never_overlap` (`test_categories.py`) |
 | Panning moves every line rigidly | `test_panning_by_whole_pixels_moves_every_line_rigidly`, `test_panning_a_log_view_moves_every_line_rigidly` |
 | Zooming never pops lines or labels | `test_zooming_never_pops_labels`, `test_zooming_never_pops_log_lines`, `test_zooming_never_pops_log_labels` |
 | One notation per linear axis | `test_labels_on_one_axis_never_mix_notations` |

@@ -9,7 +9,7 @@ docstring or signature, run::
     python scripts/build_api_docs.py
 
 Docstrings are Google style, with the Sphinx-style markup used in the code
-(``:class:`~pygridplot.Plane```, double backticks). Both are converted to
+(``:class:`~pygridplot.Grid```, double backticks). Both are converted to
 Markdown here.
 """
 
@@ -37,7 +37,7 @@ SECTIONS: list[tuple[str, str, list[str]]] = [
     (
         "The plane",
         "The object your program creates and calls every frame.",
-        ["Plane", "show"],
+        ["Grid", "show"],
     ),
     (
         "Calculus",
@@ -55,15 +55,30 @@ SECTIONS: list[tuple[str, str, list[str]]] = [
         ],
     ),
     (
-        "Draggable points",
-        "Points the user drags, created with `Plane.draggable`.",
-        ["DraggablePoint"],
+        "Data",
+        "Helpers for plotting data: colours for values, and ranges that show the data.",
+        ["color_map", "data_range"],
+    ),
+    (
+        "Draggable points and sliders",
+        "Points the user drags, created with `Grid.draggable`, and sliders, "
+        "created with `Grid.slider`.",
+        ["DraggablePoint", "Slider"],
     ),
     (
         "Styles",
         "Reusable looks for plotted objects. Keyword arguments of the plotting "
         "methods override their fields.",
-        ["LineStyle", "PointStyle", "PolygonStyle", "FillStyle", "ArrowStyle"],
+        [
+            "LineStyle",
+            "PointStyle",
+            "PolygonStyle",
+            "FillStyle",
+            "ArrowStyle",
+            "SequenceStyle",
+            "BarStyle",
+            "TextStyle",
+        ],
     ),
     (
         "Themes",
@@ -76,7 +91,7 @@ SECTIONS: list[tuple[str, str, list[str]]] = [
         [
             "InteractionConfig",
             "KeyBindings",
-            "SamplingConfig",
+            "FunctionSampling",
             "CurveSampling",
             "ImplicitSampling",
             "ViewLimits",
@@ -85,7 +100,7 @@ SECTIONS: list[tuple[str, str, list[str]]] = [
     ),
     (
         "The view",
-        "The camera behind every plane (`plane.view`): centre, scale, axes and "
+        "The camera behind every plane (`grid.view`): centre, scale, axes and "
         "every coordinate conversion.",
         ["View", "ViewState"],
     ),
@@ -97,7 +112,7 @@ HEADER = """# API reference
 by hand. Run `python scripts/build_api_docs.py` after changing the API. -->
 
 Everything below is importable from the package (`import pygridplot as pgp`,
-then `pgp.Plane`, `pgp.LineStyle`, ...). The [user guide](index.md) explains
+then `pgp.Grid`, `pgp.LineStyle`, ...). The [user guide](index.md) explains
 how the pieces fit together; this page lists every class, function and
 setting with its parameters and defaults.
 

@@ -7,14 +7,14 @@ way to do things, Python first, a library not a framework, immediate
 mode): how the code is arranged so that the library keeps its promises.
 
 1. **Library, not framework.** The user owns the main loop. The plane is an
-   object they call (`handle_event`, `draw_grid`, `plot`, ...); it never
+   object they call (`handle_event`, `draw`, `plot`, ...); it never
    takes control, never sleeps and never polls events itself.
 2. **Immediate mode.** Everything is recomputed from the view every frame.
    There is no retained scene to keep in sync, so animation and interaction
    come for free. The only state kept between frames is small and explicit:
    the view, the easing springs, snap hysteresis, the colour cycle's
-   position, the framing (home view, pending fits), the draggable points
-   and caches. There are no retained plot objects (see
+   position, the framing (home view, pending fits), the draggable points,
+   the sliders and caches. There are no retained plot objects (see
    [Retired experiments](#retired-experiments)).
 3. **Pure maths, thin backend.** All geometry, sampling, layout and
    formatting lives in `pygridplot.core`, which never imports pygame. Code
@@ -41,14 +41,14 @@ mode): how the code is arranged so that the library keeps its promises.
         │
    pygridplot (__init__.py: the public API)
         │
-   plane.py ── interaction.py ── dragging.py ── quick.py     pygame-specific integration
+   grid.py ── interaction.py ── dragging.py ── quick.py     pygame-specific integration
      │      │
      │      └── render/        the backend: primitives -> pixels
      │              │
      └──────────────┴── core/  pure maths: never imports anything above it
                          ├── grid/     the adaptive grid and its labels
                          ├── plot/     plotted objects -> primitives
-                         └── handles/  draggable points (uses grid/ and plot/)
+                         └── handles/  draggable points, sliders (uses grid/ and plot/)
 ```
 
 `core` may import only the standard library, NumPy, contourpy (a small,
@@ -82,11 +82,13 @@ The boundary between `core` and a renderer is deliberately small:
 
 ```text
 src/pygridplot/
-├── __init__.py          The public API: Plane, styles, themes, configs, View, show
-├── plane.py             Plane: the façade tying view, theme, controls and renderer together
+├── __init__.py          The public API: Grid, styles, themes, configs, View, show
+├── grid.py              Grid: the façade tying view, theme, controls and renderer together
 ├── interaction.py       pygame events -> pan/zoom (anchored drag, eased wheel and keys)
-├── dragging.py          pygame events -> draggable points (hit test, drag, hover, cursor)
+├── dragging.py          pygame events -> draggable points and sliders (hit test, drag, hover, cursor)
 ├── quick.py             show(): a ready-made main loop
+├── color_maps.py        color_map(): colours for values (resolves colour names with pygame)
+├── _pygame_ce.py        On import: refuses the original pygame, with advice
 ├── py.typed             Marks the package as typed (PEP 561)
 ├── core/                PURE: stdlib + NumPy (+ contourpy) only
 │   ├── coords.py        ScreenRect, Bounds, Axis, ColorLike
@@ -103,13 +105,14 @@ src/pygridplot/
 │   │   ├── ticklabels.py    Linear axes: which labels show and how opaque
 │   │   ├── logticks.py      Log axes: decades, log-paper lines and subdivisions
 │   │   ├── loglabels.py     Log axes: their labels
-│   │   ├── gridlines.py     AxisLines (per-line opacities) -> LineBatch primitives, axes
+│   │   ├── gridlines.py     AxisLines (per-line opacities) -> LineBatch primitives, axes, arrowheads
 │   │   ├── formatting.py    Exact number formatting -> LabelText (with superscripts)
-│   │   ├── layout.py        Label placement: push-and-pin, collision fades
+│   │   ├── layout.py        Label and axis title placement: push-and-pin, collision fades
+│   │   ├── categories.py    Names in place of numbers along an axis, thinned
 │   │   ├── scene.py         build_grid(): the pipeline, into a GridScene
 │   │   └── theme.py         GridTheme, LIGHT, DARK
 │   ├── plot/            Plotted objects -> primitives
-│   │   ├── style.py         Line, Point, Polygon, Fill and ArrowStyle; ColorCycle
+│   │   ├── style.py         Line, Point, Polygon, Fill, Arrow, Sequence, Bar and TextStyle; ColorCycle
 │   │   ├── evaluation.py    Calling user functions robustly (errors/complex -> NaN)
 │   │   ├── sampling.py      Adaptive sampling of y = f(x): jumps, poles, domain edges
 │   │   ├── curves.py        Adaptive sampling of parametric curves on screen
@@ -123,12 +126,22 @@ src/pygridplot/
 │   │   ├── regions.py       Regions where a condition holds: filled contours, refined
 │   │   ├── areas.py         The area between two graphs, as rings
 │   │   ├── fields.py        The fading lattice of vector and slope fields; directions
+│   │   ├── sequences.py     Which terms of a sequence to draw: thinned by powers of 3
 │   │   ├── arrows.py        Arrows as polygons, shaft and head in one ring
+│   │   ├── text.py          Text at a world point: anchors, gaps, lines
+│   │   ├── data.py          Data: colours and sizes per point, error bars, steps, bars
+│   │   ├── histograms.py    Binning samples: anchored bins, an automatic 1-2-5 width
+│   │   ├── distributions.py Box plot statistics, violin densities (kernel density)
+│   │   ├── color_maps.py    Colour maps: values to colours, the built-in maps
 │   │   ├── geometry.py      Point input; clipping polylines and polygons
 │   │   ├── memo.py          PlotCache: reusing unchanged plots between frames, exactly
 │   │   └── builders.py      One function per kind of plot -> clipped primitives
-│   └── handles/         Draggable points
+│   └── handles/         Draggable points, sliders and the legend: drawn over the plots
 │       ├── point.py         DraggablePoint: position, constraint, style, state
+│       ├── slider.py        Slider: a value on a track, exact steps, log tracks, state
+│       ├── panel.py         The corner panels of sliders: layout and primitives
+│       ├── legend.py        The legend: entries, its corner panel, swatches
+│       ├── color_bar.py     The colour bar: its corner panel, strip and ticks
 │       ├── constraints.py   Free, locked and on-curve movement, with bounds
 │       ├── tracking.py      Following a curve with the cursor, branch by branch
 │       ├── labels.py        The coordinate label: rounded to a pixel, placed
@@ -153,9 +166,11 @@ docs/                    These pages (user/ and dev/)
 
 ## What happens in a frame
 
-### `plane.handle_event(event)`
+### `grid.handle_event(event)`
 
-`dragging.DragController` sees every event first: a press on a
+`dragging.SliderController` sees every event first: a press on a
+[slider](dragging.md#sliders) sets it, and a press or the wheel anywhere on
+a slider panel, or on the legend's panel, is used up. Then `dragging.DragController`: a press on a
 [draggable point](dragging.md) grabs it and is used up, and motion then
 drags the point. Everything else goes on to
 `interaction.InteractionController`, which turns events into view changes:
@@ -168,34 +183,49 @@ drags the point. Everything else goes on to
 - **Wheel and keys** add to the targets of critically damped springs
   (`core/easing.Spring`): one for zoom, two for pan. Nothing moves yet.
 
-### `plane.draw_grid(surface)`
+### `grid.draw(surface)`
 
 1. **Rect.** An automatic plane takes the surface's size; the first time,
    `ViewFraming.settle()` redoes any provisional fit at the real size.
 2. **Easing.** `InteractionController.update()` advances the springs by the
    real elapsed time (an exact, frame-rate-independent solution) and
    applies the change to the `View`, zooming about the anchor.
-3. **Palette.** `ColorCycle.reset()` restarts the palette.
-4. **Grid.** `core.grid.scene.build_grid(view, theme, renderer, state)`
-   builds a `GridScene`; [The grid](grid.md) explains each step.
+3. **Frame.** `ColorCycle.reset()` restarts the palette, and the legend's
+   list of labelled calls starts empty.
+4. **Grid.** `core.grid.scene.build_grid(view, theme, renderer, state,
+   x_title=..., y_title=...)` builds a `GridScene`; [The grid](grid.md)
+   explains each step. An unchanged grid is reused, and an arrowhead that
+   did not move is swapped for last frame's (equal) one, so its coverage
+   is reused.
 5. **Draw.** `PygameRenderer.draw_grid` fills the background, draws the line
-   batches as crisp 1-pixel rectangles and blits cached label surfaces.
+   batches as crisp 1-pixel rectangles, fills the arrowheads and blits
+   cached label surfaces.
 
-### `plane.plot(surface, f)` and the other plotting methods
+### `grid.plot(surface, f)` and the other plotting methods
 
 1. **Style.** `style.with_overrides()` merges the keyword arguments into the
    style, and `ColorCycle.resolve()` picks the colour (the next palette
-   colour if none was given).
+   colour if none was given). A `label=` adds a `LegendEntry` (the label,
+   style and colour) to the frame's list, for `grid.legend`.
 2. **Primitives.** A builder in `core/plot/builders.py` turns the object
    into clipped screen-space primitives: `function_stroke` (via
    `sampling.sample_function`), `parametric_stroke` and `polar_stroke` (via
    `curves.sample_curve`), `implicit_stroke` (via
    `implicit.sample_implicit`), `polyline_stroke`, `polygon_shapes` or
    `point_markers`. [Plotting](plotting.md) explains the samplers.
-3. **Draw.** `Plane._draw()` clips the surface to the plane's rectangle and
+3. **Draw.** `Grid._draw()` clips the surface to the plane's rectangle and
    dispatches each primitive to the renderer (`draw_stroke`, `draw_fill`,
    `draw_markers`); [Rendering](rendering.md) explains how they become
    pixels.
+
+`grid.text` builds `TextItem`s with `builders.text_items` (anchored by
+`core/plot/text.py`) and draws them with `Grid._draw_texts`; it is not
+cached, as measuring and placing text is cheap and the renderer caches the
+rendered text. `grid.legend` lays out the frame's entries in a corner
+panel (`core/handles/legend.py`), beyond the sliders' panel if they share
+the corner, and draws it like the slider panels. `grid.color_bar` does the
+same with a colour bar (`core/handles/color_bar.py`), beyond the sliders
+and the legend.
 
 ## Coordinates
 
@@ -224,11 +254,14 @@ the default view puts grid lines exactly on pixels.
 |---|---|---|
 | Centre, scale, axis kinds | `View` | What is visible. |
 | Springs, drag anchor | `InteractionController` | Eased motion and anchored dragging. |
-| Draggable points | `DraggablePoint`, listed by the `Plane` | Positions the user changes; the grabbed point and hover in `DragController`. |
+| Draggable points | `DraggablePoint`, listed by the `Grid` | Positions the user changes; the grabbed point and hover in `DragController`. |
+| Sliders | `Slider`, listed by the `Grid`; the last frame's panels (`Grid._panels`) | Values the user changes; what a press hits is what was drawn; the dragged slider and hover in `SliderController`; the last primitives, for reusing their coverage. |
 | Home view, pending fits | `ViewFraming` | `reset_view`, and fitting ranges once the size is known. |
 | Snap levels | `GridState` | Hysteresis in `"snap"` mode only (fades are stateless). |
 | Palette position | `ColorCycle` | Colours in drawing order, restarted every frame. |
-| The previous frame's plots and grid | `PlotCache`, `Plane._grid_scene` | Reusing unchanged plots (exactly: checked against the functions' values). |
+| The colour bar's panel | `Grid._color_bar_panel`, `Grid._color_bar_drawing` | As drawn this frame (presses do not go through it), and its last primitives, for reuse. |
+| Legend entries, the legend's panel | `Grid._legend_entries`, `Grid._legend_panel`, `Grid._legend_layout` | The labelled calls of the frame (emptied every frame), and the panel as drawn, which presses do not go through; the last primitives of its panel and swatches, for reusing their coverage. |
+| The previous frame's plots and grid | `PlotCache`, `Grid._grid_scene` | Reusing unchanged plots (exactly: checked against the functions' values). |
 | Coverage of reused primitives | `CoverageCache` (renderer) | Blending reused plots without rasterising them again. |
 | Fonts, label surfaces, marker stamps | renderer caches | Speed only; `clear_caches()` frees them. |
 
@@ -247,9 +280,9 @@ another form. Their code is still in the history, for reference:
 |---|---|---|
 | Graphs | `pgp.Graph`: a Desmos-like list of named items written as lines of maths (`"y = a sin(x - P.x)"`), names usable in any order, errors per item, saving and loading JSON | `c609cfb` ("persistent plot objects"); first version in `45cd36c` ("support for expressions") |
 | The expression language | `core/expr`: a safe parser and compiler from text to NumPy functions, with exact derivatives (`f'(x)`), behind `pgp.expression` | `c609cfb` |
-| Retained plot objects | `pygridplot/objects`: `pgp.Function`, `pgp.Point`, ... kept by the plane (`plane.add`, `plane.draw`) and changed through their attributes | `21e2b31` ("updated docs and tests"), Python only; with text support in `c609cfb` |
+| Retained plot objects | `pygridplot/objects`: `pgp.Function`, `pgp.Point`, ... kept by the plane (`plane.add`, `plane.draw` on what was then `Plane`) and changed through their attributes | `21e2b31` ("updated docs and tests"), Python only; with text support in `c609cfb` |
 
 What they taught is kept: a draggable point no longer keeps its plane
-alive (`Plane.draggable` gives points a weak reference to their plane),
+alive (`Grid.draggable` gives points a weak reference to their plane),
 and the derivative of a function is undefined wherever the function is
 (`Jet.constant`).

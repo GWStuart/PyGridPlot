@@ -10,12 +10,12 @@ The pipeline, run once per frame for every plotted function:
    reuses exactly the same world points, and curves move rigidly instead of
    shimmering.
 3. **Adaptive refinement** (vectorised, a few rounds). Segments whose
-   midpoint lies more than :attr:`SamplingConfig.tolerance_px` above or
+   midpoint lies more than :attr:`FunctionSampling.tolerance_px` above or
    below the chord are halved again. Segments with an undefined end (a domain edge, as
    ``sqrt(x)`` has at 0) are bisected so the curve reaches the edge.
    Segments that are entirely above or below the screen are left alone.
 4. **Discontinuities.** A segment that is still far from straight after
-   the last round, rising more than :attr:`SamplingConfig.jump_px` pixels,
+   the last round, rising more than :attr:`FunctionSampling.jump_px` pixels,
    gets one last midpoint test. If its rise sits entirely in one half (a
    step of ``floor(x)``) or the midpoint overshoots both ends (the pole of
    ``1/x`` or ``tan(x)``), the curve is broken there instead of being joined
@@ -49,7 +49,7 @@ _CHASE_STEPS: Final = 40
 
 
 @dataclass(frozen=True, slots=True)
-class SamplingConfig:
+class FunctionSampling:
     """How functions are sampled. The defaults suit almost every function.
 
     Attributes:
@@ -83,7 +83,7 @@ class SamplingConfig:
             raise ValueError(msg)
 
 
-DEFAULT_SAMPLING: Final = SamplingConfig()
+DEFAULT_SAMPLING: Final = FunctionSampling()
 """The sampling settings used when none are given."""
 
 
@@ -95,7 +95,7 @@ def sample_function(
     x_range: tuple[float, float],
     scale: tuple[float, float],
     y_band: tuple[float, float],
-    config: SamplingConfig = DEFAULT_SAMPLING,
+    config: FunctionSampling = DEFAULT_SAMPLING,
     *,
     keep_offscreen: bool = False,
 ) -> list[NDArray[np.float64]]:
@@ -131,7 +131,7 @@ def sample_function(
 
 
 def _initial_samples(
-    lo: float, hi: float, scale_x: float, config: SamplingConfig
+    lo: float, hi: float, scale_x: float, config: FunctionSampling
 ) -> NDArray[np.float64]:
     """Return evenly spaced, world-anchored sample positions covering ``[lo, hi]``.
 
@@ -161,7 +161,7 @@ def _refine(
     ys: NDArray[np.float64],
     scale: tuple[float, float],
     band: tuple[float, float],
-    config: SamplingConfig,
+    config: FunctionSampling,
 ) -> tuple[NDArray[np.float64], NDArray[np.float64], NDArray[np.bool_]]:
     """Adaptively add samples where the polyline would visibly misrepresent f.
 
@@ -428,7 +428,7 @@ def _initial_candidates(
     ys: NDArray[np.float64],
     scale: tuple[float, float],
     band: tuple[float, float],
-    config: SamplingConfig,
+    config: FunctionSampling,
 ) -> NDArray[np.intp]:
     """Return the segments worth refining in the first round.
 
@@ -578,7 +578,7 @@ def _breaks(
     confirmed: bool,
     scale: tuple[float, float],
     band: tuple[float, float],
-    config: SamplingConfig,
+    config: FunctionSampling,
 ) -> NDArray[np.bool_]:
     """Decide where the curve must not be joined.
 

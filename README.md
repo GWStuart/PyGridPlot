@@ -11,12 +11,34 @@ of the Desmos graph view but driven entirely from Python code. It gives you:
   parametric, polar and implicit curves, points, polylines and polygons;
 - shaded areas between graphs, and regions where inequalities hold;
 - arrows, and vector and slope fields;
+- sequences, as stems and markers: a list of values, a spectrum, or a
+  function of `n`;
+- data: scatter plots coloured and sized by a value with a colour bar,
+  error bars, step plots, bar charts (stacked, floating, horizontal),
+  histograms, box plots and violin plots, and names for categories along
+  an axis;
 - calculus to plot: integrals and antiderivatives, Taylor polynomials and
   Fourier series;
-- draggable points: free, locked to an axis, or running along a curve.
+- draggable points: free, locked to an axis, or running along a curve;
+- sliders for values that are not positions, in a panel that stays put;
+- axis titles and arrowheads, a legend of the labelled plots, and text
+  written at points of the plane.
 
 PyGridPlot is a *library, not a framework*: your program owns the main loop,
-and the plane is an object you call each frame.
+and the plane, a `pgp.Grid`, is an object you call each frame.
+
+## Installing
+
+```bash
+pip install pygridplot
+```
+
+PyGridPlot needs Python 3.10 or newer, and installs
+[pygame-ce](https://pyga.me/), NumPy and contourpy. It uses pygame
+*community edition*, which installs under the same name as the original
+`pygame`: if that is installed, uninstall it first (`pip uninstall pygame`).
+
+## A first program
 
 ```python
 import numpy as np
@@ -25,7 +47,7 @@ import pygridplot as pgp
 
 pygame.init()
 screen = pygame.display.set_mode((900, 600), pygame.RESIZABLE)
-plane = pgp.Plane()                  # fills the window and follows resizes
+grid = pgp.Grid()                  # fills the window and follows resizes
 clock = pygame.time.Clock()
 
 running = True
@@ -33,12 +55,12 @@ while running:
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
             running = False
-        plane.handle_event(event)    # drag to pan, scroll to zoom
+        grid.handle_event(event)    # drag to pan, scroll to zoom
 
-    plane.draw_grid(screen)
-    plane.plot(screen, np.tan)       # asymptotes are not joined up
-    plane.points(screen, [(0, 0), (1, 1)], edge_color="white")
-    plane.polygon(screen, [(-3, -1), (-1, -1), (-2, 1)])
+    grid.draw(screen)
+    grid.plot(screen, np.tan)       # asymptotes are not joined up
+    grid.points(screen, [(0, 0), (1, 1)], edge_color="white")
+    grid.polygon(screen, [(-3, -1), (-1, -1), (-2, 1)])
     pygame.display.flip()
     clock.tick(60)
 ```
@@ -48,8 +70,8 @@ Views can be given like a graphing calculator's window settings, and either
 axis can be logarithmic:
 
 ```python
-plane = pgp.Plane(x_range=(-2, 8), y_range=(-1, 3))         # each axis fills its range
-plane = pgp.Plane(log_x=True, log_y=True)                   # log-log
+grid = pgp.Grid(x_range=(-2, 8), y_range=(-1, 3))           # each axis fills its range
+grid = pgp.Grid(log_x=True, log_y=True)                     # log-log
 pgp.show(np.exp, log_y=True, x_range=(0, 10))               # semi-log, quick mode
 ```
 
@@ -65,26 +87,30 @@ pgp.show(np.exp, log_y=True, x_range=(0, 10))               # semi-log, quick mo
 - **Robust function plotting.** Functions can be NumPy or plain `math`, and may
   raise errors or return NaN. Jumps and poles (`floor`, `1/x`, `tan`, `gamma`)
   are never joined by vertical lines, and domain edges are exact.
-- **Parametric and polar curves.** `plane.parametric(screen, x, y, t_range)`
-  and `plane.polar(screen, r)` sample adaptively on screen, so loops, cusps
+- **Parametric and polar curves.** `grid.parametric(screen, x, y, t_range)`
+  and `grid.polar(screen, r)` sample adaptively on screen, so loops, cusps
   and spirals stay smooth at any zoom, and curves end exactly where they
   become undefined.
-- **Implicit curves and contour lines.** `plane.implicit(screen, F, c)`
+- **Implicit curves and contour lines.** `grid.implicit(screen, F, c)`
   draws any curve `F(x, y) = c`: loops, crossings and separate pieces,
   accurate to a fraction of a pixel, with no false lines at poles or jumps.
   Several levels at once make a contour map.
-- **Areas and inequalities.** `plane.fill_between(screen, f, g)` shades
+- **Areas and inequalities.** `grid.fill_between(screen, f, g)` shades
   between two graphs, stopping cleanly at jumps and asymptotes, and
-  `plane.inequality(screen, lambda x, y: x**2 + y**2 < 4)` shades the
+  `grid.inequality(screen, lambda x, y: x**2 + y**2 < 4)` shades the
   region where a condition holds, holes and all, with edges accurate to a
   fraction of a pixel. Conditions combine with `&`, `|` and `~`.
-- **Vector and slope fields.** `plane.vector_field(screen, lambda x, y: (-y, x))`
-  and `plane.slope_field(screen, lambda x, y: x - y)` draw arrows or
+- **Vector and slope fields.** `grid.vector_field(screen, lambda x, y: (-y, x))`
+  and `grid.slope_field(screen, lambda x, y: x - y)` draw arrows or
   segments on a lattice that pans rigidly and keeps its density while you
   zoom, with new arrows growing in smoothly rather than popping. Arrows show
   direction, or magnitude too with `scale=`, and stay tangent to the flow
-  lines on log axes. `plane.arrow(screen, start, end)` draws any arrows,
+  lines on log axes. `grid.arrow(screen, start, end)` draws any arrows,
   one or thousands at once.
+- **Sequences.** `grid.sequence(screen, terms)` draws the terms `aₙ` of a
+  list or array (a Fourier series' `amplitudes` give its spectrum), or of a
+  function of `n`, drawn at every visible integer, even zoomed far out,
+  where the terms are thinned smoothly without hiding alternating signs.
 - **Exact derivatives of any order.** `pgp.derivative(f, n)` is the
   `n`-th derivative of a NumPy function, exact to rounding (Taylor-mode
   automatic differentiation, no dependencies), with clean jumps at kinks
@@ -98,10 +124,34 @@ pgp.show(np.exp, log_y=True, x_range=(0, 10))               # semi-log, quick mo
   derivatives, and `pgp.fourier(f, n)` a partial Fourier sum, with its
   coefficients. Together with draggable points: areas between two points,
   Riemann sums, Gibbs' overshoot as you add harmonics.
-- **Draggable points.** `a = plane.draggable((1, 2))` creates a point the
+- **Draggable points.** `a = grid.draggable((1, 2))` creates a point the
   user can drag; read `a.x` and `a.y` every frame to drive your plots.
-  Points can be free, locked to one axis (sliders) or kept on a parametric
-  curve, which they follow through crossings without jumping.
+  Points can be free, locked to one axis or kept on a parametric curve,
+  which they follow through crossings without jumping.
+- **Sliders.** `n = grid.slider("n", (1, 20), step=1)` creates a slider in
+  a panel in a corner of the plane, showing `n = 5`, which stays put while
+  you pan and zoom; read `n.value` every frame. Steps are exact (`step=1`
+  gives `int`s), tracks can be geometric (`log=True`), and the mouse wheel
+  moves a slider a step.
+- **Data plots.** `grid.points(screen, data, y_error=errors)` draws
+  measurements with error bars, and takes a colour and a size per point;
+  `grid.polyline(screen, data, step="post")` draws steps;
+  `grid.bars(screen, heights)` a bar chart; and `grid.histogram(screen,
+  samples, density=True)` bins raw samples in anchored bins (they never
+  shift as samples arrive), with an automatic 1-2-5 width, ready to compare
+  with a density drawn by `plot`. `pgp.color_map(values, "viridis")` colours
+  points by a value, and `grid.color_bar(...)` is its key;
+  `grid.box_plot` and `grid.violin_plot` compare groups of samples;
+  `grid.draw(x_labels=["a", "b", ...])` names categories along an axis;
+  and `pgp.data_range(values)` gives the view a range that shows them.
+- **Annotations.** `grid.draw(screen, x_title="t (s)", y_title="v")`
+  titles the axes at their ends, keeping the titles on screen when the axes
+  leave it, and a theme with `show_arrows=True` ends the axes in
+  arrowheads. Every plotting method takes a `label=`, and
+  `grid.legend(screen)` lists the labelled plots of the frame beside
+  samples of their lines, fills, markers and arrows. `grid.text(screen,
+  "max", (x, y), anchor="bottom", gap=8)` writes text that moves with its
+  point.
 - **Fast when little changes.** Plots that have not changed since the
   previous frame are reused automatically and exactly (their functions are
   checked at every sampled point), so idle frames cost a fraction of a
@@ -137,12 +187,16 @@ python examples/curves.py           # animated parametric and polar curves (Spac
 python examples/implicit.py         # implicit curves and contour lines (Space)
 python examples/regions.py          # inequalities and areas between graphs (Space)
 python examples/fields.py           # vector and slope fields, arrows (Space)
-python examples/draggable.py        # draggable points, sliders, points on curves (Space)
+python examples/draggable.py        # draggable points: free, locked, on curves (Space)
+python examples/sliders.py          # sliders: continuous, stepped, integer, geometric (Space)
 python examples/derivatives.py      # tangents, Taylor polynomials, osculating circles (Space)
 python examples/integrals.py        # areas, antiderivatives, Riemann sums, improper integrals (Space, R)
 python examples/series.py           # Fourier series with a slider, and their spectrum (Space)
+python examples/sequences.py        # sequences, limits, partial sums, the logistic map (Space)
+python examples/annotations.py      # axis titles, arrowheads, legends and text (Space)
+python examples/data.py             # scatter, colour bars, error bars, steps, bars, histograms, box and violin plots (Space)
 python examples/shapes.py           # points, polylines, polygons, fill rules
-python examples/log_axes.py         # log-log, semi-log and range-based planes (Space, X, Y)
+python examples/log_axes.py         # log-log, semi-log and range-based grids (Space, X, Y)
 python examples/animation.py        # everything moving, every frame
 python examples/grid_playground.py  # live theme toggles and timings; X/Y log axes
 ```
@@ -165,5 +219,18 @@ python scripts/build_api_docs.py        # regenerate the API reference
 ```
 
 See the [developer guide](docs/dev/index.md) for the architecture and
-conventions, and the [roadmap](ROADMAP.md) for ideas for the future. The bundled label font is DejaVu Sans; see
-`src/pygridplot/assets/fonts/LICENSE-DejaVu.txt`.
+conventions, the [roadmap](ROADMAP.md) for ideas for the future, and the
+[changelog](CHANGELOG.md) for what has changed.
+
+## Licence
+
+PyGridPlot is free software: you can redistribute it and modify it under
+the terms of the [GNU Lesser General Public License](LICENSE), version 2.1
+or (at your option) any later version, the licence pygame-ce uses. In
+short, programs that use PyGridPlot may be under any licence, while
+changed versions of PyGridPlot itself stay under the LGPL; the licence
+text has the terms. The bundled label font, DejaVu Sans, comes with its own
+permissive licence
+([`LICENSE-DejaVu.txt`](src/pygridplot/assets/fonts/LICENSE-DejaVu.txt)).
+
+Copyright © 2026 GWStuart.

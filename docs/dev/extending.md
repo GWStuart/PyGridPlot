@@ -4,7 +4,7 @@ Recipes for the extensions the design anticipates, then the conventions
 every change follows. Each recipe names the files to touch, in order.
 Before starting on a new feature, check it against the
 [philosophy](../philosophy.md#deciding-what-belongs): it should be a better
-or a new plane method taking Python values, not a second way to draw.
+or a new `Grid` method taking Python values, not a second way to draw.
 
 - [A new kind of plot](#a-new-kind-of-plot)
 - [A new kind of axis](#a-new-kind-of-axis)
@@ -23,7 +23,7 @@ or a new plane method taking Python values, not a second way to draw.
 Parametric, polar and implicit curves, areas between graphs,
 inequalities, vector and slope fields and arrows were all added this way,
 so they are worked examples to copy.
-Take **inequalities** (`Plane.inequality`), which shade the region where a
+Take **inequalities** (`Grid.inequality`), which shade the region where a
 condition such as `x**2 + y**2 < 4` holds:
 
 1. **Sample it in `core/plot/`**, as a pure function that knows nothing
@@ -47,10 +47,14 @@ condition such as `x**2 + y**2 < 4` holds:
    clips if needed (`geometry.clip_paths` or `clip_polygon`), and returns a
    primitive (`Fill`, `Stroke`), or `None` when nothing is visible. If no
    existing primitive fits, see [A new primitive](#a-new-primitive).
-3. **Expose it in `plane.py`.** `Plane.inequality(surface, condition, *,
+3. **Expose it in `grid.py`.** `Grid.inequality(surface, condition, *,
    color, opacity, style, sampling)` calls `self._sync_rect(surface)`,
    resolves the style with `with_overrides` and the colour with
-   `self._colors.resolve`, builds the primitive through `self._cached`
+   `self._colors.resolve`, notes its `label=` for the legend with
+   `self._add_entry(label, style, color)` (every plotting method takes a
+   `label`; if the new kind needs its own swatch, add its style to
+   `legend.SwatchStyle` and a case to `legend.swatch_primitives`), builds
+   the primitive through `self._cached`
    (with everything the result depends on in the key, and `arity=2` for a
    function of two variables, so unchanged frames are reused exactly;
    `vector_field` adds `outputs=2`, as its function returns a pair), and
@@ -63,9 +67,9 @@ condition such as `x**2 + y**2 < 4` holds:
    accuracy against an independent check, edge cases such as asymptotes
    and undefined points, the budget, rigid panning as a property test),
    the builder in `tests/core/plot/test_builders.py` (log axes, clipping,
-   broken functions), the whole path in `tests/test_plane_plotting.py`
+   broken functions), the whole path in `tests/test_grid_plotting.py`
    (the right pixels, palette colours, rigidity when panning), and the
-   cache in `tests/test_plane_cache.py` (add the call to its scene).
+   cache in `tests/test_grid_cache.py` (add the call to its scene).
 5. **Document it**: run `python scripts/build_api_docs.py`, add a section to
    [Plotting](../user/plotting.md) with runnable examples and its limits,
    describe the method in [Plotting](plotting.md) for developers, add a
@@ -89,7 +93,7 @@ Points are kept free, locked or on a curve by the constraints in
 Work on screen when the movement should follow what the user sees (as
 `CurveConstraint` does), in transformed coordinates otherwise (as
 `AxisConstraint` does, so log axes need no special cases). Add the option
-to `DraggablePoint.__init__` and `Plane.draggable`, rejecting combinations
+to `DraggablePoint.__init__` and `Grid.draggable`, rejecting combinations
 that make no sense, and test it in `tests/core/handles/` (projection,
 bounds, log axes) and through events in `tests/test_dragging.py`. See
 [Draggable points](dragging.md) for how the pieces fit together.
@@ -127,7 +131,7 @@ For example a symmetric log axis (linear near zero, logarithmic beyond):
    return `AxisLines` (per-line opacities, continuous in the zoom) and,
    with a labels module like `loglabels.py`, `LabelCandidate`s; add a
    branch in `scene.axis_grid` and decide its overlap handling.
-4. Add `Plane` and `View` constructor options, and repeat the grid property
+4. Add `Grid` and `View` constructor options, and repeat the grid property
    tests (`tests/core/grid/test_logticks.py` is the model) for the new axis.
 
 ## A new marker shape
@@ -156,7 +160,7 @@ If no existing primitive fits (an image, say):
 1. Define it in `core/primitives.py` as a frozen dataclass in screen pixels.
 2. Add a method for it to the `Renderer` protocol in `render/base.py`, and
    implement it in `PygameRenderer`.
-3. Dispatch it in `Plane._draw`.
+3. Dispatch it in `Grid._draw`.
 
 Keep primitives few and general: every one must be implemented by every
 backend. Most new kinds of plot need none: arrows, for example, are rings
@@ -165,14 +169,14 @@ of a `Fill`, and slope fields are `Stroke`s of two-point paths.
 ## A new backend
 
 Implement the `Renderer` protocol (`render/base.py`): `measure_text`,
-`draw_grid`, `draw_stroke`, `draw_fill` and `draw_markers`, working from the
-primitives alone. Everything in `core` stays as it is. `render/raster.py`
+`draw_grid`, `draw_stroke`, `draw_fill`, `draw_markers` and `draw_image`,
+working from the primitives alone. Everything in `core` stays as it is. `render/raster.py`
 is pure NumPy, so an image-based backend can reuse it.
 
-`Plane` and `interaction.py` are the pygame-specific integration (`Plane`
+`Grid` and `interaction.py` are the pygame-specific integration (`Grid`
 uses the renderer's `clipped()` context manager and pygame surfaces and
 events). A backend for another windowing library needs its own thin
-façade, or a `Plane` generalised over the renderer and event types. An
+façade, or a `Grid` generalised over the renderer and event types. An
 export backend (SVG, say) needs no events at all: build the grid with
 `build_grid` and the primitives with the builders, then write them out.
 

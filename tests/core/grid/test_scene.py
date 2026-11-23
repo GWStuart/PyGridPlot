@@ -16,9 +16,16 @@ from hypothesis import assume, given, settings
 from hypothesis import strategies as st
 
 from pygridplot.core.coords import ScreenRect
-from pygridplot.core.grid.layout import PlacedLabel
+from pygridplot.core.grid.gridlines import ARROW_INSET_PX, arrow_head
+from pygridplot.core.grid.layout import PlacedLabel, title_box
 from pygridplot.core.grid.nice import NiceStep
-from pygridplot.core.grid.scene import GridScene, GridState, build_grid
+from pygridplot.core.grid.scene import (
+    COLLISION_FADE_PX,
+    COLLISION_PADDING_PX,
+    GridScene,
+    GridState,
+    build_grid,
+)
 from pygridplot.core.grid.theme import DARK, LIGHT, GridTheme
 from pygridplot.core.grid.ticklabels import (
     label_fade,
@@ -26,11 +33,11 @@ from pygridplot.core.grid.ticklabels import (
     next_label_step,
     thinning_opacity,
 )
-from pygridplot.core.pixels import line_starts
-from pygridplot.core.primitives import Orientation, TextItem
+from pygridplot.core.pixels import line_start, line_starts
+from pygridplot.core.primitives import Fill, Orientation, TextItem
 from pygridplot.core.view import View
 
-from ...conftest import FakeMeasurer, labels_by_axis
+from ...conftest import CHAR_WIDTH, DESCENT, DIGIT_HEIGHT, FakeMeasurer, labels_by_axis
 
 RECT = ScreenRect(0, 0, 800, 600)
 
@@ -40,9 +47,11 @@ def grid_for(
     scale: float = 50.0,
     theme: GridTheme = LIGHT,
     rect: ScreenRect = RECT,
+    **titles: str,
 ) -> GridScene:
     """Build the grid for a simple view with the fake measurer."""
-    return build_grid(View(rect, center, scale), theme, FakeMeasurer(), GridState())
+    view = View(rect, center, scale)
+    return build_grid(view, theme, FakeMeasurer(), GridState(), **titles)
 
 
 def label_texts(scene: GridScene) -> list[str]:
@@ -443,9 +452,257 @@ def test_partly_major_lines_blend_to_the_requested_opacity() -> None:
         ("hysteresis", -1.0),
         ("label_size", 0),
         ("label_halo_width", -1),
+        ("title_size", 0),
         ("palette", ()),
     ],
 )
 def test_themes_reject_invalid_settings(field: str, value: object) -> None:
     with pytest.raises(ValueError, match=field.split("_")[0]):
         replace(LIGHT, **{field: value})
+
+
+# ----------------------------------------------------------------------
+# Axis titles
+# ----------------------------------------------------------------------
+TITLES = {"x_title": "time", "y_title": "speed"}
+MARGIN = LIGHT.label_edge_margin
+GAP = LIGHT.label_gap
+
+
+def titles_of(scene: GridScene) -> tuple[TextItem, TextItem]:
+    """The scene's x and y titles (both must be shown)."""
+    (x_title,) = scene.axis_labels.x_title
+    (y_title,) = scene.axis_labels.y_title
+    return x_title, y_title
+
+
+def test_titles_sit_at_the_positive_ends_of_the_axes() -> None:
+    view = View(RECT, (0.0, 0.0), 50.0)
+    x_title, y_title = titles_of(grid_for(**TITLES))
+    # x: right-aligned at the right edge, its letters just above the x axis.
+    assert x_title.left + 4 * CHAR_WIDTH == RECT.right - MARGIN
+    axis_top = line_start(view.to_screen_y(0.0), LIGHT.axis_width)
+    assert x_title.top + DIGIT_HEIGHT + DESCENT == axis_top - GAP
+    # y: at the top edge, just right of the y axis.
+    axis_left = line_start(view.to_screen_x(0.0), LIGHT.axis_width)
+    assert y_title.left == axis_left + LIGHT.axis_width + GAP
+    assert y_title.top == RECT.top + MARGIN
+    for title in (x_title, y_title):
+        assert title.font.size == LIGHT.title_size
+        assert title.color == LIGHT.label_color
+        assert title.halo_width == LIGHT.label_halo_width
+        assert title.opacity == 1.0
+    # The titles are drawn last, on top of the tick labels.
+    assert grid_for(**TITLES).labels[-2:] == (x_title, y_title)
+
+
+def test_titles_stay_on_screen_with_their_axes_off_it() -> None:
+    # The x axis below the plane: the title rides above the pinned labels,
+    # as far above them as it is when the axis is between them.
+    scene = grid_for(center=(0.0, 100.0), **TITLES)
+    x_title, _ = titles_of(scene)
+    row = min(item.top for item in scene.axis_labels.x)
+    clear = COLLISION_PADDING_PX + COLLISION_FADE_PX
+    assert x_title.top + DIGIT_HEIGHT + DESCENT == row - clear
+    # The x axis above the plane: the title is pinned to the top edge.
+    x_title, _ = titles_of(grid_for(center=(0.0, -100.0), **TITLES))
+    assert x_title.top == RECT.top + MARGIN
+    # The y axis left and right of the plane: its title is pinned to that edge.
+    _, y_title = titles_of(grid_for(center=(100.0, 0.0), **TITLES))
+    assert y_title.left == RECT.left + MARGIN
+    _, y_title = titles_of(grid_for(center=(-100.0, 0.0), **TITLES))
+    assert y_title.left + 5 * CHAR_WIDTH == RECT.right - MARGIN
+
+
+def test_titles_clear_the_arrowheads() -> None:
+    arrows = replace(LIGHT, show_arrows=True)
+    plain_x, plain_y = titles_of(grid_for(**TITLES))
+    x_title, y_title = titles_of(grid_for(theme=arrows, **TITLES))
+    _, width = arrow_head(arrows)
+    overhang = math.ceil((width - arrows.axis_width) / 2)
+    assert x_title.top == plain_x.top - overhang
+    assert y_title.left == plain_y.left + overhang
+
+
+def test_titles_without_tick_labels_and_empty_titles() -> None:
+    bare = replace(LIGHT, show_labels=False)
+    scene = grid_for(theme=bare, **TITLES)
+    assert [item.text.plain for item in scene.labels] == ["time", "speed"]
+    scene = grid_for(x_title="", y_title="")
+    assert scene.axis_labels.x_title == scene.axis_labels.y_title == ()
+    assert "time" not in label_texts(grid_for(y_title="speed"))
+
+
+def test_tick_labels_fade_where_they_meet_a_title() -> None:
+    # The x axis above the plane: its labels and its title share the top row,
+    # and the labels near the title make way for it.
+    plain = grid_for(center=(0.0, -100.0))
+    titled = grid_for(center=(0.0, -100.0), x_title="a long axis title")
+    x_title = titled.axis_labels.x_title[0]
+    box = title_box(FakeMeasurer().measure_text(x_title.text, x_title.font))
+    title = PlacedLabel(x_title.text, x_title.left, x_title.top, box)
+    measurer = FakeMeasurer()
+    near = [
+        item
+        for item in plain.axis_labels.x
+        if as_placed(item, measurer).overlaps(title, padding=2)
+    ]
+    assert near  # the example puts labels where the title goes
+    kept = {item.text.plain: item for item in titled.axis_labels.x}
+    for item in near:
+        assert item.text.plain not in kept or kept[item.text.plain].opacity < 1.0
+
+
+@pytest.mark.parametrize(
+    # Axes on screen, or the x axis below it (its title rides on the labels).
+    "center",
+    [(0.0, 0.0), (0.0, 100.0), (2.0, -0.5), (-3.0, 4.0), (5.0, 100.0)],
+)
+@pytest.mark.parametrize("arrows", [False, True])
+def test_titles_leave_the_tick_labels_alone_off_their_rows(
+    center: tuple[float, float], arrows: bool
+) -> None:
+    theme = replace(LIGHT, show_arrows=arrows)
+    plain = grid_for(center=center, theme=theme)
+    titled = grid_for(center=center, theme=theme, **TITLES)
+    for group in ("x", "zero", "y"):
+        before = getattr(plain.axis_labels, group)
+        after = getattr(titled.axis_labels, group)
+        assert [(i.text, i.opacity) for i in before] == [
+            (i.text, i.opacity) for i in after
+        ]
+
+
+def scene_boxes(scene: GridScene) -> list[PlacedLabel]:
+    """Every label's and title's box (a title's with its descent)."""
+    measurer = FakeMeasurer()
+    titles = {
+        id(item) for item in scene.axis_labels.x_title + scene.axis_labels.y_title
+    }
+    boxes = []
+    for item in scene.labels:
+        placed = as_placed(item, measurer)
+        if id(item) in titles:
+            placed = replace(placed, size=title_box(placed.size))
+        boxes.append(placed)
+    return boxes
+
+
+@settings(max_examples=150, deadline=None)
+@given(
+    cx=centres,
+    cy=centres,
+    log_scale=log_scales,
+    x_title=st.sampled_from(["x", "time (s)", "a much longer title for the x axis"]),
+    y_title=st.sampled_from(["y", "speed", "position (m)"]),
+    log_x=st.booleans(),
+)
+def test_titles_never_overlap_labels_and_stay_inside(
+    cx: float, cy: float, log_scale: float, x_title: str, y_title: str, log_x: bool
+) -> None:
+    if log_x:
+        cx = abs(cx) + 1.0
+    view = View(RECT, (cx, cy), 10**log_scale, equal_aspect=False, log_x=log_x)
+    theme = replace(LIGHT, show_arrows=True)
+    scene = build_grid(view, theme, FakeMeasurer(), x_title=x_title, y_title=y_title)
+    boxes = scene_boxes(scene)
+    for i, a in enumerate(boxes):
+        assert 0.0 < a.opacity <= 1.0
+        for b in boxes[i + 1 :]:
+            if a.overlaps(b):
+                assert a.opacity + b.opacity <= 1.0 + 1e-9, (a.text.plain, b.text.plain)
+    assert scene.axis_labels.x_title  # the x title always shows
+    titles = len(scene.axis_labels.x_title) + len(scene.axis_labels.y_title)
+    for title in boxes[-titles:]:  # the titles are drawn last
+        left, top, right, bottom = title.box
+        assert RECT.left <= left
+        assert right <= RECT.right
+        assert RECT.top <= top
+        assert bottom <= RECT.bottom
+
+
+@settings(max_examples=100, deadline=None)
+@given(
+    cx=st.floats(-3.0, 3.0),
+    cy=st.floats(-3.0, 3.0),
+    dx=st.integers(-40, 40),
+    dy=st.integers(-40, 40),
+)
+def test_titles_move_rigidly_with_their_axes(
+    cx: float, cy: float, dx: int, dy: int
+) -> None:
+    view = View(RECT, (cx, cy), 50.0)
+    axes = (view.to_screen_x(0.0), view.to_screen_y(0.0))
+    # Ties in placing the axis line may round either way after a pan.
+    assume(all(abs((p - 1 + 0.5) % 1.0 - 0.5) > 1e-6 for p in axes))
+    before = titles_of(build_grid(view, LIGHT, FakeMeasurer(), **TITLES))
+    view.pan_pixels(dx, dy)
+    after = titles_of(build_grid(view, LIGHT, FakeMeasurer(), **TITLES))
+    assert after[0].left == before[0].left
+    assert after[0].top == before[0].top + dy  # the x axis is well inside
+    assert after[1].left == before[1].left + dx
+    assert after[1].top == before[1].top
+
+
+# ----------------------------------------------------------------------
+# Axis arrowheads
+# ----------------------------------------------------------------------
+ARROWS = replace(LIGHT, show_arrows=True)
+
+
+def axis_batch(scene: GridScene, orientation: Orientation) -> object:
+    """The scene's axis line in one direction."""
+    (batch,) = [
+        b
+        for b in scene.lines
+        if b.orientation is orientation and b.layers[0].color == LIGHT.axis_color
+    ]
+    return batch
+
+
+def test_arrowheads_end_the_axes_at_their_positive_ends() -> None:
+    scene = grid_for(theme=ARROWS)
+    view = View(RECT, (0.0, 0.0), 50.0)
+    length, width = arrow_head(ARROWS)
+    x_head, y_head = scene.arrows
+    assert isinstance(x_head, Fill)
+    assert x_head.color == ARROWS.axis_color
+    # The x head: tip just inside the right edge, centred on the line's pixels.
+    ring = x_head.rings[0]
+    center_y = line_start(view.to_screen_y(0.0), 2) + 0.5
+    assert ring[:, 0].max() == pytest.approx(RECT.right - 0.5 - ARROW_INSET_PX)
+    assert ring[:, 0].min() == pytest.approx(ring[:, 0].max() - length)
+    assert ring[:, 1].mean() == pytest.approx(center_y)
+    assert np.ptp(ring[:, 1]) == pytest.approx(width)
+    # The y head points up from the top edge.
+    ring = y_head.rings[0]
+    assert ring[:, 1].min() == pytest.approx(RECT.top - 0.5 + ARROW_INSET_PX)
+    assert ring[:, 0].mean() == pytest.approx(
+        line_start(view.to_screen_x(0.0), 2) + 0.5
+    )
+    # The lines stop under the heads instead of running past their tips.
+    x_line = axis_batch(scene, Orientation.HORIZONTAL)
+    y_line = axis_batch(scene, Orientation.VERTICAL)
+    assert RECT.right - 0.5 - ARROW_INSET_PX - length < x_line.span[1]  # type: ignore[attr-defined]
+    assert x_line.span[1] < RECT.right - 0.5 - ARROW_INSET_PX - length / 2  # type: ignore[attr-defined]
+    assert y_line.span[0] > RECT.top - 0.5 + ARROW_INSET_PX + length / 2  # type: ignore[attr-defined]
+    assert y_line.span[1] == RECT.bottom  # type: ignore[attr-defined]
+
+
+def test_arrowheads_only_where_axes_are_drawn() -> None:
+    assert grid_for().arrows == ()  # off by default
+    full = axis_batch(grid_for(), Orientation.HORIZONTAL)
+    assert full.span == (RECT.left, RECT.right)  # type: ignore[attr-defined]
+    assert grid_for(theme=replace(ARROWS, show_axes=False)).arrows == ()
+    assert len(grid_for(center=(0.0, 100.0), theme=ARROWS).arrows) == 1  # y only
+    assert grid_for(center=(100.0, 100.0), theme=ARROWS).arrows == ()
+    log_y = View(RECT, (0.0, 1.0), (50.0, 150.0), equal_aspect=False, log_y=True)
+    (head,) = build_grid(log_y, ARROWS, FakeMeasurer()).arrows  # no y = 0 on log y
+    assert np.ptp(head.rings[0][:, 1]) > np.ptp(head.rings[0][:, 0])  # it points up
+
+
+def test_arrowheads_grow_with_the_axis_width() -> None:
+    thin = arrow_head(replace(ARROWS, axis_width=1))
+    thick = arrow_head(replace(ARROWS, axis_width=4))
+    assert thin[0] < thick[0]
+    assert thin[1] / thin[0] == pytest.approx(thick[1] / thick[0])

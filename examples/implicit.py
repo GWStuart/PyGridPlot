@@ -31,30 +31,30 @@ import pygame
 import pygridplot as pgp
 from pygridplot.render.fonts import bundled_font_path
 
-Drawing = Callable[[pgp.Plane, pygame.Surface, float], None]
+Drawing = Callable[[pgp.Grid, pygame.Surface, float], None]
 """Draws one set of curves at time ``t`` (in seconds)."""
 
 
-def draw_classics(plane: pgp.Plane, screen: pygame.Surface, t: float) -> None:
+def draw_classics(grid: pgp.Grid, screen: pygame.Surface, t: float) -> None:
     """Draw the classic curves."""
-    plane.implicit(screen, lambda x, y: x**2 + y**2, 4)  # the circle x² + y² = 4
-    plane.implicit(  # a heart
+    grid.implicit(screen, lambda x, y: x**2 + y**2, 4)  # the circle x² + y² = 4
+    grid.implicit(  # a heart
         screen,
         lambda x, y: (
             ((x - 5) ** 2 + (y - 2) ** 2 - 2) ** 3 - 3 * (x - 5) ** 2 * (y - 2) ** 3
         ),
     )
-    plane.implicit(  # a lemniscate of Bernoulli
+    grid.implicit(  # a lemniscate of Bernoulli
         screen, lambda x, y: ((x + 5) ** 2 + y**2) ** 2 - 8 * ((x + 5) ** 2 - y**2)
     )
-    plane.implicit(  # the folium of Descartes
+    grid.implicit(  # the folium of Descartes
         screen, lambda x, y: x**3 + (y + 3) ** 3 - 4 * x * (y + 3), width=2
     )
     c = 2.6 * math.sin(0.5 * t)  # the oval merges with the branch at c = -2
-    plane.implicit(screen, lambda x, y: y**2 - x**3 + 3 * x - c, width=2)
+    grid.implicit(screen, lambda x, y: y**2 - x**3 + 3 * x - c, width=2)
 
 
-def draw_level_sets(plane: pgp.Plane, screen: pygame.Surface, t: float) -> None:
+def draw_level_sets(grid: pgp.Grid, screen: pygame.Surface, t: float) -> None:
     """Draw contours of a drifting landscape."""
     shift = 0.3 * t
 
@@ -62,17 +62,17 @@ def draw_level_sets(plane: pgp.Plane, screen: pygame.Surface, t: float) -> None:
         return np.sin(x + shift) + np.cos(0.8 * y) + 0.3 * np.sin(0.5 * x * y)
 
     # One call for all the levels: the function is evaluated only once.
-    plane.implicit(screen, height, np.linspace(-1.6, 1.6, 9), width=1.5)
-    plane.implicit(screen, height, 0, width=3)  # the sea level, emphasised
+    grid.implicit(screen, height, np.linspace(-1.6, 1.6, 9), width=1.5)
+    grid.implicit(screen, height, 0, width=3)  # the sea level, emphasised
 
 
-def draw_undefined(plane: pgp.Plane, screen: pygame.Surface, t: float) -> None:
+def draw_undefined(grid: pgp.Grid, screen: pygame.Surface, t: float) -> None:
     """Draw curves with poles, jumps and domain edges."""
-    plane.implicit(screen, lambda x, y: y - np.tan(x))
-    plane.implicit(screen, lambda x, y: y + 3 - np.floor(x))
-    plane.implicit(screen, lambda x, y: x - 2 * np.sin(y + 0.5 * t) - 5)
-    plane.implicit(screen, lambda x, y: y - 2 - np.sqrt(x + 6))
-    plane.implicit(screen, lambda x, y: x * y, 1, width=2, opacity=0.6)  # y = 1/x
+    grid.implicit(screen, lambda x, y: y - np.tan(x))
+    grid.implicit(screen, lambda x, y: y + 3 - np.floor(x))
+    grid.implicit(screen, lambda x, y: x - 2 * np.sin(y + 0.5 * t) - 5)
+    grid.implicit(screen, lambda x, y: y - 2 - np.sqrt(x + 6))
+    grid.implicit(screen, lambda x, y: x * y, 1, width=2, opacity=0.6)  # y = 1/x
 
 
 SETS: list[tuple[str, Drawing]] = [
@@ -99,7 +99,7 @@ def main() -> None:
     screen = pygame.display.set_mode((1100, 720), pygame.RESIZABLE)
     pygame.display.set_caption("PyGridPlot: implicit curves")
     font = pygame.font.Font(bundled_font_path(), 14)
-    plane = pgp.Plane(x_range=(-9, 9))
+    grid = pgp.Grid(x_range=(-9, 9))
     clock = pygame.time.Clock()
     current = 0
     paused = False
@@ -115,15 +115,15 @@ def main() -> None:
                 current = (current + 1) % len(SETS)
             elif event.type == pygame.KEYDOWN and event.key == pygame.K_p:
                 paused = not paused
-            plane.handle_event(event)
+            grid.handle_event(event)
 
         now = time.perf_counter()
         if not paused:
             elapsed += now - last
         last = now
         title, draw = SETS[current]
-        plane.draw_grid(screen)
-        draw(plane, screen, elapsed)
+        grid.draw(screen)
+        draw(grid, screen, elapsed)
         draw_caption(screen, font, title)
         pygame.display.flip()
         clock.tick(60)

@@ -76,15 +76,15 @@ def frame_actions(fps: int) -> Iterator[tuple[str, object]]:
                     yield ("pan", (dx / fps, dy / fps))
 
 
-def apply_action(plane: pgp.Plane, action: tuple[str, object]) -> None:
+def apply_action(grid: pgp.Grid, action: tuple[str, object]) -> None:
     """Apply one frame of the sweep to the plane's view.
 
     Args:
-        plane: The plane being swept.
+        grid: The plane being swept.
         action: The action from :func:`frame_actions`.
     """
     kind, amount = action
-    view = plane.view
+    view = grid.view
     if kind == "zoom":
         rect = view.rect
         anchor = (rect.x + rect.width * 0.62, rect.y + rect.height * 0.38)
@@ -135,7 +135,7 @@ def main(argv: list[str] | None = None) -> None:
     theme = pgp.DARK if args.dark else pgp.LIGHT
     if args.snap:
         theme = replace(theme, transition="snap")
-    plane = pgp.Plane(theme=theme, interaction=pgp.InteractionConfig(smoothing=0.0))
+    grid = pgp.Grid(theme=theme, interaction=pgp.InteractionConfig(smoothing=0.0))
     clock = pygame.time.Clock()
     actions = frame_actions(args.fps)
     paused = False
@@ -153,15 +153,15 @@ def main(argv: list[str] | None = None) -> None:
                 elif event.key == pygame.K_SPACE:
                     paused = not paused
                 elif event.key == pygame.K_t:
-                    dark = plane.theme.background == pgp.DARK.background
-                    plane.theme = pgp.LIGHT if dark else pgp.DARK
+                    dark = grid.theme.background == pgp.DARK.background
+                    grid.theme = pgp.LIGHT if dark else pgp.DARK
                 elif event.key == pygame.K_f:
-                    mode = "snap" if plane.theme.transition == "fade" else "fade"
-                    plane.theme = replace(plane.theme, transition=mode)
-            plane.handle_event(event)
+                    mode = "snap" if grid.theme.transition == "fade" else "fade"
+                    grid.theme = replace(grid.theme, transition=mode)
+            grid.handle_event(event)
         if not paused:
-            apply_action(plane, next(actions))
-        plane.draw_grid(screen)
+            apply_action(grid, next(actions))
+        grid.draw(screen)
         if headless:
             offset = frame - args.first
             if offset >= 0 and offset % args.every == 0:

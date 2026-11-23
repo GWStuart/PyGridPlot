@@ -44,24 +44,24 @@ def spirograph_y(t: np.ndarray) -> np.ndarray:
 class Wave:
     """A sine wave shaped by a free point and two sliders."""
 
-    def __init__(self, plane: pgp.Plane) -> None:
-        self.crest = plane.draggable((math.pi / 2, 2.0), color=(200, 60, 60))
-        self.amplitude = plane.draggable(
+    def __init__(self, grid: pgp.Grid) -> None:
+        self.crest = grid.draggable((math.pi / 2, 2.0), color=(200, 60, 60))
+        self.amplitude = grid.draggable(
             (-7.0, 2.0), lock="x", y_range=(0.2, 4.0), color=(60, 90, 200)
         )
-        self.wavelength = plane.draggable(
+        self.wavelength = grid.draggable(
             (2 * math.pi - 6, -4.5), lock="y", x_range=(-5.0, 2.0), color=(40, 150, 90)
         )
         self.points = (self.crest, self.amplitude, self.wavelength)
 
-    def draw(self, plane: pgp.Plane, screen: pygame.Surface) -> list[str]:
+    def draw(self, grid: pgp.Grid, screen: pygame.Surface) -> list[str]:
         """Draw the wave and its controls; return the caption lines."""
         a = self.amplitude.y
         k = 2 * math.pi / (self.wavelength.x + 6)  # the slider runs from x = -6
         cx, cy = self.crest.position
-        plane.polyline(screen, [(-7, 0.2), (-7, 4)], style=TRACK)
-        plane.polyline(screen, [(-5, -4.5), (2, -4.5)], style=TRACK)
-        plane.plot(screen, lambda x: a * np.cos(k * (x - cx)) + cy - a)
+        grid.polyline(screen, [(-7, 0.2), (-7, 4)], style=TRACK)
+        grid.polyline(screen, [(-5, -4.5), (2, -4.5)], style=TRACK)
+        grid.plot(screen, lambda x: a * np.cos(k * (x - cx)) + cy - a)
         return [
             f"y = {a:.2f} cos({k:.2f} (x − {cx:.2f})) + {cy - a:.2f}",
             "drag the red crest, the blue (amplitude) and green (wavelength) sliders",
@@ -71,8 +71,8 @@ class Wave:
 class Curves:
     """A point on a circle and a point on a spirograph."""
 
-    def __init__(self, plane: pgp.Plane) -> None:
-        self.on_circle = plane.draggable(
+    def __init__(self, grid: pgp.Grid) -> None:
+        self.on_circle = grid.draggable(
             curve=(
                 lambda t: -4 + 2 * np.cos(t),
                 lambda t: 2 * np.sin(t),
@@ -80,25 +80,25 @@ class Curves:
             ),
             t=math.pi / 4,
         )
-        self.on_spirograph = plane.draggable(
+        self.on_spirograph = grid.draggable(
             curve=(spirograph_x, spirograph_y, (0, 18 * math.pi))
         )
         self.points = (self.on_circle, self.on_spirograph)
 
-    def draw(self, plane: pgp.Plane, screen: pygame.Surface) -> list[str]:
+    def draw(self, grid: pgp.Grid, screen: pygame.Surface) -> list[str]:
         """Draw the curves, the radius and the tangent; return the caption lines."""
         theta = self.on_circle.t or 0.0
         px, py = self.on_circle.position
-        plane.parametric(
+        grid.parametric(
             screen,
             lambda t: -4 + 2 * np.cos(t),
             lambda t: 2 * np.sin(t),
             (0, 2 * math.pi),
         )
-        plane.polyline(screen, [(-4, 0), (px, py)], width=1.5)
+        grid.polyline(screen, [(-4, 0), (px, py)], width=1.5)
         tx, ty = -math.sin(theta), math.cos(theta)  # the tangent direction
-        plane.polyline(screen, [(px - 3 * tx, py - 3 * ty), (px + 3 * tx, py + 3 * ty)])
-        plane.parametric(
+        grid.polyline(screen, [(px - 3 * tx, py - 3 * ty), (px + 3 * tx, py + 3 * ty)])
+        grid.parametric(
             screen, spirograph_x, spirograph_y, (0, 18 * math.pi), width=1.5
         )
         return [
@@ -129,8 +129,8 @@ def main() -> None:
     screen = pygame.display.set_mode((1100, 720), pygame.RESIZABLE)
     pygame.display.set_caption("PyGridPlot: draggable points")
     font = pygame.font.Font(bundled_font_path(), 14)
-    plane = pgp.Plane(x_range=(-8, 8))
-    sets: list[Wave | Curves] = [Wave(plane), Curves(plane)]
+    grid = pgp.Grid(x_range=(-8, 8))
+    sets: list[Wave | Curves] = [Wave(grid), Curves(grid)]
     current = 0
     clock = pygame.time.Clock()
 
@@ -149,12 +149,12 @@ def main() -> None:
             elif event.type == pygame.KEYDOWN and event.key == pygame.K_SPACE:
                 current = (current + 1) % len(sets)
                 show(current)
-            plane.handle_event(event)
+            grid.handle_event(event)
 
         scene = sets[current]
-        plane.draw_grid(screen)
-        lines = scene.draw(plane, screen)
-        plane.draw_draggables(screen, *scene.points)
+        grid.draw(screen)
+        lines = scene.draw(grid, screen)
+        grid.draw_controls(screen, *scene.points)
         draw_caption(screen, font, [*lines, "Space: next set"])
         pygame.display.flip()
         clock.tick(60)

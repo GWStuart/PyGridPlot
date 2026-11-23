@@ -33,6 +33,7 @@ from pygridplot.core.pixels import line_starts
 from pygridplot.core.primitives import (
     Fill,
     FontSpec,
+    Image,
     LabelText,
     LineBatch,
     Markers,
@@ -48,6 +49,9 @@ from pygridplot.render.fonts import FontLibrary
 from pygridplot.render.markers import MarkerPainter
 from pygridplot.render.raster import PixelBox, fill_coverage, stroke_coverage
 from pygridplot.render.text import TextRenderer
+
+IMAGE_CACHE_SIZE = 32
+"""How many images' surfaces are kept for drawing them again."""
 
 _STRIP_CACHE_SIZE = 64
 
@@ -69,6 +73,9 @@ class PygameRenderer:
         self._markers = MarkerPainter(self._colors)
         self._strips: OrderedDict[tuple[object, ...], pygame.Surface] = OrderedDict()
         self._coverage = CoverageCache()
+        # Images drawn again unchanged (the plane keeps their primitives)
+        # are blitted from the surface made the first time.
+        self._images: OrderedDict[int, tuple[Image, pygame.Surface]] = OrderedDict()
 
     # ------------------------------------------------------------------
     # TextMeasurer protocol
@@ -89,7 +96,7 @@ class PygameRenderer:
     # Drawing
     # ------------------------------------------------------------------
     def draw_grid(self, surface: pygame.Surface, scene: GridScene) -> None:
-        """Draw a complete grid scene: background, lines, then labels.
+        """Draw a complete grid scene: background, lines, arrowheads, then labels.
 
         Args:
             surface: The surface to draw on.
@@ -102,6 +109,8 @@ class PygameRenderer:
                 surface.fill(self._colors.rgba(scene.background), visible)
             for batch in scene.lines:
                 self.draw_line_batch(surface, batch, scene.background)
+            for head in scene.arrows:
+                self.draw_fill(surface, head)
             for item in scene.labels:
                 self.draw_text(surface, item)
 
@@ -207,6 +216,31 @@ class PygameRenderer:
         if markers.opacity > 0.0:
             self._markers.draw(surface, markers)
 
+    def draw_image(self, surface: pygame.Surface, image: Image) -> None:
+        """Draw pixels as they are, blended by their alpha.
+
+        Args:
+            surface: The surface to draw on (its clip area is respected).
+            image: The pixels and where they go.
+        """
+        height, width = image.pixels.shape[:2]
+        if image.opacity <= 0.0 or height == 0 or width == 0:
+            return
+        cached = self._images.get(id(image))
+        if cached is not None and cached[0] is image:
+            self._images.move_to_end(id(image))
+            picture = cached[1]
+        else:
+            data = image.pixels.astype("uint8", copy=False).tobytes()
+            picture = pygame.image.frombuffer(data, (width, height), "RGBA").copy()
+            if pygame.display.get_init() and pygame.display.get_surface() is not None:
+                picture = picture.convert_alpha()
+            self._images[id(image)] = (image, picture)
+            if len(self._images) > IMAGE_CACHE_SIZE:
+                self._images.popitem(last=False)
+        picture.set_alpha(round(255 * min(image.opacity, 1.0)))
+        surface.blit(picture, (image.left, image.top))
+
     @contextmanager
     def clipped(
         self, surface: pygame.Surface, rect: ScreenRect
@@ -241,6 +275,7 @@ class PygameRenderer:
         self._markers.clear()
         self._strips.clear()
         self._coverage.clear()
+        self._images.clear()
 
     # ------------------------------------------------------------------
     # Internal helpers

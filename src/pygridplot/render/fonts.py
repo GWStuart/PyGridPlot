@@ -43,10 +43,13 @@ class FontMetrics:
             the baseline.
         digit_height: Height in pixels of the digits above the baseline (all
             digits in a lining font share one height).
+        descent: Distance in pixels from the baseline to the bottom of the
+            lowest letters (g, y, brackets).
     """
 
     ascent: int
     digit_height: int
+    descent: int = 0
 
 
 class FontLibrary:
@@ -95,7 +98,9 @@ class FontLibrary:
             font = self.get(name, size)
             tops = [m[3] for m in font.metrics(_DIGITS) if m is not None]
             digit_height = max(tops) if tops else font.get_ascent()
-            metrics = FontMetrics(font.get_ascent(), digit_height)
+            metrics = FontMetrics(
+                font.get_ascent(), digit_height, max(0, -font.get_descent())
+            )
             self._metrics[key] = metrics
         return metrics
 

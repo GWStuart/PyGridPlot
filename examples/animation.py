@@ -38,7 +38,7 @@ def main() -> None:
     pygame.init()
     screen = pygame.display.set_mode((960, 640), pygame.RESIZABLE)
     pygame.display.set_caption("PyGridPlot: animation")
-    plane = pgp.Plane()
+    grid = pgp.Grid()
     clock = pygame.time.Clock()
     t = 0.0
 
@@ -47,17 +47,17 @@ def main() -> None:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 running = False
-            plane.handle_event(event)
+            grid.handle_event(event)
         t += clock.tick(60) / 1000
 
-        plane.draw_grid(screen)
-        plane.plot(screen, lambda x, t=t: np.sin(x - t))  # bind t (late binding)
-        plane.plot(screen, np.tan, width=1.5, opacity=0.6)
-        plane.polyline(
+        grid.draw(screen)
+        grid.plot(screen, lambda x, t=t: np.sin(x - t))  # bind t (late binding)
+        grid.plot(screen, np.tan, width=1.5, opacity=0.6)
+        grid.polyline(
             screen, [(np.cos(a), np.sin(a)) for a in np.linspace(0, 2 * np.pi, 90)]
         )
-        plane.polygon(screen, triangle(t))
-        plane.points(screen, [(math.cos(t), math.sin(t))], radius=6, edge_color="white")
+        grid.polygon(screen, triangle(t))
+        grid.points(screen, [(math.cos(t), math.sin(t))], radius=6, edge_color="white")
         pygame.display.flip()
     pygame.quit()
 

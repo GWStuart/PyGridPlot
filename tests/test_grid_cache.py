@@ -9,6 +9,7 @@ changes and compares every frame pixel for pixel.
 from __future__ import annotations
 
 import math
+from dataclasses import replace
 
 import numpy as np
 import pygame
@@ -34,29 +35,57 @@ class Scene:
         self.data = np.array([[0.0, 0.0], [1.0, 1.0], [2.0, 0.5]])
         self.show_extra = True
         self.color = (200, 40, 40)
+        self.title = "time"
 
-    def draw(self, plane: pgp.Plane, surface: pygame.Surface) -> None:
+    def draw(self, grid: pgp.Grid, surface: pygame.Surface) -> None:
         """Draw every kind of plot, some depending on the parameters."""
-        plane.draw_grid(surface)
+        grid.draw(
+            surface, x_title=self.title, y_title="y", y_labels={1: "one", 2: "two"}
+        )
         shift = self.shift
-        plane.plot(surface, lambda x: np.sin(x - shift))  # a new lambda each frame
+        grid.plot(surface, lambda x: np.sin(x - shift), label="sine")  # a new lambda
         if self.show_extra:  # a plot that comes and goes
-            plane.plot(surface, np.cos, color=self.color)
+            grid.plot(surface, np.cos, color=self.color, label="cosine")
         spike = self.spike
         # A narrow spike, between the first samples: moving it must be seen.
-        plane.plot(surface, lambda x: 2 * np.exp(-(((x - spike) / 0.002) ** 2)))
-        plane.plot(surface, pgp.derivative(lambda x: x**3 / 9 - shift))
-        plane.plot(surface, pgp.antiderivative(lambda x: np.cos(x - shift), -1.0))
-        plane.parametric(surface, np.cos, lambda t: np.sin(t) + shift, (0, 2 * math.pi))
-        plane.implicit(surface, lambda x, y: x * y - shift, 1)
-        plane.fill_between(surface, lambda x: np.cos(x) - shift, -0.5)
-        plane.inequality(surface, lambda x, y: x**2 + y**2 < 1 + shift)
-        plane.vector_field(surface, lambda x, y: (-y, x + shift))
-        plane.slope_field(surface, lambda x, y: x - y - shift, spacing=60)
-        plane.arrow(surface, self.data[0], self.data[1:])
-        plane.polyline(surface, self.data)  # the same array, changed in place
-        plane.polygon(surface, self.data - np.array([0.0, 2.0]))
-        plane.points(surface, self.data)
+        grid.plot(surface, lambda x: 2 * np.exp(-(((x - spike) / 0.002) ** 2)))
+        grid.plot(surface, pgp.derivative(lambda x: x**3 / 9 - shift))
+        grid.plot(surface, pgp.antiderivative(lambda x: np.cos(x - shift), -1.0))
+        grid.parametric(surface, np.cos, lambda t: np.sin(t) + shift, (0, 2 * math.pi))
+        grid.implicit(surface, lambda x, y: x * y - shift, 1)
+        grid.fill_between(surface, lambda x: np.cos(x) - shift, -0.5)
+        grid.inequality(surface, lambda x, y: x**2 + y**2 < 1 + shift)
+        grid.vector_field(surface, lambda x, y: (-y, x + shift))
+        grid.slope_field(surface, lambda x, y: x - y - shift, spacing=60)
+        grid.arrow(surface, self.data[0], self.data[1:])
+        grid.polyline(surface, self.data)  # the same array, changed in place
+        grid.polygon(surface, self.data - np.array([0.0, 2.0]))
+        grid.points(surface, self.data)
+        # Data plots: their data are compared, like the points'.
+        grid.points(
+            surface,
+            self.data,
+            y_error=0.2 * self.data[:, 1],  # a new array each frame
+            color=[(200, 0, 0), (0, 0, 200), "green"],
+            radius=[3, 4, 5],
+            label="data",
+        )
+        grid.polyline(surface, self.data, step="post")
+        grid.bars(surface, self.data[:, 1], start=-2, label="bars")
+        grid.histogram(surface, self.data.ravel(), width=0.5)
+        grid.histogram(surface, np.sin(np.arange(50) + shift), density=True)
+        grid.bars(
+            surface, self.data[:, 1], baseline=0.1 * self.data[:, 0], horizontal=True
+        )
+        grid.histogram(surface, self.data.ravel(), width=0.5, cumulative=True)
+        waves = np.sin(np.arange(30) + shift)
+        grid.box_plot(surface, [self.data[:, 1], waves], label="boxes")
+        grid.violin_plot(surface, [waves], start=3)
+        grid.sequence(surface, self.data[:, 1], start=-1)  # changed in place too
+        grid.sequence(surface, lambda n: np.cos(n) - shift, radius=2, label="aₙ")
+        grid.text(surface, self.title, (shift, 1.0), anchor="bottom", gap=4)
+        grid.legend(surface, corner="bottom-right")
+        grid.color_bar(surface, "viridis", (0, 1 + abs(shift)), corner="bottom-right")
 
 
 def pixels(surface: pygame.Surface) -> NDArray[np.uint8]:
@@ -64,25 +93,36 @@ def pixels(surface: pygame.Surface) -> NDArray[np.uint8]:
     return pygame.surfarray.array3d(surface).copy()
 
 
-def planes() -> tuple[pgp.Plane, pgp.Plane, pygame.Surface, pygame.Surface]:
+def grids() -> tuple[pgp.Grid, pgp.Grid, pygame.Surface, pygame.Surface]:
     """Two identical planes, with and without the cache, and their surfaces."""
     config = pgp.InteractionConfig(smoothing=0)
-    cached = pgp.Plane(pygame.Rect(0, 0, *SIZE), scale=40.0, interaction=config)
-    fresh = pgp.Plane(
-        pygame.Rect(0, 0, *SIZE), scale=40.0, interaction=config, cache=False
-    )
+    theme = replace(pgp.LIGHT, show_arrows=True)
+    rect = pygame.Rect(0, 0, *SIZE)
+    cached = pgp.Grid(rect, scale=40.0, interaction=config, theme=theme)
+    fresh = pgp.Grid(rect, scale=40.0, interaction=config, theme=theme, cache=False)
     return cached, fresh, pygame.Surface(SIZE), pygame.Surface(SIZE)
 
 
 CHANGES = st.sampled_from(
-    ["nothing", "nothing", "shift", "spike", "data", "toggle", "colour", "pan", "zoom"]
+    [
+        "nothing",
+        "nothing",
+        "shift",
+        "spike",
+        "data",
+        "toggle",
+        "colour",
+        "title",
+        "pan",
+        "zoom",
+    ]
 )
 
 
 @settings(max_examples=25, deadline=None)
 @given(changes=st.lists(CHANGES, min_size=2, max_size=8))
 def test_the_cache_never_changes_what_is_drawn(changes: list[str]) -> None:
-    cached, fresh, a, b = planes()
+    cached, fresh, a, b = grids()
     scene = Scene()
     for change in ["nothing", *changes]:
         if change == "shift":
@@ -95,12 +135,14 @@ def test_the_cache_never_changes_what_is_drawn(changes: list[str]) -> None:
             scene.show_extra = not scene.show_extra
         elif change == "colour":
             scene.color = (40, 40, 200) if scene.color[0] > 100 else (200, 40, 40)
+        elif change == "title":  # the grid, the text and nothing else change
+            scene.title = "t" if scene.title == "time" else "time"
         elif change in ("pan", "zoom"):
-            for plane in (cached, fresh):
+            for grid in (cached, fresh):
                 if change == "pan":
-                    plane.view.pan_pixels(7, -3)
+                    grid.view.pan_pixels(7, -3)
                 else:
-                    plane.view.zoom(1.1)
+                    grid.view.zoom(1.1)
         scene.draw(cached, a)
         scene.draw(fresh, b)
         assert np.array_equal(pixels(a), pixels(b)), change
@@ -108,22 +150,22 @@ def test_the_cache_never_changes_what_is_drawn(changes: list[str]) -> None:
 
 
 def test_unchanged_frames_are_reused() -> None:
-    cached, _, surface, _ = planes()
+    cached, _, surface, _ = grids()
     scene = Scene()
     scene.draw(cached, surface)
-    assert cached.cache_stats == pgp.CacheStats(hits=0, misses=15)
+    assert cached.cache_stats == pgp.CacheStats(hits=0, misses=26)
     scene.draw(cached, surface)
-    assert cached.cache_stats == pgp.CacheStats(hits=15, misses=15)
-    # Eight plots change with the shift. The derivative of x³/9 - shift does
+    assert cached.cache_stats == pgp.CacheStats(hits=26, misses=26)
+    # Twelve plots change with the shift. The derivative of x³/9 - shift does
     # not: its values are the same, so it is reused, which is exactly right.
     scene.shift += 1.0
     scene.draw(cached, surface)
-    assert cached.cache_stats == pgp.CacheStats(hits=22, misses=23)
+    assert cached.cache_stats == pgp.CacheStats(hits=40, misses=38)
 
 
 def test_antiderivatives_are_reused_through_their_integrand() -> None:
     """F's last digits depend on its other points, so its integrand is checked."""
-    cached, fresh, a, b = planes()
+    cached, fresh, a, b = grids()
     k = [1.0]
     lower = [0.0]
     for step in range(6):
@@ -131,31 +173,31 @@ def test_antiderivatives_are_reused_through_their_integrand() -> None:
             k[0] = 1.5  # the integrand changes
         if step == 5:
             lower[0] = 0.5  # the lower limit changes
-        for plane, surface in ((cached, a), (fresh, b)):
-            plane.draw_grid(surface)
+        for grid, surface in ((cached, a), (fresh, b)):
+            grid.draw(surface)
             # A new antiderivative object every frame, as in a real program.
             anti = pgp.antiderivative(lambda x: k[0] * np.sign(x - 0.3), lower[0])
-            plane.plot(surface, anti)
+            grid.plot(surface, anti)
         assert np.array_equal(pixels(a), pixels(b)), step
     assert cached.cache_stats == pgp.CacheStats(hits=3, misses=3)
 
 
 def test_changes_of_style_and_inputs_are_seen() -> None:
-    cached, _, surface, _ = planes()
+    cached, _, surface, _ = grids()
     for kwargs in ({}, {}, {"width": 4.0}, {"color": "black"}, {"opacity": 0.5}):
-        cached.draw_grid(surface)
+        cached.draw(surface)
         cached.plot(surface, np.sin, **kwargs)
     assert cached.cache_stats == pgp.CacheStats(hits=1, misses=4)
 
 
 def test_turning_the_cache_off_forgets_everything() -> None:
-    cached, _, surface, _ = planes()
-    cached.draw_grid(surface)
+    cached, _, surface, _ = grids()
+    cached.draw(surface)
     cached.plot(surface, np.sin)
     cached.cache = False
     assert not cached.cache
     assert cached.cache_stats == pgp.CacheStats()
-    cached.draw_grid(surface)
+    cached.draw(surface)
     cached.plot(surface, np.sin)
     assert cached.cache_stats == pgp.CacheStats()
     cached.cache = True
@@ -164,27 +206,27 @@ def test_turning_the_cache_off_forgets_everything() -> None:
 
 
 def test_the_grid_is_rebuilt_when_the_theme_or_view_changes() -> None:
-    cached, fresh, a, b = planes()
+    cached, fresh, a, b = grids()
     for step in range(4):
         if step == 2:
             cached.theme = fresh.theme = pgp.DARK
         if step == 3:
             cached.view.pan_pixels(10, 0)
             fresh.view.pan_pixels(10, 0)
-        cached.draw_grid(a)
-        fresh.draw_grid(b)
+        cached.draw(a)
+        fresh.draw(b)
         assert np.array_equal(pixels(a), pixels(b))
 
 
-def test_embedded_planes_rasterise_again_when_the_clip_changes() -> None:
+def test_embedded_grids_rasterise_again_when_the_clip_changes() -> None:
     surface = pygame.Surface(SIZE)
-    plane = pgp.Plane(pygame.Rect(0, 0, *SIZE), scale=40.0)
-    plane.draw_grid(surface)
-    plane.plot(surface, np.sin, color=(0, 0, 0))
+    grid = pgp.Grid(pygame.Rect(0, 0, *SIZE), scale=40.0)
+    grid.draw(surface)
+    grid.plot(surface, np.sin, color=(0, 0, 0))
     full = pixels(surface)
-    plane.rect = pygame.Rect(0, 0, SIZE[0] // 2, SIZE[1])  # half the width
-    plane.draw_grid(surface)
-    plane.plot(surface, np.sin, color=(0, 0, 0))
+    grid.rect = pygame.Rect(0, 0, SIZE[0] // 2, SIZE[1])  # half the width
+    grid.draw(surface)
+    grid.plot(surface, np.sin, color=(0, 0, 0))
     assert not np.array_equal(pixels(surface), full)
 
 

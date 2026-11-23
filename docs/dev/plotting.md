@@ -10,7 +10,7 @@ are its building blocks.
 
 | Module | Role |
 |---|---|
-| `builders.py` | `function_stroke`, `parametric_stroke`, `polar_stroke`, `implicit_stroke`, `area_fill`, `region_fill`, `vector_field_fills`, `slope_field_strokes`, `arrow_fill`, `polyline_stroke`, `polygon_shapes`, `point_markers`: world data → clipped primitives. |
+| `builders.py` | `function_stroke`, `parametric_stroke`, `polar_stroke`, `implicit_stroke`, `area_fill`, `region_fill`, `vector_field_fills`, `slope_field_strokes`, `sequence_primitives`, `arrow_fill`, `polyline_stroke`, `polygon_shapes`, `point_markers`: world data → clipped primitives. |
 | `evaluation.py` | Calling user functions so that they can never raise. |
 | `sampling.py` | Adaptive sampling of `y = f(x)`. |
 | `curves.py` | Adaptive sampling of parametric curves (and so polar ones) on screen. |
@@ -25,6 +25,7 @@ are its building blocks.
 | `regions.py` | Finding regions where a condition holds, on the same grids: filled contours (contourpy), refined by bisection. |
 | `areas.py` | The area between two sampled graphs, as rings. |
 | `fields.py` | The anchored, fading lattice of vector and slope fields, and their directions on screen. |
+| `sequences.py` | Which terms of an infinite sequence to draw: every one, or thinned along powers of three with fading. |
 | `arrows.py` | Arrows as polygons (shaft and head as one ring), for many arrows at once. |
 | `geometry.py` | Normalising point input; clipping polylines (Liang–Barsky) and polygons (Sutherland–Hodgman). |
 | `style.py` | `LineStyle`, `PointStyle`, `PolygonStyle`, `FillStyle`, `ArrowStyle`, `with_overrides`, and `ColorCycle` (the palette). |
@@ -382,6 +383,64 @@ while zooming; an unchanged field is reused in about 1.2 ms. A slope field
 takes about 2.5 ms, strokes of short segments being cheaper to rasterise
 than fills spread over the whole plane.
 
+## Sequences: `sequences.py`
+
+`Grid.sequence` draws the terms `aₙ` of a list or array (a finite
+sequence, from index `start`) or of a function of `n` (an infinite one).
+`builders.sequence_primitives` turns them into one `Stroke` of stems and
+one `Markers` per level of fade.
+
+**Which terms.** An array's visible slice is drawn in full
+(`visible_indices` gives the visible integers). A function would have a
+term at every visible integer, millions of them when zoomed far out or far
+along a log x axis, so `sequence_lattice` chooses them, much as the field
+lattice chooses arrows. With `sp(n)` the screen distance from term `n` to
+the next (`scale × T'(n)`: constant on a linear axis, `scale / (n ln 10)`
+on a log one), the step `3^e(n)` is the power of three putting drawn terms
+between a third of `MIN_SPACING_PX` (a quarter pixel) and that apart, and
+term `n` is drawn if it is a multiple of its step; the terms at multiples
+of the step but not of three steps fade in over the second half of each
+power of three of zoom (smoothstep, as for fields). The rule depends on the
+term alone, so panning is rigid and zooming never pops; terms closer than a
+quarter pixel are only drawn when needed, so the number evaluated is at
+most about 12 per pixel.
+
+- **Why powers of three.** The first level of thinning by twos keeps the
+  even terms only: `(-1)ⁿ / n` would turn one-sided when zoomed out, and
+  the odd harmonics of a square wave's spectrum would vanish. Multiples of
+  `3^e` are odd and even alike; only patterns repeating every 3, 9, ...
+  terms alias, and only below a quarter pixel apart.
+- **Finding the terms without visiting the others.** `e(n)` never
+  decreases as `n` grows, so the terms of each level `k` (multiples of
+  `3^k` but not `3^(k+1)`) lie in a stretch from the first visible index to
+  the last `n` with `e(n) <= k`. All levels' ends are bisected together
+  (vectorised, at most 53 rounds); the multiples of the coarsest step cover
+  the rest. On a linear axis there is a single level and no bisection.
+  Levels stop at `3³⁴`, beyond `2⁵²`, so nothing overflows.
+- **Fades on log axes.** Every term on a log axis fades at its own zoom
+  level, so the fades are rounded up to eighths, keeping at most eight
+  primitives; on a linear axis all fading terms share one fade.
+
+**Stems per pixel column.** Where several terms share a pixel column, the
+union of their stems is one stem from the column's lowest point (or the
+axis) to its highest, so `_stems` draws one stem per column there, at the
+middle of the terms' x: a dense sequence costs one stem per pixel however
+many terms it has (20,000 terms: 17 ms instead of 200). Markers are not
+merged, as the union of markers at different heights is not one marker;
+markers are cheap anyway. The worst case is then a stem in every column,
+about 15 ms at 1,100 px for stems 180 px tall, the cost of the stroke
+rasteriser.
+
+**Values.** A function is called through `integer_arguments`, which passes
+a vectorised call the float array of indices (NumPy arithmetic on floats
+cannot overflow, as `2**n` on int64 would) and a point-by-point call a
+Python `int` (for `math.factorial` and list indexing). The wrapper is
+applied before the plot cache, so the cache's recorder also evaluates
+through it. NaN and infinite terms are left out. The foot of the stems is
+the screen position of the baseline (0 by default), clamped to just beyond
+the plane, so on a log y axis (where 0 is infinitely far down) they reach
+the bottom edge, and stems wholly beyond the top or bottom are dropped.
+
 ## Arrows: `arrows.py`
 
 An arrow is one polygon of seven vertices (tail corners, shaft corners at
@@ -402,6 +461,127 @@ plane), pairs a single start or end with all the others, and drops arrows
 whose box lies wholly outside the plane. Fills of many small rings rely on
 the rasteriser handling all rings together; see
 [Rendering](rendering.md#fills).
+
+## Data plots: `data.py` and `histograms.py`
+
+Data plots are improvements to existing methods where they can be: a
+scatter plot with a colour or size per point, and error bars, are
+`points`; a step plot is `polyline(step=)`. Only bars and histograms, whose
+inputs are new (heights, raw samples), are methods of their own.
+
+**Colours and sizes per point.** `per_point_colors` tells one colour from a
+colour per point: a string or three or four numbers is one colour. Colours
+given as numbers become an `(N, 4)` array of bytes, which the plot cache
+compares and the renderer reads without resolving each one; names stay a
+tuple. They reach the renderer as `Markers.colors` and `Markers.radii`
+(see [Markers](rendering.md#markers)); `point_markers` keeps them aligned
+with the points it keeps.
+
+**Error bars.** `as_errors` reads one length, one per point, or two rows
+(below, above). `error_bar_stroke` puts each bar's ends through the axis'
+transform (an end at or below zero on a log axis is `-inf`, off the
+plane, with no cap), adds the caps in pixels, and clips all the segments
+in one vectorised pass (`geometry.clip_segments`): clipping them as paths,
+one at a time, cost 20 ms for 500 points with both kinds of bar.
+
+**Steps.** `step_vertices` builds the stairs in *transformed* coordinates,
+so they are horizontal and vertical on screen and a `"mid"` step is half
+way on screen on a log axis, and keeps a polyline's NaN breaks (each run
+between them gets its own stairs).
+
+**Bars.** `bar_shapes` lays the bars out in transformed coordinates too
+(a width is in decades on a log x axis), clamps each rectangle to just
+beyond the plane (a rectangle clamped to a box is still a rectangle, and
+the outline along the clamped edges is out of sight), and returns one
+`Fill` of all the rings and one `Stroke` of their outlines. The automatic
+width is 0.8 of the smallest gap between bars, from the data alone, so it
+does not change while panning.
+
+**Histograms.** Bins are anchored, `[k w, (k + 1) w)`, so that samples
+arriving frame by frame never move them; `bin_samples` counts with
+`np.bincount` when the bins' span is at most 8 times the number of samples
+and with `np.unique` otherwise, so the work is bounded by the samples
+however small the width (a sample more than 2⁵² bins from zero cannot be
+numbered and is left out). The automatic width is the Freedman-Diaconis
+rule rounded to 1, 2 or 5 times a power of ten (`nice_width`, nearest on a
+log scale), Sturges' rule when the interquartile range is zero. Explicit
+edges follow `np.histogram`. `histogram_shapes` keeps the bins that reach
+the plane (a contiguous range, as bins are in order), makes each run of
+neighbouring bins one ring and its outline, and the edges between them
+separate segments up to the lower bar, chosen on screen (with a baseline
+at `-inf` on a log y axis, comparing in transformed units chose wrongly).
+Those segments fade from full at `SEPARATOR_FADE_END_PX` (8 px bins) to
+none at `SEPARATOR_FADE_START_PX` (3 px), by the median bin width on
+screen, so zooming out turns a comb of lines into an outline without a
+pop. Densities divide by the bins' widths in x units (`10^right -
+10^left` on a log x axis), so a density in x plotted over them matches.
+
+**Stacked, floating and horizontal bars.** `bar_shapes` takes one
+baseline per bar as well as one for all (`data.as_baselines`), and lays
+the rectangles out along x or y (`horizontal`): the position axis and the
+value axis swap, each through its own transform, and `_rectangles` clamps
+them to the plane either way. Every ring winds the same way, so bars that
+overlap merge under the nonzero rule.
+
+**Cumulative histograms.** With `cumulative`, the bins' counts are summed
+in order (divided by the number of samples with `density`), and
+`_without_gaps` fills the stretches between bins with bins at the height
+reached, numbered consecutively, so the histogram is one run, one ring.
+
+## Box and violin plots: `distributions.py`
+
+`box_stats` gives a group's quartiles (NumPy's linear interpolation), the
+whiskers' ends (the furthest samples within `whisker` interquartile ranges
+of the box, Tukey) and the outliers beyond them. `violin_shape` estimates
+the density with a Gaussian kernel, of Silverman's bandwidth
+(`0.9 min(s, IQR / 1.34) n^(-1/5)`, robust to outliers) or a given one, on
+a fine histogram (`KDE_BINS = 512`) convolved with the sampled kernel, so
+the cost is that of one histogram, not of a sum per point (100,000
+samples: a few milliseconds); the kernel is kept shorter than the
+histogram, as `np.convolve(mode="same")` would otherwise return the
+kernel's length. The shape runs from the smallest sample to the largest
+(no density is drawn beyond the data). Both summarise the *transformed*
+samples, like every sampler: on a log axis, their logarithms.
+`box_plot_primitives` and `violin_primitives` place groups along x or y
+(`horizontal`), widths in transformed position units (by default half, or
+0.8, of the smallest gap between groups).
+
+## Colour maps: `color_maps.py`
+
+`map_values` interpolates linearly between a map's colours (`ColorStops`,
+an `(M, 4)` array), from a value's place in its range (linear, or in
+decades with `log`), clamped at the ends; NaN, and values not positive on
+a log scale, are transparent black, so a point without a value is not
+drawn. The built-in maps are matplotlib's perceptually even maps sampled
+at eleven points (their look to within a few levels per channel), a
+diverging `coolwarm` and `gray`. Colour *names* need pygame, so the public
+`pgp.color_map` lives outside `core` (`pygridplot/color_maps.py`) and
+resolves them with `pygame.Color` before calling `map_values`. The colour
+bar (`core/handles/color_bar.py`) draws the map as an `Image`, one row of
+pixels per colour, with ticks at the grid's exact 1-2-5 steps (or decades)
+written by the grid's number formatting.
+
+## Text: `text.py`
+
+`grid.text` writes text at a world point. `place_lines` places the lines
+of a text (split at `"\n"`) so that one point of their box, the anchor, is
+at the point's screen position: the nine anchors are the box's centre,
+edge midpoints and corners. The box runs from the top of the first line's
+digit box to the font's descent below the last baseline (`TextSize.descent`,
+measured by the renderer from the font), so text with and without
+descenders sits alike; lines are `LINE_SPACING` (1.25) box heights apart
+and aligned to the anchor's side.
+
+Placing on whole pixels keeps text crisp. Anchored sides round *away* from
+the point (`ceil` or `floor`), so the `gap` is never less than asked;
+centred boxes round to the nearest pixel (`pixels.snap`). Either way a
+pan by whole pixels moves the text by exactly as many (a property test
+checks every anchor). `builders.text_items` converts the position through
+the view, leaves out text whose position is undefined (NaN, or not
+positive on a log axis) or far off the plane (so pixel positions stay small
+for the renderer), and returns a `TextItem` per line that reaches the
+plane. Text is not cached by the plot cache: placing it costs a measure per
+line, and the renderer caches rendered text by content.
 
 ## Derivatives: `jets.py` and `derivatives.py`
 
@@ -656,7 +836,7 @@ compares every frame pixel for pixel.
 
 `MAX_ENTRIES` (512) bounds the calls remembered per frame, which also bounds
 memory for a program that never starts a frame. The grid scene is reused
-the same way in `Plane._grid_scene`, keyed by the view's fingerprint and the
+the same way in `Grid._grid_scene`, keyed by the view's fingerprint and the
 theme, except in the `"snap"` transition, whose hysteresis depends on
 earlier frames.
 
@@ -683,6 +863,11 @@ clips exactly), and return a primitive, or `None` when nothing is visible.
   parametric curves `(r cos θ, r sin θ)`.
 - **Vector and slope fields** are drawn on a fading lattice; see
   [Vector and slope fields](#vector-and-slope-fields-fieldspy).
+- **Text** is placed at its anchor point on screen; see
+  [Text](#text-textpy).
+- **Bars and histograms** are rectangles and runs of them in transformed
+  coordinates, clamped to the plane; see
+  [Data plots](#data-plots-datapy-and-histogramspy).
 - **Polylines, polygons, points and arrows** transform vertex by vertex. On a log
   axis a negative coordinate becomes NaN (a break) and zero becomes
   infinite; `geometry.clamp_coordinates` clamps such values to
@@ -696,7 +881,9 @@ raises when the style is created. A drawing call combines a style with its
 keyword arguments through `with_overrides(style, **kwargs)`, where `None`
 means "keep the style's value", then asks the plane's `ColorCycle` for the
 colour: an explicit colour is returned unchanged, `None` takes the next
-palette colour. `draw_grid` (or `begin_frame`) resets the cycle every frame,
-so colours follow drawing order. The marker and fill-rule vocabulary
+palette colour. `grid.draw` (or `begin_frame`) resets the cycle every frame,
+so colours follow drawing order. Text (`TextStyle`) never takes a palette
+colour: its default is the theme's label colour, so labelling a plot does
+not shift the colours of the plots after it. The marker and fill-rule vocabulary
 (`MarkerShape`, `FillRule`) lives in `core/primitives.py`, because the
 primitives and the rasteriser use it too.

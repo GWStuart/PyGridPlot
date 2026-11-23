@@ -6,7 +6,7 @@ Press ``Space`` to switch between sets:
    with error bars on both, and the model ``T = 2π √(L / g)`` drawn over
    them. Drag the slider to change ``g`` and watch the model leave the data.
 2. **Particles**: two hundred particles orbiting, each coloured by its
-   speed (``pgp.colormap``, with a colour bar to read it by) and sized by
+   speed (``pgp.color_map``, with a colour bar to read it by) and sized by
    its mass, every frame.
 3. **A histogram that fills in**: the mean of ``n`` uniform random numbers,
    sampled over and over. Its histogram (a density) grows frame by frame
@@ -44,7 +44,7 @@ GRAY = (90, 90, 100)
 class Demo(Protocol):
     """One set of the example."""
 
-    plane: pgp.Plane
+    grid: pgp.Grid
 
     def draw(self, screen: pygame.Surface, running: bool) -> str:
         """Draw the set (advancing it if ``running``); return its caption."""
@@ -55,7 +55,7 @@ class Pendulum:
     """Measured periods of a pendulum, with the model through them."""
 
     def __init__(self, renderer: PygameRenderer) -> None:
-        self.plane = pgp.Plane(
+        self.grid = pgp.Grid(
             x_range=(-0.1, 1.6), y_range=(-0.3, 2.8), renderer=renderer
         )
         rng = np.random.default_rng(1)
@@ -64,14 +64,14 @@ class Pendulum:
         true = 2 * np.pi * np.sqrt(self.lengths / 9.81)
         self.periods = true + rng.normal(0, 0.04, 9)
         self.period_error = 0.03 + 0.03 * rng.random(9)
-        self.g = self.plane.slider("g", (5.0, 15.0), value=9.81, step=0.01, color=RED)
+        self.g = self.grid.slider("g", (5.0, 15.0), value=9.81, step=0.01, color=RED)
 
     def draw(self, screen: pygame.Surface, running: bool) -> str:
         """Draw the set; return its caption."""
-        plane = self.plane
-        plane.draw_grid(screen, x_title="length L (m)", y_title="period T (s)")
+        grid = self.grid
+        grid.draw(screen, x_title="length L (m)", y_title="period T (s)")
         g = self.g.value
-        plane.plot(
+        grid.plot(
             screen,
             lambda length: 2 * np.pi * np.sqrt(length / g),
             domain=(0, 2),
@@ -79,7 +79,7 @@ class Pendulum:
             width=2,
             label=f"T = 2π √(L / {g:.2f})",
         )
-        plane.points(
+        grid.points(
             screen,
             np.column_stack((self.lengths, self.periods)),
             x_error=self.length_error,
@@ -88,8 +88,8 @@ class Pendulum:
             edge_color="white",
             label="measured",
         )
-        plane.legend(screen, corner="top-left")
-        plane.draw_draggables(screen, self.g)
+        grid.legend(screen, corner="top-left")
+        grid.draw_controls(screen, self.g)
         residuals = self.periods - 2 * np.pi * np.sqrt(self.lengths / g)
         return f"rms residual {math.sqrt(np.mean(residuals**2)) * 1000:.0f} ms"
 
@@ -98,7 +98,7 @@ class Particles:
     """Particles orbiting the origin, coloured by speed and sized by mass."""
 
     def __init__(self, renderer: PygameRenderer) -> None:
-        self.plane = pgp.Plane(x_range=(-6, 6), renderer=renderer)
+        self.grid = pgp.Grid(x_range=(-6, 6), renderer=renderer)
         rng = np.random.default_rng(2)
         self.radius = rng.uniform(1.0, 5.0, 200)
         self.angle = rng.uniform(0, 2 * np.pi, 200)
@@ -109,19 +109,19 @@ class Particles:
         """Draw the set; return its caption."""
         if running:
             self.angle += self.speed / 60
-        plane = self.plane
-        plane.draw_grid(screen)
+        grid = self.grid
+        grid.draw(screen)
         x, y = self.radius * np.cos(self.angle), self.radius * np.sin(self.angle)
-        plane.points(
+        grid.points(
             screen,
             np.column_stack((x, y)),
-            color=pgp.colormap(self.speed, "plasma", SPEEDS),
+            color=pgp.color_map(self.speed, "plasma", SPEEDS),
             radius=2 + 2 * self.mass,
             edge_color="white",
             edge_width=1,
         )
-        plane.colorbar(screen, "plasma", SPEEDS, title="speed")
-        plane.text(screen, "the bigger, the heavier", (0, -5.5))
+        grid.color_bar(screen, "plasma", SPEEDS, title="speed")
+        grid.text(screen, "the bigger, the heavier", (0, -5.5))
         return "Particles, coloured by speed and sized by mass"
 
 
@@ -135,7 +135,7 @@ class Groups:
     NAMES = ("rested", "tired", "coffee", "noise")
 
     def __init__(self, renderer: PygameRenderer) -> None:
-        self.plane = pgp.Plane(x_range=(-0.7, 3.7), y_range=(0, 900), renderer=renderer)
+        self.grid = pgp.Grid(x_range=(-0.7, 3.7), y_range=(0, 900), renderer=renderer)
         rng = np.random.default_rng(5)
         self.groups = [
             rng.lognormal(math.log(300), 0.2, 400),
@@ -146,13 +146,13 @@ class Groups:
 
     def draw(self, screen: pygame.Surface, running: bool) -> str:
         """Draw the set; return its caption."""
-        plane = self.plane
-        plane.draw_grid(screen, x_labels=self.NAMES, y_title="reaction time (ms)")
-        plane.violin_plot(screen, self.groups, color=BLUE, label="density")
-        plane.box_plot(
+        grid = self.grid
+        grid.draw(screen, x_labels=self.NAMES, y_title="reaction time (ms)")
+        grid.violin_plot(screen, self.groups, color=BLUE, label="density")
+        grid.box_plot(
             screen, self.groups, width=0.1, color=GRAY, opacity=0.9, label="quartiles"
         )
-        plane.legend(screen)
+        grid.legend(screen)
         return "Groups compared: violins with box plots inside"
 
 
@@ -162,9 +162,7 @@ class Energy:
     SOURCES = (("coal", GRAY), ("gas", RED), ("wind", BLUE), ("solar", GREEN))
 
     def __init__(self, renderer: PygameRenderer) -> None:
-        self.plane = pgp.Plane(
-            x_range=(-0.8, 6.8), y_range=(-8, 110), renderer=renderer
-        )
+        self.grid = pgp.Grid(x_range=(-0.8, 6.8), y_range=(-8, 110), renderer=renderer)
         years = np.arange(7)
         self.years = [str(2018 + k) for k in years]
         self.shares = np.array(
@@ -179,13 +177,13 @@ class Energy:
 
     def draw(self, screen: pygame.Surface, running: bool) -> str:
         """Draw the set; return its caption."""
-        plane = self.plane
-        plane.draw_grid(screen, x_labels=self.years, y_title="share (%)")
+        grid = self.grid
+        grid.draw(screen, x_labels=self.years, y_title="share (%)")
         below = np.zeros(self.shares.shape[1])
         for (name, color), share in zip(self.SOURCES, self.shares, strict=True):
-            plane.bars(screen, below + share, baseline=below, color=color, label=name)
+            grid.bars(screen, below + share, baseline=below, color=color, label=name)
             below = below + share
-        plane.legend(screen, corner="top-left")
+        grid.legend(screen, corner="top-left")
         return "Stacked bars, each source on the ones below"
 
 
@@ -193,10 +191,10 @@ class Means:
     """A histogram of sample means, filling in frame by frame."""
 
     def __init__(self, renderer: PygameRenderer) -> None:
-        self.plane = pgp.Plane(
+        self.grid = pgp.Grid(
             x_range=(-0.05, 1.05), y_range=(-0.3, 7), renderer=renderer
         )
-        self.n = self.plane.slider("n", (1, 30), value=4, step=1, color=GREEN)
+        self.n = self.grid.slider("n", (1, 30), value=4, step=1, color=GREEN)
         self.rng = np.random.default_rng(3)
         self.samples = np.zeros(0)
         self.shown_n = self.n.value
@@ -209,13 +207,13 @@ class Means:
         if running and self.samples.shape[0] < 50_000:
             means = self.rng.random((200, n)).mean(axis=1)
             self.samples = np.append(self.samples, means)
-        plane = self.plane
-        plane.draw_grid(screen, x_title="mean of n uniform numbers", y_title="density")
-        plane.histogram(
+        grid = self.grid
+        grid.draw(screen, x_title="mean of n uniform numbers", y_title="density")
+        grid.histogram(
             screen, self.samples, width=0.02, density=True, color=GREEN, label="sampled"
         )
         sd = math.sqrt(1 / (12 * n))
-        plane.plot(
+        grid.plot(
             screen,
             lambda x: (
                 np.exp(-(((x - 0.5) / sd) ** 2) / 2) / (sd * math.sqrt(2 * math.pi))
@@ -224,8 +222,8 @@ class Means:
             width=2,
             label="normal",
         )
-        plane.legend(screen)
-        plane.draw_draggables(screen, self.n)
+        grid.legend(screen)
+        grid.draw_controls(screen, self.n)
         return f"{self.samples.shape[0]} means of {n} numbers"
 
 
@@ -233,7 +231,7 @@ class Dice:
     """The sum of two dice: observed, expected and cumulative."""
 
     def __init__(self, renderer: PygameRenderer) -> None:
-        self.plane = pgp.Plane(x_range=(1, 13), y_range=(-0.08, 1.1), renderer=renderer)
+        self.grid = pgp.Grid(x_range=(1, 13), y_range=(-0.08, 1.1), renderer=renderer)
         self.rng = np.random.default_rng(4)
         self.counts = np.zeros(13)
         ways = np.array([0, 0, 1, 2, 3, 4, 5, 6, 5, 4, 3, 2, 1])
@@ -245,13 +243,13 @@ class Dice:
             sums = self.rng.integers(1, 7, (20, 2)).sum(axis=1)
             self.counts += np.bincount(sums, minlength=13)
         rolls = self.counts.sum()
-        plane = self.plane
-        plane.draw_grid(screen, x_title="sum of two dice", y_title="fraction")
+        grid = self.grid
+        grid.draw(screen, x_title="sum of two dice", y_title="fraction")
         sums = np.arange(2, 13)
         observed = self.counts[2:] / max(rolls, 1)
-        plane.bars(screen, observed, start=2, color=BLUE, label="observed")
+        grid.bars(screen, observed, start=2, color=BLUE, label="observed")
         spread = np.sqrt(self.chance[2:] * (1 - self.chance[2:]) / max(rolls, 1))
-        plane.points(
+        grid.points(
             screen,
             np.column_stack((sums, self.chance[2:])),
             y_error=spread,
@@ -260,7 +258,7 @@ class Dice:
             label="expected ± 1 sd",
         )
         cumulative = np.cumsum(observed)
-        plane.polyline(
+        grid.polyline(
             screen,
             np.column_stack((np.r_[1.5, sums + 0.5], np.r_[0, cumulative])),
             step="pre",
@@ -268,7 +266,7 @@ class Dice:
             width=1.5,
             label="cumulative",
         )
-        plane.legend(screen, corner="top-left")
+        grid.legend(screen, corner="top-left")
         return f"{rolls:.0f} rolls"
 
 
@@ -311,7 +309,7 @@ def main() -> None:
                 current = (current + 1) % len(sets)
             elif event.type == pygame.KEYDOWN and event.key == pygame.K_p:
                 paused = not paused
-            sets[current].plane.handle_event(event)
+            sets[current].grid.handle_event(event)
         caption = sets[current].draw(screen, not paused)
         draw_caption(screen, font, caption)
         pygame.display.flip()

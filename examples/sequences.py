@@ -1,4 +1,4 @@
-"""Sequences: limits, partial sums and a recurrence, drawn with ``plane.sequence``.
+"""Sequences: limits, partial sums and a recurrence, drawn with ``grid.sequence``.
 
 Press ``Space`` to switch between three sets:
 
@@ -43,13 +43,13 @@ def level(value: float) -> Callable[[np.ndarray], np.ndarray]:
     return lambda x: 0 * x + value
 
 
-def draw_limits(plane: pgp.Plane, screen: pygame.Surface) -> list[str]:
+def draw_limits(grid: pgp.Grid, screen: pygame.Surface) -> list[str]:
     """Draw three sequences converging to their limits."""
-    plane.plot(screen, level(math.e), style=FADED, color=BLUE)
-    plane.sequence(screen, lambda n: (1 + 1 / n) ** n, start=1, color=BLUE)
+    grid.plot(screen, level(math.e), style=FADED, color=BLUE)
+    grid.sequence(screen, lambda n: (1 + 1 / n) ** n, start=1, color=BLUE)
     # Stems from the limit show the terms closing in on it.
-    plane.sequence(screen, lambda n: (-1) ** n / n - 2, start=1, baseline=-2, color=RED)
-    plane.sequence(
+    grid.sequence(screen, lambda n: (-1) ** n / n - 2, start=1, baseline=-2, color=RED)
+    grid.sequence(
         screen,
         lambda n: np.sin(n) / np.sqrt(n) - 4,
         start=1,
@@ -72,15 +72,15 @@ class PartialSums:
         self.squares = np.cumsum(1 / k**2)
         self.alternating = np.cumsum((-1) ** (k + 1) / k)
 
-    def draw(self, plane: pgp.Plane, screen: pygame.Surface) -> list[str]:
+    def draw(self, grid: pgp.Grid, screen: pygame.Surface) -> list[str]:
         """Draw the set; return the caption lines."""
         gamma = 0.5772156649015329
-        plane.plot(screen, lambda x: np.log(x) + gamma, style=FADED, color=BLUE)
-        plane.sequence(screen, self.harmonic, start=1, color=BLUE, width=0)
-        plane.plot(screen, level(math.pi**2 / 6), style=FADED, color=RED)
-        plane.sequence(screen, self.squares, start=1, color=RED, width=0)
-        plane.plot(screen, level(math.log(2)), style=FADED, color=GREEN)
-        plane.sequence(screen, self.alternating, start=1, color=GREEN, width=0)
+        grid.plot(screen, lambda x: np.log(x) + gamma, style=FADED, color=BLUE)
+        grid.sequence(screen, self.harmonic, start=1, color=BLUE, width=0)
+        grid.plot(screen, level(math.pi**2 / 6), style=FADED, color=RED)
+        grid.sequence(screen, self.squares, start=1, color=RED, width=0)
+        grid.plot(screen, level(math.log(2)), style=FADED, color=GREEN)
+        grid.sequence(screen, self.alternating, start=1, color=GREEN, width=0)
         return [
             "blue: Σ 1/k diverges like log n + 0.5772    red: Σ 1/k² → π²/6"
             "    green: Σ (-1)ᵏ⁺¹/k → log 2",
@@ -91,17 +91,17 @@ class PartialSums:
 class Logistic:
     """The logistic map, with a slider for its parameter."""
 
-    def __init__(self, plane: pgp.Plane) -> None:
-        self.slider = plane.slider("r", (2.5, 4.0), value=3.46, corner="top-right")
+    def __init__(self, grid: pgp.Grid) -> None:
+        self.slider = grid.slider("r", (2.5, 4.0), value=3.46, corner="top-right")
         self.points = (self.slider,)
 
-    def draw(self, plane: pgp.Plane, screen: pygame.Surface) -> list[str]:
+    def draw(self, grid: pgp.Grid, screen: pygame.Surface) -> list[str]:
         """Draw the set; return the caption lines."""
         r, x = self.slider.value, [0.2]
         for _ in range(300):
             x.append(r * x[-1] * (1 - x[-1]))
-        plane.sequence(screen, [value * 4 for value in x], color=BLUE, width=1)
-        plane.draw_draggables(screen, *self.points)
+        grid.sequence(screen, [value * 4 for value in x], color=BLUE, width=1)
+        grid.draw_controls(screen, *self.points)
         return [
             f"xₙ₊₁ = r xₙ (1 - xₙ) with r = {r:.4f}, from x₀ = 0.2 (drawn ×4)",
             "drag the slider for r: one value, then 2, 4, 8 ... (period doubling), "
@@ -135,8 +135,8 @@ def main() -> None:
     screen = pygame.display.set_mode((1100, 720), pygame.RESIZABLE)
     pygame.display.set_caption("PyGridPlot: sequences")
     font = pygame.font.Font(bundled_font_path(), 14)
-    plane = pgp.Plane(x_range=(-2, 40), y_range=(-5, 5))
-    sums, logistic = PartialSums(), Logistic(plane)
+    grid = pgp.Grid(x_range=(-2, 40), y_range=(-5, 5))
+    sums, logistic = PartialSums(), Logistic(grid)
     sets = [draw_limits, sums.draw, logistic.draw]
     current = 0
     clock = pygame.time.Clock()
@@ -149,11 +149,11 @@ def main() -> None:
             elif event.type == pygame.KEYDOWN and event.key == pygame.K_SPACE:
                 current = (current + 1) % len(sets)
             elif event.type == pygame.KEYDOWN and event.key == pygame.K_x:
-                plane.log_x = not plane.log_x
-            plane.handle_event(event)
+                grid.log_x = not grid.log_x
+            grid.handle_event(event)
 
-        plane.draw_grid(screen)
-        lines = sets[current](plane, screen)
+        grid.draw(screen)
+        lines = sets[current](grid, screen)
         draw_caption(screen, font, [*lines, "Space: next set   X: log x axis"])
         pygame.display.flip()
         clock.tick(60)

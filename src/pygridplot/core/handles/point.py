@@ -2,11 +2,11 @@
 
 A draggable point is the one object in PyGridPlot that keeps state between
 frames: its position, which the user changes with the mouse. It is created
-once with :meth:`pygridplot.Plane.draggable`, which registers it with the
-plane so that :meth:`~pygridplot.Plane.handle_event` can drag it; your code
+once with :meth:`pygridplot.Grid.draggable`, which registers it with the
+plane so that :meth:`~pygridplot.Grid.handle_event` can drag it; your code
 reads :attr:`~DraggablePoint.x` and :attr:`~DraggablePoint.y` every frame
 and uses them like any other number, and draws the points with
-:meth:`~pygridplot.Plane.draw_draggables`.
+:meth:`~pygridplot.Grid.draw_controls`.
 
 There are four kinds, set when the point is created:
 
@@ -48,7 +48,7 @@ always, or never."""
 CurveSpec: TypeAlias = tuple[CurveComponent, CurveComponent, tuple[float, float]]
 """A parametric curve for a point to stay on: ``(x, y, t_range)``, with ``x``
 and ``y`` functions of ``t`` (or numbers), as for
-:meth:`pygridplot.Plane.parametric`."""
+:meth:`pygridplot.Grid.parametric`."""
 
 COORDINATE_MODES: tuple[Coordinates, ...] = ("hover", "always", "never")
 """The allowed values of :attr:`DraggablePoint.coordinates`."""
@@ -61,7 +61,7 @@ with an outline in the theme's background colour."""
 class DraggablePoint:
     """A point that can be dragged with the mouse, freely or along a constraint.
 
-    Create points with :meth:`pygridplot.Plane.draggable` rather than
+    Create points with :meth:`pygridplot.Grid.draggable` rather than
     directly: the plane then routes mouse events to them and draws them.
 
     Args:
@@ -273,8 +273,8 @@ class DraggablePoint:
     def moved(self) -> bool:
         """Whether the point moved between the previous frame and this one.
 
-        Frames start at :meth:`pygridplot.Plane.draw_grid` (or
-        :meth:`~pygridplot.Plane.begin_frame`), so the value stays the same
+        Frames start at :meth:`pygridplot.Grid.draw` (or
+        :meth:`~pygridplot.Grid.begin_frame`), so the value stays the same
         while you draw; use it to recompute something only when needed.
         """
         return self._moved
@@ -332,7 +332,7 @@ class DraggablePoint:
     def begin_frame(self) -> None:
         """Start a new frame: update :attr:`moved` and resample a curve when needed.
 
-        :meth:`pygridplot.Plane.begin_frame` calls this for every point.
+        :meth:`pygridplot.Grid.begin_frame` calls this for every point.
         """
         self._moved = self._version != self._seen_version
         self._seen_version = self._version

@@ -1,0 +1,110 @@
+# Tests, lint and a package build, on every push and pull request.
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Tests (Python ${{ matrix.python }}, ${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest]
+        python: ["3.10", "3.11", "3.12", "3.13", "3.14", "3.15"]
+        include:
+          - os: windows-latest
+            python: "3.14"
+          - os: macos-latest
+            python: "3.14"
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Install
+        run: python -m pip install -e ".[dev]"
+      - name: Test (headless: the tests choose SDL's dummy drivers)
+        run: python -m pytest -q
+
+  oldest:
+    name: Tests with the oldest supported dependencies
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.10"
+      - name: Install the lowest versions pyproject.toml allows
+        run: >-
+          python -m pip install "numpy==1.26.*" "contourpy==1.2.*"
+          "pygame-ce==2.5.7" -e ".[dev]"
+      - name: Test
+        run: python -m pytest -q
+
+  lint:
+    name: Lint and type check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+      - name: Install
+        run: python -m pip install -e ".[dev]"
+      - name: ruff
+        run: |
+          ruff check .
+          ruff format --check .
+      - name: mypy (strict, src/)
+        run: mypy
+
+  package:
+    name: Build and check the package
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+      - name: Build the source archive and the wheel
+        run: |
+          python -m pip install build twine
+          python -m build
+      - name: Check the metadata and the README PyPI will show
+        run: twine check --strict dist/*
+      - name: Install the wheel alone and draw a frame with it
+        run: |
+          python -m venv /tmp/wheel-env
+          /tmp/wheel-env/bin/pip install dist/*.whl
+          cd /tmp
+          SDL_VIDEODRIVER=dummy /tmp/wheel-env/bin/python -c "
+          import numpy as np, pygame, pygridplot as pgp
+          surface = pygame.Surface((320, 240))
+          grid = pgp.Grid()
+          grid.draw(surface, x_title='x')
+          grid.plot(surface, np.sin, label='sin')
+          grid.legend(surface)
+          print('PyGridPlot', pgp.__version__, 'draws from the wheel')
+          "
+      - name: Run the tests from the source archive
+        run: |
+          mkdir /tmp/sdist && tar -xzf dist/*.tar.gz -C /tmp/sdist --strip-components 1
+          cd /tmp/sdist
+          /tmp/wheel-env/bin/pip install "hypothesis>=6.100" "pytest>=8.0"
+          /tmp/wheel-env/bin/python -m pytest -q -p no:cacheprovider
+      - uses: actions/upload-artifact@v5
+        with:
+          name: dist
+          path: dist/

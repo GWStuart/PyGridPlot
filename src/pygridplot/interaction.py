@@ -22,7 +22,7 @@ Wheel and keyboard movement is **eased** by a critically damped spring (see
 :mod:`pygridplot.core.easing`). The view glides towards its target with
 continuous velocity, so a notched mouse wheel feels as smooth as a trackpad.
 Easing advances in :meth:`InteractionController.update`, which
-:meth:`pygridplot.Plane.draw_grid` calls every frame. Set
+:meth:`pygridplot.Grid.draw` calls every frame. Set
 ``InteractionConfig(smoothing=0)`` for instant movement, for example in
 programs that only redraw when an event arrives.
 """
@@ -101,7 +101,7 @@ class InteractionConfig:
             (0.2 s with the default). ``0`` makes movement instant.
         bindings: Which keys trigger which actions.
         drag_button: Mouse button that drags draggable points (see
-            :meth:`pygridplot.Plane.draggable`).
+            :meth:`pygridplot.Grid.draggable`).
         grab_margin_px: A draggable point can be grabbed this many pixels
             beyond the edge of its marker.
         hover_cursor: Show the hand cursor while the mouse is over a
@@ -144,7 +144,7 @@ class InteractionController:
         view: The view to control. It is modified in place.
         config: Control settings.
         on_reset: Called when the reset key is pressed (the plane passes its
-            :meth:`~pygridplot.Plane.reset_view`).
+            :meth:`~pygridplot.Grid.reset_view`).
         clock: Returns the current time in seconds. Override for testing.
     """
 
@@ -343,7 +343,7 @@ class InteractionController:
     def update(self) -> bool:
         """Advance eased movement by the time since the previous call.
 
-        Call this once per frame (:meth:`pygridplot.Plane.draw_grid` does it
+        Call this once per frame (:meth:`pygridplot.Grid.draw` does it
         automatically).
 
         Returns:

@@ -16,11 +16,12 @@ Everything except `pygame_renderer.py`, `composite.py`, `markers.py`,
 | `draw_stroke(surface, stroke)` | Polylines with a round pen. |
 | `draw_fill(surface, fill)` | Filled polygons with a fill rule. |
 | `draw_markers(surface, markers)` | Point markers. |
+| `draw_image(surface, image)` | An RGBA image at a pixel position (the colour bar's strip). |
 
 `PygameRenderer` implements these, plus `clipped(surface, rect)` (a context
 manager that clips drawing to the plane and restores the previous clip),
-`draw_line_batch`, `draw_text` and `clear_caches`. `Plane` uses `clipped`
-and pygame events, so `Plane` is pygame-specific even though everything it
+`draw_line_batch`, `draw_text` and `clear_caches`. `Grid` uses `clipped`
+and pygame events, so `Grid` is pygame-specific even though everything it
 draws goes through the protocol; see
 [A new backend](extending.md#a-new-backend).
 
@@ -31,6 +32,14 @@ draws goes through the protocol; see
   any width. The batch's paint stack is flattened against the theme
   background into one solid colour (`colors.ColorResolver.flatten`,
   cached); with no background, it is blended onto what is there.
+- **Images** (`Image`, a colour bar's strip) are RGBA arrays made into a
+  surface with `pygame.image.frombuffer` and blitted; the renderer keeps
+  the surface of the last images it drew (by identity), as the plane draws
+  the same `Image` again while unchanged.
+- **Arrowheads** on the axes (`GridScene.arrows`) are ordinary `Fill`s,
+  drawn after the lines and before the labels with the plots' fill
+  rasteriser, so they are antialiased; their coverage is reused like any
+  fill's (see [Reusing coverage](#reusing-coverage-coverage_cachepy)).
 - **Labels** are typeset by `text.py` run by run: normal runs on a shared
   baseline, superscripts smaller and raised. Measurements are relative to
   the label's **digit box** (top of the digits to the baseline), which is
@@ -38,6 +47,9 @@ draws goes through the protocol; see
   characters they contain. Finished labels, halo included, are cached as
   single surfaces (an LRU), so drawing a label costs one blit; label text
   depends only on its value, so cache hits are the norm while panning.
+  Axis titles, text and legend labels are drawn the same way.
+  `TextSize.descent` reports the font's descent, for text with letters
+  (titles, legends, `grid.text`) to keep clear of it.
 - **Fonts** come from `fonts.FontLibrary`: the bundled DejaVu Sans by default
   (it has the true minus sign and the multiplication sign), a font file, or
   a system font by name, with a warning and a fallback if a font cannot be
@@ -56,6 +68,11 @@ A stroke is the union of **capsules** (a segment with round ends) of radius
 curve split into thousands of tiny segments looks exactly like one smooth
 line, with no dark spots where segments overlap. Lines thinner than a pixel
 are drawn one pixel wide with lower coverage.
+
+A stroke's paths are a tuple of polylines, or, for many polylines of the
+same length (error bars, a sequence's stems), one `(M, N, 2)` array, whose
+segments are two slices of it: collecting 3,000 two-point paths one at a
+time cost 2 ms.
 
 1. **Split long segments** (`_split_long`) into pieces with tight bounding
    boxes: a diagonal piece's box grows with the square of its length, so
@@ -110,6 +127,23 @@ square, diamond, cross, plus; non-circular shapes have the circle's area)
 with an optional outline ring *outside* the body. `markers.MarkerPainter`
 caches a stamp per style for each quarter-pixel phase (`PHASES = 4`), so
 markers glide smoothly, and blits them all with `fblits`.
+
+Markers with a **size each** (`Markers.radii`) round the sizes to a quarter
+of a pixel, so a bubble chart's continuous sizes need few stamps. Markers
+with a **colour each** (`Markers.colors`, often continuous, from a value)
+would need a stamp per marker, about 50 µs each; instead a colourless stamp
+is cached and tinted per marker with pygame's multiplying blend, about
+1.5 µs (2,000 markers: 4.6 ms against 1 ms for one colour). Without an
+outline the stamp is white with the coverage as alpha, and `BLEND_RGBA_MULT`
+by the colour gives exactly the painted stamp. With an outline, whose
+colour is fixed, the stamp holds each pixel's share of fill in white and
+the whole coverage as alpha, and a second image the outline's share in its
+colour: `BLEND_RGB_MULT` by the fill colour and then `BLEND_RGB_ADD` of the
+outline image give `(fill × a_fill + edge × a_edge) / (a_fill + a_edge)`,
+the painted stamp's colour, to within 1/255. A translucent fill colour with
+an outline changes those shares, so such markers get painted stamps (rare).
+Markers that each have their own size or colour are blitted in order, in
+one `fblits` call, so overlapping ones keep their painter's order.
 
 ## Compositing: `composite.py`
 

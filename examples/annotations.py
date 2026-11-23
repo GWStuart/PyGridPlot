@@ -38,7 +38,7 @@ BLUE = (40, 100, 200)
 RED = (200, 50, 60)
 GREEN = (40, 150, 90)
 GRAY = (110, 110, 120)
-ARROWS = replace(pgp.LIGHT, axis_arrows=True)
+ARROWS = replace(pgp.LIGHT, show_arrows=True)
 
 COMPASS: tuple[Anchor, ...] = (
     "left",
@@ -62,7 +62,7 @@ def away(point: tuple[float, float], center: tuple[float, float]) -> Anchor:
 class Demo(Protocol):
     """One set of the example."""
 
-    plane: pgp.Plane
+    grid: pgp.Grid
 
     def draw(self, screen: pygame.Surface) -> str:
         """Draw the set; return its caption."""
@@ -73,12 +73,12 @@ class Ball:
     """The height and velocity of a ball thrown straight up."""
 
     def __init__(self, renderer: PygameRenderer) -> None:
-        self.plane = pgp.Plane(
+        self.grid = pgp.Grid(
             x_range=(-0.6, 5.0), y_range=(-26, 30), theme=ARROWS, renderer=renderer
         )
         self.top = 20 / 9.8  # when the velocity is zero
         self.land = 2 * self.top
-        self.marker = self.plane.draggable(
+        self.marker = self.grid.draggable(
             curve=(lambda t: t, self.height, (0, self.land)), t=1.0, color=BLUE
         )
 
@@ -89,11 +89,11 @@ class Ball:
 
     def draw(self, screen: pygame.Surface) -> str:
         """Draw the set; return its caption."""
-        plane = self.plane
-        plane.draw_grid(screen, x_title="t (s)", y_title="h (m), v (m/s)")
+        grid = self.grid
+        grid.draw(screen, x_title="t (s)", y_title="h (m), v (m/s)")
         domain = (0.0, self.land)
         velocity = pgp.derivative(self.height)
-        plane.fill_between(
+        grid.fill_between(
             screen,
             velocity,
             0,
@@ -102,22 +102,22 @@ class Ball:
             opacity=0.15,
             label="rising, then falling",
         )
-        plane.plot(
+        grid.plot(
             screen, velocity, color=RED, domain=domain, label="velocity v = dh/dt"
         )
-        plane.plot(screen, self.height, color=BLUE, domain=domain, label="height h(t)")
+        grid.plot(screen, self.height, color=BLUE, domain=domain, label="height h(t)")
         top = (self.top, float(self.height(np.array(self.top))))
-        plane.points(
+        grid.points(
             screen, [top, (self.land, 0.0)], color=GRAY, radius=4, label="events"
         )
-        plane.text(
+        grid.text(
             screen, f"highest point, {top[1]:.1f} m", top, anchor="bottom", gap=10
         )
-        plane.text(screen, "lands", (self.land, 0.0), anchor="bottom-left", gap=6)
-        plane.legend(screen)
-        plane.draw_draggables(screen, self.marker)
+        grid.text(screen, "lands", (self.land, 0.0), anchor="bottom-left", gap=6)
+        grid.legend(screen)
+        grid.draw_controls(screen, self.marker)
         x, y = self.marker.position
-        plane.text(
+        grid.text(
             screen,
             f"t = {x:.2f} s\nh = {y:.1f} m",
             (x, y),
@@ -132,26 +132,26 @@ class Triangle:
     """A triangle with draggable, labelled vertices and its side lengths."""
 
     def __init__(self, renderer: PygameRenderer) -> None:
-        self.plane = pgp.Plane(x_range=(-8, 8), theme=ARROWS, renderer=renderer)
+        self.grid = pgp.Grid(x_range=(-8, 8), theme=ARROWS, renderer=renderer)
         self.vertices = [
-            self.plane.draggable(position, color=GRAY, coordinates="never")
+            self.grid.draggable(position, color=GRAY, coordinates="never")
             for position in ((-3.0, -2.0), (4.0, -1.0), (0.5, 3.5))
         ]
 
     def draw(self, screen: pygame.Surface) -> str:
         """Draw the set; return its caption."""
-        plane = self.plane
-        plane.draw_grid(screen, x_title="x", y_title="y")
+        grid = self.grid
+        grid.draw(screen, x_title="x", y_title="y")
         corners = [point.position for point in self.vertices]
         center = (
             sum(x for x, _ in corners) / 3,
             sum(y for _, y in corners) / 3,
         )
-        plane.polygon(screen, corners, color=BLUE, label="triangle ABC")
+        grid.polygon(screen, corners, color=BLUE, label="triangle ABC")
         circle = circumcircle(corners)
         if circle is not None:
             (cx, cy), r = circle
-            plane.parametric(
+            grid.parametric(
                 screen,
                 lambda t: cx + r * np.cos(t),
                 lambda t: cy + r * np.sin(t),
@@ -160,16 +160,14 @@ class Triangle:
                 width=1.5,
                 label="circumcircle",
             )
-        plane.points(screen, center, color=RED, radius=3.5, label="centroid")
+        grid.points(screen, center, color=RED, radius=3.5, label="centroid")
         for name, corner in zip("ABC", corners, strict=True):
-            plane.text(
-                screen, name, corner, anchor=away(corner, center), gap=9, size=16
-            )
+            grid.text(screen, name, corner, anchor=away(corner, center), gap=9, size=16)
         for i, start in enumerate(corners):
             end = corners[(i + 1) % 3]
             middle = ((start[0] + end[0]) / 2, (start[1] + end[1]) / 2)
             length = math.dist(start, end)
-            plane.text(
+            grid.text(
                 screen,
                 f"{length:.2f}",
                 middle,
@@ -177,8 +175,8 @@ class Triangle:
                 gap=4,
                 color=BLUE,
             )
-        plane.legend(screen)
-        plane.draw_draggables(screen, *self.vertices)
+        grid.legend(screen)
+        grid.draw_controls(screen, *self.vertices)
         return "A labelled triangle: drag the vertices A, B and C"
 
 
@@ -200,7 +198,7 @@ class Filters:
     """The gains of Butterworth low-pass filters on log-log axes."""
 
     def __init__(self, renderer: PygameRenderer) -> None:
-        self.plane = pgp.Plane(
+        self.grid = pgp.Grid(
             x_range=(0.01, 300),
             y_range=(1e-5, 4),
             log_x=True,
@@ -211,15 +209,15 @@ class Filters:
 
     def draw(self, screen: pygame.Surface) -> str:
         """Draw the set; return its caption."""
-        plane = self.plane
-        plane.draw_grid(screen, x_title="frequency ω (rad/s)", y_title="gain |H(iω)|")
+        grid = self.grid
+        grid.draw(screen, x_title="frequency ω (rad/s)", y_title="gain |H(iω)|")
         colors = (BLUE, RED, GREEN, GRAY)
-        plane.polyline(screen, [(1, 1e-6), (1, 10)], color=GRAY, width=1, opacity=0.5)
+        grid.polyline(screen, [(1, 1e-6), (1, 10)], color=GRAY, width=1, opacity=0.5)
         for order, color in enumerate(colors, start=1):
-            plane.plot(screen, butterworth(order), color=color, label=f"order {order}")
+            grid.plot(screen, butterworth(order), color=color, label=f"order {order}")
             # Beyond the corner, the gain is about ω^-n: 20n dB per decade.
             at = (10.0, 10.0**-order)
-            plane.text(
+            grid.text(
                 screen,
                 f"−{20 * order} dB/decade",
                 at,
@@ -227,15 +225,15 @@ class Filters:
                 gap=6,
                 color=color,
             )
-        plane.points(screen, (1, 1 / math.sqrt(2)), color=GRAY, radius=3.5)
-        plane.text(
+        grid.points(screen, (1, 1 / math.sqrt(2)), color=GRAY, radius=3.5)
+        grid.text(
             screen,
             "−3 dB at the corner, ω = 1",
             (1, 1 / math.sqrt(2)),
             anchor="top-right",
             gap=6,
         )
-        plane.legend(screen)
+        grid.legend(screen)
         return "Low-pass filters on log axes: every order falls 20 dB per decade faster"
 
 
@@ -277,7 +275,7 @@ def main() -> None:
                 running = False
             elif event.type == pygame.KEYDOWN and event.key == pygame.K_SPACE:
                 current = (current + 1) % len(sets)
-            sets[current].plane.handle_event(event)
+            sets[current].grid.handle_event(event)
         caption = sets[current].draw(screen)
         draw_caption(screen, font, caption)
         pygame.display.flip()

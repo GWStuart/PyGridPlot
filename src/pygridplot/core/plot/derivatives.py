@@ -111,7 +111,7 @@ def derivative(func: Function, n: int = 1) -> Derivative:
 
         df = derivative(np.sin)        # cos
         d3f = derivative(f, 3)
-        plane.plot(screen, df)
+        grid.plot(screen, df)
         slope = df(1.5)
 
     The derivative is exact for functions written with NumPy, and computed

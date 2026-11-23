@@ -97,7 +97,7 @@ def main() -> None:
     screen = pygame.display.set_mode((1100, 720), pygame.RESIZABLE)
     pygame.display.set_caption("PyGridPlot: functions")
     font = pygame.font.Font(bundled_font_path(), 14)
-    plane = pgp.Plane(scale=60)
+    grid = pgp.Grid(scale=60)
     clock = pygame.time.Clock()
     current = 0
 
@@ -108,13 +108,13 @@ def main() -> None:
                 running = False
             elif event.type == pygame.KEYDOWN and event.key == pygame.K_SPACE:
                 current = (current + 1) % len(SETS)
-            plane.handle_event(event)
+            grid.handle_event(event)
 
         title, functions = SETS[current]
-        plane.draw_grid(screen)
+        grid.draw(screen)
         for name, func in functions:
-            plane.plot(screen, func, label=name)
-        plane.legend(screen)
+            grid.plot(screen, func, label=name)
+        grid.legend(screen)
         draw_caption(screen, font, title)
         pygame.display.flip()
         clock.tick(60)

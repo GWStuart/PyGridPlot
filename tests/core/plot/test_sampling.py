@@ -15,7 +15,7 @@ from hypothesis import given, settings
 from hypothesis import strategies as st
 
 from pygridplot.core.plot.evaluation import evaluate
-from pygridplot.core.plot.sampling import SamplingConfig, sample_function
+from pygridplot.core.plot.sampling import FunctionSampling, sample_function
 
 SCALE = (60.0, 60.0)
 X_RANGE = (-7.6, 7.6)
@@ -25,7 +25,7 @@ BAND = (-5.1, 5.1)
 def sample(
     func: object,
     x_range: tuple[float, float] = X_RANGE,
-    config: SamplingConfig | None = None,
+    config: FunctionSampling | None = None,
 ) -> list[np.ndarray]:
     """Sample with the default test view (60 px per unit, about 900x600 px)."""
     return sample_function(
@@ -33,7 +33,7 @@ def sample(
         x_range,
         SCALE,
         BAND,
-        config or SamplingConfig(),
+        config or FunctionSampling(),
     )
 
 
@@ -194,13 +194,13 @@ def test_the_evaluation_budget_is_respected() -> None:
         count += np.size(x)
         return np.sin(1 / x)  # infinitely wiggly near 0
 
-    config = SamplingConfig(max_samples=3000)
+    config = FunctionSampling(max_samples=3000)
     sample(counted, config=config)
     assert count <= 3000
 
 
 def test_without_refinement_only_huge_rises_are_broken() -> None:
-    no_rounds = SamplingConfig(max_rounds=0)
+    no_rounds = FunctionSampling(max_rounds=0)
     assert len(sample(np.floor, config=no_rounds)) == 1  # small jumps stay joined
     assert len(sample(np.tan, config=no_rounds)) == 5  # asymptotes still break
 
@@ -253,5 +253,5 @@ def test_chasing_respects_the_budget() -> None:
             count += 1
         return math.gamma(x)  # type: ignore[arg-type]
 
-    sample(counted, (-9.2, 9.2), SamplingConfig(max_samples=1500))
+    sample(counted, (-9.2, 9.2), FunctionSampling(max_samples=1500))
     assert count <= 1500

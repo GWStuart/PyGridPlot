@@ -6,7 +6,7 @@ import numpy as np
 import pygame
 import pytest
 
-from pygridplot.core.primitives import Fill, Markers, Stroke
+from pygridplot.core.primitives import Fill, Image, Markers, Stroke
 from pygridplot.render.colors import ColorResolver
 from pygridplot.render.composite import blend_dense, blend_sparse
 from pygridplot.render.markers import PHASES, MarkerPainter, _split_positions
@@ -173,3 +173,94 @@ def test_surfaces_without_packed_access_blend_big_strokes_as_a_patch() -> None:
     )
     patched = blended(surface, lambda s: blend_sparse(s, coverage, RED))  # > threshold
     assert np.abs(per_pixel - patched).max() <= 1  # identical up to 8-bit rounding
+
+
+POSITIONS = np.array([[20.3, 20.6], [50.0, 21.25], [80.7, 19.9], [52.0, 24.0]])
+
+
+def painted(markers: Markers) -> np.ndarray:
+    """Draw markers on a grey surface and return its pixels."""
+    surface = pygame.Surface((120, 40))
+    surface.fill((90, 90, 90))
+    MarkerPainter(ColorResolver()).draw(surface, markers)
+    return pygame.surfarray.array3d(surface).astype(int)
+
+
+@pytest.mark.parametrize("edge", [None, (255, 255, 255)])
+@pytest.mark.parametrize(
+    "fill", [(200, 40, 40), (10, 120, 220, 255), (30, 160, 60, 128), "gold"]
+)
+def test_a_colour_per_marker_looks_like_markers_of_that_colour(
+    edge: tuple[int, int, int] | None, fill: object
+) -> None:
+    """Tinted stamps give the colours of stamps painted in the colour."""
+    width = 2.0 if edge else 0.0
+    apart = POSITIONS[:3]  # not overlapping: the one-colour path groups by phase
+    one = painted(Markers(apart, "circle", 6.0, fill, edge, width, 0.9))  # type: ignore[arg-type]
+    each = painted(
+        Markers(apart, "circle", 6.0, "black", edge, width, 0.9, colors=(fill,) * 3)  # type: ignore[arg-type]
+    )
+    assert np.abs(one - each).max() <= 1  # rounding
+
+
+def test_colours_as_bytes_and_sizes_per_marker() -> None:
+    rows = [[255, 0, 0, 255], [0, 0, 255, 255], [0, 160, 0, 255], [0, 0, 0, 255]]
+    colors = np.array(rows, dtype=np.uint8)
+    pixels = painted(Markers(POSITIONS, "square", 5.0, "white", colors=colors))
+    assert tuple(pixels[20, 21]) == (255, 0, 0)
+    assert tuple(pixels[81, 20]) == (0, 160, 0)
+    # Drawn in order: the last marker covers the second where they overlap.
+    assert tuple(pixels[52, 24]) == (0, 0, 0)
+    sizes = painted(
+        Markers(POSITIONS, "circle", 5.0, "black", radii=np.array([2.0, 9.0, 0.0, 2.0]))
+    )
+    assert tuple(sizes[50, 21 + 7]) == (0, 0, 0)  # the big one reaches 7 px down
+    assert tuple(sizes[20, 21 + 4]) == (90, 90, 90)  # the small one does not
+    assert tuple(sizes[81, 20]) == (90, 90, 90)  # size 0: no marker
+
+
+def test_sizes_per_marker_are_rounded_to_a_quarter_pixel() -> None:
+    painter = MarkerPainter(ColorResolver())
+    surface = pygame.Surface((200, 40))
+    radii = 3.0 + np.linspace(0, 0.2, 30)  # all within a quarter pixel of 3 or 3.25
+    positions = np.column_stack((np.linspace(10, 190, 30), np.full(30, 20.0)))
+    painter.draw(surface, Markers(positions, "circle", 1.0, "red", radii=radii))
+    sizes = {key[1] for key in painter._stamps}
+    assert sizes <= {3.0, 3.25}
+
+
+def test_strokes_of_many_short_paths_as_one_array_draw_alike() -> None:
+    rng = np.random.default_rng(0)
+    paths = rng.uniform(5, 95, (200, 2, 2))
+    one = pygame.Surface((100, 100))
+    other = pygame.Surface((100, 100))
+    renderer = PygameRenderer()
+    renderer.draw_stroke(one, Stroke(tuple(paths), "red", 1.5))
+    renderer.draw_stroke(other, Stroke(paths, "red", 1.5))
+    assert np.array_equal(
+        pygame.surfarray.array3d(one), pygame.surfarray.array3d(other)
+    )
+    dots = pygame.Surface((20, 20))
+    renderer.draw_stroke(dots, Stroke(np.array([[[10.0, 10.0]]]), "white", 3.0))
+    assert tuple(dots.get_at((10, 10)))[:3] == (255, 255, 255)
+
+
+def test_images_are_drawn_as_they_are_and_reused() -> None:
+    surface = pygame.Surface((30, 20))
+    surface.fill((0, 0, 0))
+    pixels = np.zeros((4, 6, 4), dtype=np.uint8)
+    pixels[..., 0] = 255
+    pixels[..., 3] = 255
+    pixels[2:, :, 3] = 0  # the lower rows transparent
+    image = Image(pixels, 10, 5)
+    renderer = PygameRenderer()
+    renderer.draw_image(surface, image)
+    assert tuple(surface.get_at((10, 5)))[:3] == (255, 0, 0)
+    assert tuple(surface.get_at((15, 6)))[:3] == (255, 0, 0)
+    assert tuple(surface.get_at((10, 7)))[:3] == (0, 0, 0)  # transparent
+    assert tuple(surface.get_at((16, 5)))[:3] == (0, 0, 0)  # beyond its width
+    renderer.draw_image(surface, image)
+    assert len(renderer._images) == 1  # drawn again from the same surface
+    faint = pygame.Surface((30, 20))
+    renderer.draw_image(faint, Image(pixels, 0, 0, opacity=0.5))
+    assert 120 <= faint.get_at((0, 0))[0] <= 135

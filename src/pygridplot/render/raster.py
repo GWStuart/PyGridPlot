@@ -90,14 +90,17 @@ class DenseCoverage:
 # Strokes
 # ----------------------------------------------------------------------
 def stroke_coverage(
-    paths: tuple[NDArray[np.float64], ...] | list[NDArray[np.float64]],
+    paths: tuple[NDArray[np.float64], ...]
+    | list[NDArray[np.float64]]
+    | NDArray[np.float64],
     width: float,
     clip: PixelBox,
 ) -> SparseCoverage | None:
     """Rasterise polylines drawn with a round pen of ``width`` pixels.
 
     Args:
-        paths: Polylines, each of shape ``(N, 2)``. One-point paths are dots.
+        paths: Polylines, each of shape ``(N, 2)``, or ``M`` of the same
+            length as one ``(M, N, 2)`` array. One-point paths are dots.
         width: Pen width in pixels. Widths below 1 are drawn 1 pixel wide
             with proportionally lower coverage, so hairlines stay visible
             without looking jagged.
@@ -126,16 +129,31 @@ def stroke_coverage(
 
 
 def _segments(
-    paths: tuple[NDArray[np.float64], ...] | list[NDArray[np.float64]],
+    paths: tuple[NDArray[np.float64], ...]
+    | list[NDArray[np.float64]]
+    | NDArray[np.float64],
 ) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
     """Collect the segments of all paths (a one-point path is a zero-length segment).
 
     Args:
-        paths: Polylines of shape ``(N, 2)``.
+        paths: Polylines of shape ``(N, 2)``, or an ``(M, N, 2)`` array of
+            polylines of one length, whose segments are found in one go
+            (thousands of error bars took 2 ms one path at a time).
 
     Returns:
         ``(starts, ends)``, both of shape ``(M, 2)``.
     """
+    if isinstance(paths, np.ndarray):
+        if paths.shape[0] == 0:
+            empty = np.zeros((0, 2))
+            return empty, empty
+        if paths.shape[1] == 1:
+            a = b = paths[:, 0]
+        else:
+            a = paths[:, :-1].reshape(-1, 2)
+            b = paths[:, 1:].reshape(-1, 2)
+        finite = np.isfinite(a).all(axis=1) & np.isfinite(b).all(axis=1)
+        return a[finite], b[finite]
     starts, ends = [], []
     for path in paths:
         if path.shape[0] == 1:

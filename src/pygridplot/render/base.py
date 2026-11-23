@@ -6,7 +6,8 @@ that backend's surface type. Nothing in :mod:`pygridplot.core` has to
 change.
 
 The interface grows one milestone at a time. It currently covers the grid,
-strokes (curves, polylines, outlines), fills and point markers.
+strokes (curves, polylines, outlines), fills, point markers, images and
+text.
 """
 
 from __future__ import annotations
@@ -17,6 +18,7 @@ from pygridplot.core.grid.scene import GridScene
 from pygridplot.core.primitives import (
     Fill,
     FontSpec,
+    Image,
     LabelText,
     Markers,
     Stroke,
@@ -72,5 +74,14 @@ class Renderer(Protocol):
         Args:
             surface: The backend's drawing target.
             markers: The markers.
+        """
+        ...
+
+    def draw_image(self, surface: Any, image: Image) -> None:
+        """Draw pixels as they are.
+
+        Args:
+            surface: The backend's drawing target.
+            image: The pixels and where they go.
         """
         ...

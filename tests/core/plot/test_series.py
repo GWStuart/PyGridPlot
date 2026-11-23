@@ -184,6 +184,16 @@ def test_many_terms_and_large_arrays() -> None:
     assert pgp.fourier(np.sign, MAX_TERMS).terms == MAX_TERMS
 
 
+def test_amplitudes_are_the_spectrum() -> None:
+    square = pgp.fourier(np.sign, 7)
+    want = [0.0] + [4 / (k * math.pi) if k % 2 else 0.0 for k in range(1, 8)]
+    np.testing.assert_allclose(square.amplitudes, want, atol=1e-11)
+    shifted = pgp.fourier(lambda x: 2 + 3 * np.cos(x) - 4 * np.sin(x), 2)
+    np.testing.assert_allclose(shifted.amplitudes, [2, 5, 0], atol=1e-11)
+    shifted.amplitudes[0] = 99.0  # a new array each time
+    assert shifted.amplitudes[0] == pytest.approx(2.0)
+
+
 def test_fourier_coefficients_are_read_only() -> None:
     series = pgp.fourier(np.sign, 3)
     with pytest.raises(ValueError, match="read-only"):

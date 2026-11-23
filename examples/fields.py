@@ -71,8 +71,8 @@ FIELDS = (
 class Vectors:
     """Vector fields, with a probe showing the vector at a point."""
 
-    def __init__(self, plane: pgp.Plane) -> None:
-        self.probe = plane.draggable((3.0, 2.0), color=RED)
+    def __init__(self, grid: pgp.Grid) -> None:
+        self.probe = grid.draggable((3.0, 2.0), color=RED)
         self.points = (self.probe,)
         self.current = 0
         self.magnitude = False
@@ -84,19 +84,19 @@ class Vectors:
         elif key == pygame.K_m:
             self.magnitude = not self.magnitude
 
-    def draw(self, plane: pgp.Plane, screen: pygame.Surface, t: float) -> str:
+    def draw(self, grid: pgp.Grid, screen: pygame.Surface, t: float) -> str:
         """Draw the field and the probe; return the caption."""
         field = FIELDS[self.current]
         scale = field.scale if self.magnitude else None
-        plane.vector_field(screen, field.func, scale=scale, color=BLUE)
+        grid.vector_field(screen, field.func, scale=scale, color=BLUE)
         # The vector at the probe, drawn as a bold arrow from it.
         x, y = self.probe.x, self.probe.y
         u, v = (float(c) for c in np.ravel(field.func(np.array([x]), np.array([y]))))
         size = math.hypot(u, v)
         if size > 0 and math.isfinite(size):
             reach = 1.5 / size  # always 1.5 units long
-            plane.arrow(screen, (x, y), (x + u * reach, y + v * reach), color=RED)
-        plane.draw_draggables(screen, *self.points)
+            grid.arrow(screen, (x, y), (x + u * reach, y + v * reach), color=RED)
+        grid.draw_controls(screen, *self.points)
         lengths = "magnitude" if self.magnitude else "direction only"
         return f"{field.name}, {lengths}   (F: next field, M: lengths)"
 
@@ -133,8 +133,8 @@ EQUATIONS = (
 class Slopes:
     """Slope fields, with the solution through a draggable point."""
 
-    def __init__(self, plane: pgp.Plane) -> None:
-        self.start = plane.draggable((-2.0, 1.5), color=RED)
+    def __init__(self, grid: pgp.Grid) -> None:
+        self.start = grid.draggable((-2.0, 1.5), color=RED)
         self.points = (self.start,)
         self.current = 0
 
@@ -143,22 +143,22 @@ class Slopes:
         if key == pygame.K_f:
             self.current = (self.current + 1) % len(EQUATIONS)
 
-    def draw(self, plane: pgp.Plane, screen: pygame.Surface, t: float) -> str:
+    def draw(self, grid: pgp.Grid, screen: pygame.Surface, t: float) -> str:
         """Draw the slope field and the solution; return the caption."""
         equation = EQUATIONS[self.current]
-        plane.slope_field(screen, equation.slope, color=GRAY)
+        grid.slope_field(screen, equation.slope, color=GRAY)
         solution = equation.solution(self.start.x, self.start.y)
-        plane.plot(screen, solution, color=RED)
-        plane.draw_draggables(screen, *self.points)
+        grid.plot(screen, solution, color=RED)
+        grid.draw_controls(screen, *self.points)
         return f"slope field of {equation.name}, solution through the point   (F: next)"
 
 
 class Arrows:
     """Vector addition, and velocity and acceleration on a curve."""
 
-    def __init__(self, plane: pgp.Plane) -> None:
-        self.a = plane.draggable((3.0, 1.0), color=BLUE)
-        self.b = plane.draggable((1.0, 3.0), color=GREEN)
+    def __init__(self, grid: pgp.Grid) -> None:
+        self.a = grid.draggable((3.0, 1.0), color=BLUE)
+        self.b = grid.draggable((1.0, 3.0), color=GREEN)
         self.points = (self.a, self.b)
 
     def key(self, key: int) -> None:
@@ -174,29 +174,29 @@ class Arrows:
         """The curve's y coordinate."""
         return -2.0 + 1.5 * np.sin(2 * t)
 
-    def draw(self, plane: pgp.Plane, screen: pygame.Surface, t: float) -> str:
+    def draw(self, grid: pgp.Grid, screen: pygame.Surface, t: float) -> str:
         """Draw both demonstrations; return the caption."""
         # a and b from the origin, the same vectors along the far sides of
         # the parallelogram they span, and their sum across it. The handles
         # are drawn first, so that the arrowheads stay visible on top.
-        plane.draw_draggables(screen, *self.points)
+        grid.draw_controls(screen, *self.points)
         a, b = (self.a.x, self.a.y), (self.b.x, self.b.y)
         total = (a[0] + b[0], a[1] + b[1])
-        plane.polygon(screen, [(0, 0), a, total, b], color=GRAY, width=0)
-        plane.arrow(screen, b, total, color=BLUE, opacity=0.4)
-        plane.arrow(screen, a, total, color=GREEN, opacity=0.4)
-        plane.arrow(screen, (0, 0), a, color=BLUE)
-        plane.arrow(screen, (0, 0), b, color=GREEN)
-        plane.arrow(screen, (0, 0), total, color=RED, width=3.5)
+        grid.polygon(screen, [(0, 0), a, total, b], color=GRAY, width=0)
+        grid.arrow(screen, b, total, color=BLUE, opacity=0.4)
+        grid.arrow(screen, a, total, color=GREEN, opacity=0.4)
+        grid.arrow(screen, (0, 0), a, color=BLUE)
+        grid.arrow(screen, (0, 0), b, color=GREEN)
+        grid.arrow(screen, (0, 0), total, color=RED, width=3.5)
         # A point running round a curve, with its velocity and acceleration.
         s = 0.8 * t
         px, vx, ax = pgp.derivatives(self.x, s, 2)
         py, vy, ay = pgp.derivatives(self.y, s, 2)
         loop = (0, 2 * math.pi)
-        plane.parametric(screen, self.x, self.y, loop, color=GRAY, width=1.5)
-        plane.arrow(screen, (px, py), (px + vx / 2, py + vy / 2), color=BLUE)
-        plane.arrow(screen, (px, py), (px + ax / 4, py + ay / 4), color=GREEN)
-        plane.points(screen, (px, py), color=RED)
+        grid.parametric(screen, self.x, self.y, loop, color=GRAY, width=1.5)
+        grid.arrow(screen, (px, py), (px + vx / 2, py + vy / 2), color=BLUE)
+        grid.arrow(screen, (px, py), (px + ax / 4, py + ay / 4), color=GREEN)
+        grid.points(screen, (px, py), color=RED)
         return "a + b (drag a and b), and velocity and acceleration on a curve"
 
 
@@ -211,7 +211,7 @@ class Demo(Protocol):
     def key(self, key: int) -> None:
         """Handle a key press of the set's own."""
 
-    def draw(self, plane: pgp.Plane, screen: pygame.Surface, t: float) -> str:
+    def draw(self, grid: pgp.Grid, screen: pygame.Surface, t: float) -> str:
         """Draw the set at time ``t``; return its caption."""
         ...
 
@@ -233,8 +233,8 @@ def main() -> None:
     screen = pygame.display.set_mode((1100, 720), pygame.RESIZABLE)
     pygame.display.set_caption("PyGridPlot: vector fields, slope fields and arrows")
     font = pygame.font.Font(bundled_font_path(), 14)
-    plane = pgp.Plane(x_range=(-9, 9))
-    sets: list[Demo] = [Vectors(plane), Slopes(plane), Arrows(plane)]
+    grid = pgp.Grid(x_range=(-9, 9))
+    sets: list[Demo] = [Vectors(grid), Slopes(grid), Arrows(grid)]
     clock = pygame.time.Clock()
     current = 0
     paused = False
@@ -253,7 +253,7 @@ def main() -> None:
                     paused = not paused
                 else:
                     sets[current].key(event.key)
-            plane.handle_event(event)
+            grid.handle_event(event)
         # Only the points of the set on show can be dragged.
         for number, demo in enumerate(sets):
             for point in demo.points:
@@ -263,8 +263,8 @@ def main() -> None:
         if not paused:
             elapsed += now - last
         last = now
-        plane.draw_grid(screen)
-        caption = sets[current].draw(plane, screen, elapsed)
+        grid.draw(screen)
+        caption = sets[current].draw(grid, screen, elapsed)
         draw_caption(screen, font, caption)
         pygame.display.flip()
         clock.tick(60)

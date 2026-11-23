@@ -4,28 +4,29 @@
 by hand. Run `python scripts/build_api_docs.py` after changing the API. -->
 
 Everything below is importable from the package (`import pygridplot as pgp`,
-then `pgp.Plane`, `pgp.LineStyle`, ...). The [user guide](index.md) explains
+then `pgp.Grid`, `pgp.LineStyle`, ...). The [user guide](index.md) explains
 how the pieces fit together; this page lists every class, function and
 setting with its parameters and defaults.
 
 **Contents:**
 
-- The plane: [`Plane`](#plane), [`show`](#show)
+- The plane: [`Grid`](#grid), [`show`](#show)
 - Calculus: [`derivative`](#derivative), [`derivatives`](#derivatives), [`integral`](#integral), [`antiderivative`](#antiderivative), [`taylor`](#taylor), [`fourier`](#fourier)
-- Draggable points: [`DraggablePoint`](#draggablepoint)
-- Styles: [`LineStyle`](#linestyle), [`PointStyle`](#pointstyle), [`PolygonStyle`](#polygonstyle), [`FillStyle`](#fillstyle), [`ArrowStyle`](#arrowstyle)
+- Data: [`color_map`](#color_map), [`data_range`](#data_range)
+- Draggable points and sliders: [`DraggablePoint`](#draggablepoint), [`Slider`](#slider)
+- Styles: [`LineStyle`](#linestyle), [`PointStyle`](#pointstyle), [`PolygonStyle`](#polygonstyle), [`FillStyle`](#fillstyle), [`ArrowStyle`](#arrowstyle), [`SequenceStyle`](#sequencestyle), [`BarStyle`](#barstyle), [`TextStyle`](#textstyle)
 - Themes: [`GridTheme`](#gridtheme), [`LIGHT`](#light), [`DARK`](#dark), [`NumberFormat`](#numberformat)
-- Configuration: [`InteractionConfig`](#interactionconfig), [`KeyBindings`](#keybindings), [`SamplingConfig`](#samplingconfig), [`CurveSampling`](#curvesampling), [`ImplicitSampling`](#implicitsampling), [`ViewLimits`](#viewlimits), [`CacheStats`](#cachestats)
+- Configuration: [`InteractionConfig`](#interactionconfig), [`KeyBindings`](#keybindings), [`FunctionSampling`](#functionsampling), [`CurveSampling`](#curvesampling), [`ImplicitSampling`](#implicitsampling), [`ViewLimits`](#viewlimits), [`CacheStats`](#cachestats)
 - The view: [`View`](#view), [`ViewState`](#viewstate)
 
 ## The plane
 
 The object your program creates and calls every frame.
 
-### Plane
+### Grid
 
 ```py
-pgp.Plane(
+pgp.Grid(
     rect: object | None = None,
     *,
     x_range: tuple[float, float] | None = None,
@@ -40,7 +41,7 @@ pgp.Plane(
     interaction: InteractionConfig | None = None,
     limits: ViewLimits | None = None,
     renderer: PygameRenderer | None = None,
-    sampling: SamplingConfig | None = None,
+    sampling: FunctionSampling | None = None,
     cache: bool = True,
 )
 ```
@@ -51,7 +52,7 @@ The initial view can be given like a graphing calculator's window settings, `x_r
 
 *Parameters:*
 
-- `rect`: The screen rectangle to draw into. `None` (the default) fills whatever surface `draw_grid` is given and follows it when the window is resized.
+- `rect`: The screen rectangle to draw into. `None` (the default) fills whatever surface `draw` is given and follows it when the window is resized.
 - `x_range`: `(x_min, x_max)` to show across the plane's width at first. Overrides `center` and `scale` for the x axis.
 - `y_range`: `(y_min, y_max)` to show across the plane's height at first. Overrides `center` and `scale` for the y axis.
 - `log_x`: Make the x axis logarithmic (base 10). Only positive x values can be shown.
@@ -67,79 +68,79 @@ The initial view can be given like a graphing calculator's window settings, `x_r
 - `sampling`: How functions are sampled by `plot` (the defaults suit almost every function).
 - `cache`: Reuse plots that have not changed since the previous frame (see `cache`). It only saves time; the drawing is the same.
 
-#### Members of `Plane`
+#### Members of `Grid`
 
-- **`plane.view`** (`View`, read only)
+- **`grid.view`** (`View`, read only)
 
   The plane's `View`.
 
   Use it to read or change the centre, scale and visible bounds directly.
 
-- **`plane.rect`** (`ScreenRect`, read and write)
+- **`grid.rect`** (`ScreenRect`, read and write)
 
   The screen rectangle the plane occupies.
 
   Assign a rectangle (for example a `pygame.Rect`) to move or resize the plane, or `None` to make it fill the surface it is drawn on. Resizing keeps the centre and scale, so more or less of the plane becomes visible.
 
-- **`plane.log_x`** (`bool`, read and write)
+- **`grid.log_x`** (`bool`, read and write)
 
   Whether the x axis is logarithmic.
 
   Assign to switch it: the visible x range is kept where possible (see `View.set_log`) and becomes part of the new home view.
 
-- **`plane.log_y`** (`bool`, read and write)
+- **`grid.log_y`** (`bool`, read and write)
 
   Whether the y axis is logarithmic (assign to switch it, as for x).
 
-- **`plane.theme`** (`GridTheme`, read and write)
+- **`grid.theme`** (`GridTheme`, read and write)
 
   The grid's appearance. Assign a new theme to restyle the plane.
 
-- **`plane.sampling`** (`SamplingConfig`, read and write)
+- **`grid.sampling`** (`FunctionSampling`, read and write)
 
   How `plot` samples functions (assign to change it).
 
-- **`plane.cache`** (`bool`, read and write)
+- **`grid.cache`** (`bool`, read and write)
 
   Whether plots that have not changed since the previous frame are reused.
 
   On by default. A plotting call is reused when it is the same kind of call, in the same place among the frame's calls, with the same view, style and inputs as in the previous frame, and its functions still give exactly the values they gave then (they are checked at every point where they were evaluated). The drawing is then exactly what drawing again would give, so turning the cache off changes only the speed; do so to measure how long drawing takes, or if your functions are not *pointwise* (their value at `x` depends on the other points they are called with).
 
-- **`plane.cache_stats`** (`CacheStats`, read only)
+- **`grid.cache_stats`** (`CacheStats`, read only)
 
   How many plotting calls were reused (hits) and built again (misses).
 
-- **`plane.clear_cache()`**
+- **`grid.clear_cache()`**
 
   ```py
-  plane.clear_cache()
+  grid.clear_cache()
   ```
 
   Forget every reused plot and grid, and the counts in `cache_stats`.
 
-- **`plane.interaction`** (`InteractionConfig`, read and write)
+- **`grid.interaction`** (`InteractionConfig`, read and write)
 
   Settings of the built-in pan/zoom controls and of dragging points.
 
-- **`plane.renderer`** (`PygameRenderer`, read only)
+- **`grid.renderer`** (`PygameRenderer`, read only)
 
   The renderer the plane draws with.
 
-- **`plane.last_grid`** (`GridScene | None`, read only)
+- **`grid.last_scene`** (`GridScene | None`, read only)
 
-  The grid drawn by the most recent `draw_grid` call, if any.
+  The grid drawn by the most recent `draw` call, if any.
 
   Useful for debugging overlays (it records the chosen spacings).
 
-- **`plane.handle_event()`**
+- **`grid.handle_event()`**
 
   ```py
-  plane.handle_event(event: pygame.event.Event) -> bool
+  grid.handle_event(event: pygame.event.Event) -> bool
   ```
 
   Let the plane react to an input event (dragging points, pan, zoom, keys).
 
-  Pass every event, including mouse motion: the plane tracks the cursor to zoom about it and to highlight draggable points under it. A press over a draggable point drags the point; anywhere else it pans.
+  Pass every event, including mouse motion: the plane tracks the cursor to zoom about it and to highlight draggable points and sliders under it. A press on a slider sets it, a press over a draggable point drags the point, and anywhere else it pans; the wheel over a slider moves it, anywhere else it zooms.
 
   *Parameters:*
 
@@ -147,46 +148,80 @@ The initial view can be given like a graphing calculator's window settings, `x_r
 
   *Returns:* `True` if the plane used the event, so your code can skip handling it again.
 
-- **`plane.update()`**
+- **`grid.update()`**
 
   ```py
-  plane.update() -> bool
+  grid.update() -> bool
   ```
 
   Advance eased pan/zoom movement, and keep a dragged point under the cursor.
 
-  `draw_grid` calls this automatically, so you only need it if you stop drawing the grid but still want eased movement (and dragging while the view eases) to continue.
+  `draw` calls this automatically, so you only need it if you stop drawing the grid but still want eased movement (and dragging while the view eases) to continue.
 
   *Returns:* `True` if the view changed.
 
-- **`plane.begin_frame()`**
+- **`grid.begin_frame()`**
 
   ```py
-  plane.begin_frame()
+  grid.begin_frame()
   ```
 
-  Start a new frame for the colour palette and the draggable points.
+  Start a new frame for the palette, the legend, draggable points and sliders.
 
-  The next object drawn without a colour gets the first palette colour again, and each draggable point updates its `DraggablePoint.moved` flag. `draw_grid` calls this automatically. Call it yourself only if you draw plots without drawing the grid, so that every object keeps the same palette colour from frame to frame.
+  The next object drawn without a colour gets the first palette colour again, the legend starts with no entries, and each draggable point and slider updates its `moved` flag. `draw` calls this automatically. Call it yourself only if you draw plots without drawing the grid, so that every object keeps the same palette colour from frame to frame, and the legend shows only the frame's plots.
 
-- **`plane.draw_grid()`**
+- **`grid.draw()`**
 
   ```py
-  plane.draw_grid(surface: pygame.Surface)
+  grid.draw(
+      surface: pygame.Surface,
+      *,
+      x_title: str | None = None,
+      y_title: str | None = None,
+      x_labels: Sequence[str] | Mapping[float, str] | None = None,
+      y_labels: Sequence[str] | Mapping[float, str] | None = None,
+  )
   ```
 
-  Draw the background, grid lines, axes and tick labels.
+  Draw the background, grid lines, axes, tick labels and axis titles.
 
-  Drawing is clipped to `rect`, so the plane can share a window with other content. Call it once per frame, before drawing anything that should appear on top of the grid. It also starts a new frame for the colour palette (see `begin_frame`).
+  Drawing is clipped to `rect`, so the plane can share a window with other content. Call it once per frame, before drawing anything that should appear on top of the grid. It also starts a new frame for the colour palette and the legend (see `begin_frame`).
+
+  The titles sit at the axes' positive ends, as in textbook diagrams: the x axis' title at the right, just above the axis, and the y axis' title at the top, just right of it:
+
+  ```py
+  grid.draw(screen, x_title="t (s)", y_title="v (m/s)")
+  ```
+
+  They stay on screen when their axis is not, pinned to the edge like the tick labels, and tick labels fade out where they meet one. Their size is the theme's `GridTheme.title_size`; an arrowhead at each axis' end is the theme's `GridTheme.show_arrows`.
+
+  `x_labels` names positions along the x axis in place of its numbers, for categories (a bar chart's bars at 0, 1, 2, ...):
+
+  ```py
+  grid.bars(screen, [3, 1, 4])
+  grid.draw(screen, x_labels=["red", "green", "blue"])  # at 0, 1, 2
+  grid.draw(screen, x_labels={2019: "before", 2023: "after"})
+  ```
+
+  The names behave like tick labels: pinned to the edge, fading where they meet a title, and thinned to every 2nd, 4th, ... name when the axis is zoomed out so far that they would overlap. `y_labels` does the same for the y axis. A categorical axis has no shared `0` at the origin; the other axis labels its own zero.
 
   *Parameters:*
 
   - `surface`: The surface to draw on (usually the display surface).
+  - `x_title`: A title for the x axis (`None` for none).
+  - `y_title`: A title for the y axis (`None` for none).
+  - `x_labels`: Names for x positions: a sequence of names (at 0, 1, 2, ...) or a mapping from positions to names (`None` for numbers).
+  - `y_labels`: Names for y positions, likewise.
 
-- **`plane.plot()`**
+  *Raises:*
+
+  - `TypeError`: If a title or name is not a string.
+  - `ValueError`: If a named position is not a finite number.
+
+- **`grid.plot()`**
 
   ```py
-  plane.plot(
+  grid.plot(
       surface: pygame.Surface,
       func: Function,
       *,
@@ -195,7 +230,8 @@ The initial view can be given like a graphing calculator's window settings, `x_r
       opacity: float | None = None,
       domain: tuple[float, float] | None = None,
       style: LineStyle | None = None,
-      sampling: SamplingConfig | None = None,
+      sampling: FunctionSampling | None = None,
+      label: str | None = None,
   )
   ```
 
@@ -213,13 +249,14 @@ The initial view can be given like a graphing calculator's window settings, `x_r
   - `domain`: Only plot where `domain[0] <= x <= domain[1]`.
   - `style`: A reusable `LineStyle`. The other keyword arguments override its fields.
   - `sampling`: Override the plane's sampling settings for this call.
+  - `label`: A name for this plot in the legend (see `legend`).
 
   *Note:* When creating functions in a loop, bind the loop variable as a default argument: `[lambda x, k=k: x**k for k in range(3)]`. Plain `lambda x: x**k` would make every function use the last `k`.
 
-- **`plane.parametric()`**
+- **`grid.parametric()`**
 
   ```py
-  plane.parametric(
+  grid.parametric(
       surface: pygame.Surface,
       x: CurveComponent,
       y: CurveComponent,
@@ -230,6 +267,7 @@ The initial view can be given like a graphing calculator's window settings, `x_r
       opacity: float | None = None,
       style: LineStyle | None = None,
       sampling: CurveSampling | None = None,
+      label: str | None = None,
   )
   ```
 
@@ -248,15 +286,16 @@ The initial view can be given like a graphing calculator's window settings, `x_r
   - `opacity`: Line opacity in `[0, 1]`.
   - `style`: A reusable `LineStyle`. The other keyword arguments override its fields.
   - `sampling`: How the curve is sampled (see `CurveSampling`; the defaults suit almost every curve).
+  - `label`: A name for this plot in the legend (see `legend`).
 
   *Raises:*
 
   - `ValueError`: If `t_range` is not an increasing pair of numbers.
 
-- **`plane.polar()`**
+- **`grid.polar()`**
 
   ```py
-  plane.polar(
+  grid.polar(
       surface: pygame.Surface,
       r: CurveComponent,
       theta_range: tuple[float, float] = (0.0, 6.283185307179586),
@@ -266,6 +305,7 @@ The initial view can be given like a graphing calculator's window settings, `x_r
       opacity: float | None = None,
       style: LineStyle | None = None,
       sampling: CurveSampling | None = None,
+      label: str | None = None,
   )
   ```
 
@@ -283,17 +323,18 @@ The initial view can be given like a graphing calculator's window settings, `x_r
   - `opacity`: Line opacity in `[0, 1]`.
   - `style`: A reusable `LineStyle`. The other keyword arguments override its fields.
   - `sampling`: How the curve is sampled (see `CurveSampling`).
+  - `label`: A name for this plot in the legend (see `legend`).
 
   *Raises:*
 
   - `ValueError`: If `theta_range` is not an increasing pair of numbers.
 
-- **`plane.implicit()`**
+- **`grid.implicit()`**
 
   ```py
-  plane.implicit(
+  grid.implicit(
       surface: pygame.Surface,
-      func: PlaneFunction,
+      func: XYFunction,
       level: float | Sequence[float] = 0.0,
       *,
       color: ColorLike | None = None,
@@ -301,6 +342,7 @@ The initial view can be given like a graphing calculator's window settings, `x_r
       opacity: float | None = None,
       style: LineStyle | None = None,
       sampling: ImplicitSampling | None = None,
+      label: str | None = None,
   )
   ```
 
@@ -314,21 +356,22 @@ The initial view can be given like a graphing calculator's window settings, `x_r
 
   - `surface`: The surface to draw on.
   - `func`: `F(x, y)`, taking and returning NumPy arrays (or plain numbers, at some cost in speed). It may raise errors or return NaN where it is undefined.
-  - `level`: The value of `func` along the curve, so that `plane.implicit(screen, lambda x, y: x**2 + y**2, 9)` draws the circle `x² + y² = 9`. A sequence of values draws a curve for each, all in one style (contour lines, like the height lines of a map); this is much faster than one call per value, as `func` is evaluated only once.
+  - `level`: The value of `func` along the curve, so that `grid.implicit(screen, lambda x, y: x**2 + y**2, 9)` draws the circle `x² + y² = 9`. A sequence of values draws a curve for each, all in one style (contour lines, like the height lines of a map); this is much faster than one call per value, as `func` is evaluated only once.
   - `color`: Line colour (default: the next palette colour).
   - `width`: Line width in pixels (default 2.5).
   - `opacity`: Line opacity in `[0, 1]`.
   - `style`: A reusable `LineStyle`. The other keyword arguments override its fields.
   - `sampling`: How the curve is searched for (see `ImplicitSampling`).
+  - `label`: A name for this plot in the legend (see `legend`).
 
   *Raises:*
 
   - `ValueError`: If a level is not a finite number.
 
-- **`plane.fill_between()`**
+- **`grid.fill_between()`**
 
   ```py
-  plane.fill_between(
+  grid.fill_between(
       surface: pygame.Surface,
       f: Boundary,
       g: Boundary = 0.0,
@@ -337,7 +380,8 @@ The initial view can be given like a graphing calculator's window settings, `x_r
       opacity: float | None = None,
       domain: tuple[float, float] | None = None,
       style: FillStyle | None = None,
-      sampling: SamplingConfig | None = None,
+      sampling: FunctionSampling | None = None,
+      label: str | None = None,
   )
   ```
 
@@ -348,8 +392,8 @@ The initial view can be given like a graphing calculator's window settings, `x_r
   The area has no outline: plot the curves too, if they should show:
 
   ```py
-  plane.fill_between(screen, np.sin, 0, domain=(0, np.pi))
-  plane.plot(screen, np.sin)
+  grid.fill_between(screen, np.sin, 0, domain=(0, np.pi))
+  grid.plot(screen, np.sin)
   ```
 
   *Parameters:*
@@ -362,23 +406,25 @@ The initial view can be given like a graphing calculator's window settings, `x_r
   - `domain`: Only shade where `domain[0] <= x <= domain[1]`.
   - `style`: A reusable `FillStyle`. The other keyword arguments override its fields.
   - `sampling`: Override the plane's sampling settings for this call (used for both sides).
+  - `label`: A name for this plot in the legend (see `legend`).
 
   *Raises:*
 
   - `TypeError`: If `f` or `g` is neither callable nor a number.
   - `ValueError`: If `domain` is not an increasing pair of numbers.
 
-- **`plane.inequality()`**
+- **`grid.inequality()`**
 
   ```py
-  plane.inequality(
+  grid.inequality(
       surface: pygame.Surface,
-      condition: PlaneFunction,
+      condition: XYFunction,
       *,
       color: ColorLike | None = None,
       opacity: float | None = None,
       style: FillStyle | None = None,
       sampling: ImplicitSampling | None = None,
+      label: str | None = None,
   )
   ```
 
@@ -387,7 +433,7 @@ The initial view can be given like a graphing calculator's window settings, `x_r
   The condition is an inequality written in Python, such as `lambda x, y: x**2 + y**2 < 4` or `lambda x, y: y < np.sin(x)`. Conditions combine with NumPy's `&` (and), `|` (or) and `~` (not), each part in brackets:
 
   ```py
-  plane.inequality(screen, lambda x, y: (y > x**2) & (y < 4))
+  grid.inequality(screen, lambda x, y: (y > x**2) & (y < 4))
   ```
 
   (Python's `and`, `or` and chained comparisons such as `0 < x < 1` work too, but only on single numbers, so they are much slower.) Any value that is not zero counts as true, so a function returning 0 or 1 works as well. Where the condition is undefined (it raises an error or returns NaN), the point is outside.
@@ -397,8 +443,8 @@ The initial view can be given like a graphing calculator's window settings, `x_r
   The region has no outline: draw its boundary with `implicit` or `plot`, if it should show:
 
   ```py
-  plane.inequality(screen, lambda x, y: x**2 + y**2 < 4)
-  plane.implicit(screen, lambda x, y: x**2 + y**2, 4)
+  grid.inequality(screen, lambda x, y: x**2 + y**2 < 4)
+  grid.implicit(screen, lambda x, y: x**2 + y**2, 4)
   ```
 
   *Parameters:*
@@ -409,11 +455,12 @@ The initial view can be given like a graphing calculator's window settings, `x_r
   - `opacity`: Fill opacity in `[0, 1]` (default 0.25).
   - `style`: A reusable `FillStyle`. The other keyword arguments override its fields.
   - `sampling`: How the region is searched for (the same settings as implicit curves: see `ImplicitSampling`).
+  - `label`: A name for this plot in the legend (see `legend`).
 
-- **`plane.arrow()`**
+- **`grid.arrow()`**
 
   ```py
-  plane.arrow(
+  grid.arrow(
       surface: pygame.Surface,
       start: ArrayLike,
       end: ArrayLike,
@@ -423,6 +470,7 @@ The initial view can be given like a graphing calculator's window settings, `x_r
       opacity: float | None = None,
       head_size: float | None = None,
       style: ArrowStyle | None = None,
+      label: str | None = None,
   )
   ```
 
@@ -433,8 +481,8 @@ The initial view can be given like a graphing calculator's window settings, `x_r
   Each end is one point `(x, y)` or many (a sequence of points, or an `(N, 2)` array), for many arrows in one call, which is much faster than one call each. A single start is shared by all the ends, and a single end by all the starts:
 
   ```py
-  plane.arrow(screen, (0, 0), (2, 1))
-  plane.arrow(screen, (0, 0), [(1, 0), (0, 1)])      # two, from the origin
+  grid.arrow(screen, (0, 0), (2, 1))
+  grid.arrow(screen, (0, 0), [(1, 0), (0, 1)])      # two, from the origin
   ```
 
   Arrows with a NaN coordinate, or whose ends are in the same place, are left out.
@@ -449,15 +497,16 @@ The initial view can be given like a graphing calculator's window settings, `x_r
   - `opacity`: Opacity in `[0, 1]`.
   - `head_size`: Length of the head in pixels (default: in proportion to the width; `0` for no head).
   - `style`: A reusable `ArrowStyle`. The other keyword arguments override its fields.
+  - `label`: A name for this plot in the legend (see `legend`).
 
   *Raises:*
 
   - `ValueError`: If `start` or `end` is not one or more points, or they are both several points but not as many.
 
-- **`plane.vector_field()`**
+- **`grid.vector_field()`**
 
   ```py
-  plane.vector_field(
+  grid.vector_field(
       surface: pygame.Surface,
       field: VectorFunction,
       *,
@@ -468,6 +517,7 @@ The initial view can be given like a graphing calculator's window settings, `x_r
       opacity: float | None = None,
       head_size: float | None = None,
       style: ArrowStyle | None = None,
+      label: str | None = None,
   )
   ```
 
@@ -476,8 +526,8 @@ The initial view can be given like a graphing calculator's window settings, `x_r
   `field` takes `x` and `y` and returns the vector there as a pair, written with NumPy like the functions given to `implicit`:
 
   ```py
-  plane.vector_field(screen, lambda x, y: (-y, x))  # a rotation
-  plane.vector_field(screen, lambda x, y: (1, np.sin(x)))  # u is a number
+  grid.vector_field(screen, lambda x, y: (-y, x))  # a rotation
+  grid.vector_field(screen, lambda x, y: (1, np.sin(x)))  # u is a number
   ```
 
   An arrow is centred on each point of a lattice that keeps about the same density on screen, `spacing` pixels apart. The lattice is fixed to the plane, so panning moves the arrows with it; while zooming, new arrows fade and grow in between the others (or shrink and fade out), so that their density stays the same and nothing jumps.
@@ -497,23 +547,25 @@ The initial view can be given like a graphing calculator's window settings, `x_r
   - `opacity`: Opacity in `[0, 1]`.
   - `head_size`: Length of the heads in pixels (default: in proportion to the width).
   - `style`: A reusable `ArrowStyle`. The other keyword arguments override its fields.
+  - `label`: A name for this plot in the legend (see `legend`).
 
   *Raises:*
 
   - `ValueError`: If `spacing` or `scale` is not valid.
 
-- **`plane.slope_field()`**
+- **`grid.slope_field()`**
 
   ```py
-  plane.slope_field(
+  grid.slope_field(
       surface: pygame.Surface,
-      slope: PlaneFunction,
+      slope: XYFunction,
       *,
       spacing: float | None = None,
       color: ColorLike | None = None,
       width: float | None = None,
       opacity: float | None = None,
       style: LineStyle | None = None,
+      label: str | None = None,
   )
   ```
 
@@ -522,8 +574,8 @@ The initial view can be given like a graphing calculator's window settings, `x_r
   A short segment is drawn at each point of a lattice, with the slope the equation gives there, so the solution curves can be seen following the segments:
 
   ```py
-  plane.slope_field(screen, lambda x, y: x - y)
-  plane.plot(screen, lambda x: x - 1 + 2 * np.exp(-x))     # one solution
+  grid.slope_field(screen, lambda x, y: x - y)
+  grid.plot(screen, lambda x: x - 1 + 2 * np.exp(-x))     # one solution
   ```
 
   The lattice behaves as for `vector_field`: fixed to the plane when panning, with segments fading in and out while zooming. An infinite slope gives a vertical segment; where `slope` raises an error or returns NaN, no segment is drawn. For arrows instead of segments, draw the vector field `lambda x, y: (1, slope(x, y))`.
@@ -537,46 +589,122 @@ The initial view can be given like a graphing calculator's window settings, `x_r
   - `width`: Line width in pixels (default 1.5).
   - `opacity`: Opacity in `[0, 1]`.
   - `style`: A reusable `LineStyle`. The other keyword arguments override its fields.
+  - `label`: A name for this plot in the legend (see `legend`).
 
   *Raises:*
 
   - `ValueError`: If `spacing` is not valid.
 
-- **`plane.points()`**
+- **`grid.sequence()`**
 
   ```py
-  plane.points(
+  grid.sequence(
+      surface: pygame.Surface,
+      terms: Function | ArrayLike,
+      start: int = 0,
+      *,
+      baseline: float = 0.0,
+      color: ColorLike | None = None,
+      width: float | None = None,
+      radius: float | None = None,
+      marker: MarkerShape | None = None,
+      opacity: float | None = None,
+      style: SequenceStyle | None = None,
+      label: str | None = None,
+  )
+  ```
+
+  Draw the terms `aₙ` of a sequence, each a stem from the x axis to a marker.
+
+  The terms are a finite sequence (a list or array, whose first term has the index `start`) or an infinite one (a function of `n`, drawn for every visible `n >= start`):
+
+  ```py
+  grid.sequence(screen, [3, 1, 4, 1, 5, 9, 2, 6])             # a₀ ... a₇
+  grid.sequence(screen, lambda n: (-1) ** n / n, start=1)     # every n ≥ 1
+  grid.sequence(screen, pgp.fourier(np.sign, 15).amplitudes) # a spectrum
+  grid.sequence(screen, [1, 1 / 2, 1 / 3], width=0)          # markers alone
+  ```
+
+  A function receives a float array of whole numbers (so NumPy arithmetic cannot overflow), or a Python `int` if it only works on one index at a time (so `math.factorial` and list indexing work), and may fail or return NaN or infinity for some `n`: those terms are left out. Where several terms fall in one pixel column, their stems are drawn as one, which looks the same and costs one stem per pixel. Where an infinite sequence's terms are closer than a quarter of a pixel apart (zoomed far out), only the multiples of 3, 9, 27, ... are drawn, the others fading out as you zoom out, so that the work stays bounded; powers of 3 keep odd and even terms alike, so an alternating sequence stays two-sided. A finite sequence is always drawn in full. The stems start at `baseline` (0, the x axis, by default; a limit, say, to show the terms closing in on it); on a log y axis a baseline of 0 is at the bottom edge.
+
+  *Parameters:*
+
+  - `surface`: The surface to draw on.
+  - `terms`: The terms: a sequence or 1-D array of numbers (NaN for a term not to draw), or a function of `n`.
+  - `start`: The index of the first term (a whole number).
+  - `baseline`: Where the stems start: a y value (default 0).
+  - `color`: Colour of the stems and markers (default: the next palette colour).
+  - `width`: Stem thickness in pixels (default 2; 0 for markers alone).
+  - `radius`: Marker size in pixels (default 3.5; 0 for stems alone).
+  - `marker`: `"circle"` (default), `"square"`, `"diamond"`, `"cross"` or `"plus"`.
+  - `opacity`: Opacity in `[0, 1]`.
+  - `style`: A reusable `SequenceStyle`. The other keyword arguments override its fields.
+  - `label`: A name for this plot in the legend (see `legend`).
+
+  *Raises:*
+
+  - `ValueError`: If `start` is not a whole number, `baseline` is not a finite number, or `terms` is neither a function nor a 1-D sequence of real numbers.
+
+- **`grid.points()`**
+
+  ```py
+  grid.points(
       surface: pygame.Surface,
       points: ArrayLike,
       *,
-      color: ColorLike | None = None,
-      radius: float | None = None,
+      color: ColorLike | Sequence[ColorLike] | ArrayLike | None = None,
+      radius: float | ArrayLike | None = None,
       marker: MarkerShape | None = None,
       edge_color: ColorLike | None = None,
       edge_width: float | None = None,
       opacity: float | None = None,
+      x_error: float | ArrayLike | None = None,
+      y_error: float | ArrayLike | None = None,
+      error_width: float | None = None,
+      error_cap: float | None = None,
       style: PointStyle | None = None,
+      label: str | None = None,
   )
   ```
 
   Draw points as markers that keep the same size in pixels at every zoom.
 
+  Points are data as well as marks: each can have its own colour and size (a scatter plot coloured or sized by a value), and error bars:
+
+  ```py
+  grid.points(screen, data)                              # a scatter plot
+  grid.points(screen, data, y_error=0.2)                 # ± 0.2 each
+  grid.points(screen, data, y_error=errors, x_error=dx)  # one each
+  grid.points(screen, data, color=colors, radius=sizes)  # per point
+  ```
+
+  Error bars are in world units (they grow with the zoom), in the points' colour, under the markers; with a colour per point they are in the theme's label colour. `radius=0` draws the error bars alone (on top of bars, say).
+
   *Parameters:*
 
   - `surface`: The surface to draw on.
   - `points`: A single point `(x, y)`, a sequence of points, or an `(N, 2)` array. Points with a NaN coordinate are skipped.
-  - `color`: Marker colour (default: the next palette colour).
-  - `radius`: Marker size in pixels (default 4.5).
+  - `color`: Marker colour (default: the next palette colour), or a colour for each point: a sequence of colours, or an `(N, 3)` or `(N, 4)` array of values in `[0, 255]`.
+  - `radius`: Marker size in pixels (default 4.5; `0` for none), or a size for each point (NaN for none).
   - `marker`: `"circle"` (default), `"square"`, `"diamond"`, `"cross"` or `"plus"`.
   - `edge_color`: Colour of an outline around each marker.
   - `edge_width`: Outline thickness in pixels (default 1.5).
   - `opacity`: Opacity in `[0, 1]`.
+  - `x_error`: Error bars across x: one length for every point, one per point, or two rows (left lengths, then right). NaN for no bar.
+  - `y_error`: Error bars across y: likewise (below, then above).
+  - `error_width`: Thickness of the error bars in pixels (default 1.5).
+  - `error_cap`: Width of the caps on the error bars in pixels (default 8; 0 for none).
   - `style`: A reusable `PointStyle`. The other keyword arguments override its fields.
+  - `label`: A name for this plot in the legend (see `legend`).
 
-- **`plane.polyline()`**
+  *Raises:*
+
+  - `ValueError`: If there is not one colour, size or error for each point, or a size or error is negative.
+
+- **`grid.polyline()`**
 
   ```py
-  plane.polyline(
+  grid.polyline(
       surface: pygame.Surface,
       points: ArrayLike,
       *,
@@ -584,11 +712,20 @@ The initial view can be given like a graphing calculator's window settings, `x_r
       width: float | None = None,
       opacity: float | None = None,
       closed: bool = False,
+      step: Step | None = None,
       style: LineStyle | None = None,
+      label: str | None = None,
   )
   ```
 
   Draw straight lines through a sequence of world-space vertices.
+
+  With `step=`, the line goes in steps between the vertices instead, horizontally and vertically, as for a count, a sampled-and-held signal or an empirical distribution function:
+
+  ```py
+  grid.polyline(screen, data)               # straight lines
+  grid.polyline(screen, data, step="post")  # each value until the next x
+  ```
 
   *Parameters:*
 
@@ -598,12 +735,18 @@ The initial view can be given like a graphing calculator's window settings, `x_r
   - `width`: Line width in pixels (default 2.5).
   - `opacity`: Line opacity in `[0, 1]`.
   - `closed`: Connect the last vertex back to the first.
+  - `step`: `None` for straight lines (default), or steps: `"post"` (each value holds from its x until the next), `"pre"` (from the previous x up to its own) or `"mid"` (the steps half way between the xs).
   - `style`: A reusable `LineStyle`. The other keyword arguments override its fields.
+  - `label`: A name for this plot in the legend (see `legend`).
 
-- **`plane.polygon()`**
+  *Raises:*
+
+  - `ValueError`: If `step` is unknown, or given with `closed`.
+
+- **`grid.polygon()`**
 
   ```py
-  plane.polygon(
+  grid.polygon(
       surface: pygame.Surface,
       points: ArrayLike,
       *,
@@ -615,6 +758,7 @@ The initial view can be given like a graphing calculator's window settings, `x_r
       fill_opacity: float | None = None,
       fill_rule: FillRule | None = None,
       style: PolygonStyle | None = None,
+      label: str | None = None,
   )
   ```
 
@@ -634,11 +778,332 @@ The initial view can be given like a graphing calculator's window settings, `x_r
   - `fill_opacity`: Fill opacity in `[0, 1]` (default 0.25).
   - `fill_rule`: `"nonzero"` (default) or `"evenodd"`, for polygons whose edges cross.
   - `style`: A reusable `PolygonStyle`. The other keyword arguments override its fields.
+  - `label`: A name for this plot in the legend (see `legend`).
 
-- **`plane.draggable()`**
+- **`grid.bars()`**
 
   ```py
-  plane.draggable(
+  grid.bars(
+      surface: pygame.Surface,
+      data: ArrayLike,
+      start: float = 0,
+      *,
+      width: float | None = None,
+      baseline: float | ArrayLike = 0.0,
+      horizontal: bool = False,
+      color: ColorLike | None = None,
+      opacity: float | None = None,
+      edge_width: float | None = None,
+      style: BarStyle | None = None,
+      label: str | None = None,
+  )
+  ```
+
+  Draw bars standing on the x axis (a bar chart), or along it.
+
+  `data` is the bars' heights, standing at `start`, `start + 1`, ... (at 0, 1, 2, ... by default), or their `(x, top)` pairs:
+
+  ```py
+  grid.bars(screen, [3, 1, 4, 1, 5])                     # at x = 0 ... 4
+  grid.bars(screen, np.bincount(rolls), start=0)         # counts of outcomes
+  grid.bars(screen, [(2019, 3.1), (2021, 2.4)], width=1.5)
+  grid.bars(screen, b, baseline=a)       # stacked: b's bars on a's
+  grid.bars(screen, [2, 5, 3], horizontal=True)          # to x = 2, 5, 3
+  ```
+
+  Bars are in world units, so they grow with the zoom; by default each is 0.8 of the smallest gap between neighbouring bars, so bars never touch (give `width` to choose; bars as wide as their spacing touch). A bar runs from its baseline to its top; a top below the baseline hangs down. One baseline per bar stacks bars (each series standing on the tops of the one before: pass `a + b` with `baseline=a`) or floats them (from a start to an end). `horizontal=True` lays the bars along x: `data` is then their ends (x values, or `(y, end)` pairs) and the baseline an x. On a log axis across the bars a baseline of 0 is the plane's edge; on a log axis along them, `width` is in decades, so bars look alike.
+
+  *Parameters:*
+
+  - `surface`: The surface to draw on.
+  - `data`: The heights (a sequence of numbers), or `(x, top)` pairs (a sequence of pairs, or an `(N, 2)` array). A NaN leaves a bar out.
+  - `start`: The position of the first bar, when `data` is heights.
+  - `width`: The bars' width in x units (y units when horizontal; default: 0.8 of the smallest gap between bars).
+  - `baseline`: Where the bars stand: a y value (an x when horizontal), default 0, or one per bar.
+  - `horizontal`: Lay the bars along x, standing on a vertical baseline, rather than upright.
+  - `color`: Colour of the bars (default: the next palette colour).
+  - `opacity`: Opacity of their fill in `[0, 1]` (default 0.5).
+  - `edge_width`: Width of their outline in pixels (default 1.5; 0 for none).
+  - `style`: A reusable `BarStyle`. The other keyword arguments override its fields.
+  - `label`: A name for this plot in the legend (see `legend`).
+
+  *Raises:*
+
+  - `ValueError`: If `data` is not heights or pairs, `start` or `width` is not a finite number (and a width positive), or `baseline` is not a number or one per bar.
+
+- **`grid.histogram()`**
+
+  ```py
+  grid.histogram(
+      surface: pygame.Surface,
+      samples: ArrayLike,
+      *,
+      width: float | None = None,
+      edges: ArrayLike | None = None,
+      density: bool = False,
+      cumulative: bool = False,
+      color: ColorLike | None = None,
+      opacity: float | None = None,
+      edge_width: float | None = None,
+      style: BarStyle | None = None,
+      label: str | None = None,
+  )
+  ```
+
+  Draw a histogram of samples: how many fall in each bin.
+
+  `samples` are raw values, such as measurements or the results of a simulation; the plane bins and counts them:
+
+  ```py
+  samples = rng.normal(size=1000)
+  grid.histogram(screen, samples)                  # automatic bins
+  grid.histogram(screen, samples, width=0.25)      # [0, 0.25), ...
+  grid.histogram(screen, samples, density=True)    # area 1
+  grid.plot(screen, lambda x: np.exp(-x**2 / 2) / np.sqrt(2 * np.pi))
+  ```
+
+  The bins are anchored: a bin of width `w` is always `[k w, (k + 1) w)`, wherever the samples are, so the bars stay put while samples are added frame by frame, and panning and zooming never change them. Without a width, it is chosen from the samples (the Freedman-Diaconis rule) and rounded to 1, 2 or 5 times a power of ten, so the edges fall on round numbers. `edges` gives the bins' edges instead, as in NumPy (the last bin includes its right edge).
+
+  With `density=True`, each bar is as high as the density the samples estimate there (its count over the number of samples and the bin's width), so the bars have area 1 and a probability density drawn with `plot` lies over them. With `cumulative=True`, each bar is as high as all the samples up to its right edge (the fraction of them, with `density`), a stepped estimate of the distribution function. Neighbouring bars are filled as one shape with one outline, and the lines between them fade out as bins narrow below a few pixels. On a log x axis the bins are equal on screen: `width` is in decades.
+
+  *Parameters:*
+
+  - `surface`: The surface to draw on.
+  - `samples`: The samples (a sequence or array of numbers). NaN and infinite ones are left out (on a log x axis, ones not positive too).
+  - `width`: The bins' width in x units (default: automatic).
+  - `edges`: The bins' edges instead: at least two numbers, increasing.
+  - `density`: Draw densities rather than counts (with `cumulative`, fractions of the samples, rising to 1).
+  - `cumulative`: Draw each bin as high as all the samples up to its right edge: the counts (or fractions) add up along x.
+  - `color`: Colour of the bars (default: the next palette colour).
+  - `opacity`: Opacity of their fill in `[0, 1]` (default 0.5).
+  - `edge_width`: Width of their outline in pixels (default 1.5; 0 for none).
+  - `style`: A reusable `BarStyle`. The other keyword arguments override its fields.
+  - `label`: A name for this plot in the legend (see `legend`).
+
+  *Raises:*
+
+  - `ValueError`: If the samples are not numbers, `width` is not positive, `edges` are not increasing, or both are given.
+
+- **`grid.box_plot()`**
+
+  ```py
+  grid.box_plot(
+      surface: pygame.Surface,
+      samples: ArrayLike,
+      start: float = 0,
+      *,
+      positions: ArrayLike | None = None,
+      width: float | None = None,
+      whisker: float = 1.5,
+      horizontal: bool = False,
+      color: ColorLike | None = None,
+      opacity: float | None = None,
+      edge_width: float | None = None,
+      style: BarStyle | None = None,
+      label: str | None = None,
+  )
+  ```
+
+  Draw box plots: the quartiles, median and spread of groups of samples.
+
+  `samples` is one group of samples, or several (a list of groups, which may differ in size, or a 2-D array, one group per row), drawn side by side at `start`, `start + 1`, ... or at `positions`:
+
+  ```py
+  grid.box_plot(screen, rng.normal(size=200))            # one box at 0
+  grid.box_plot(screen, [before, after], start=1)        # at 1 and 2
+  grid.box_plot(screen, groups, horizontal=True)         # along x
+  ```
+
+  Each box spans the first to the third quartile, with the median as a line across it; whiskers reach the furthest samples within `whisker` interquartile ranges of the box (Tukey's 1.5 by default), and samples beyond them are drawn as points. On a log axis the statistics are those of the logarithms, as the axis shows them.
+
+  *Parameters:*
+
+  - `surface`: The surface to draw on.
+  - `samples`: One group of samples, or a list of groups. NaN and infinite samples are left out.
+  - `start`: The position of the first group, without `positions`.
+  - `positions`: Each group's position (x, or y when horizontal).
+  - `width`: The boxes' width in x units (default: half the smallest gap between groups).
+  - `whisker`: How far whiskers reach beyond the box, in interquartile ranges (`inf` for every sample).
+  - `horizontal`: Lay the boxes along x.
+  - `color`: Colour of the boxes (default: the next palette colour).
+  - `opacity`: Opacity of their fill in `[0, 1]` (default 0.5).
+  - `edge_width`: Width of their lines in pixels (default 1.5).
+  - `style`: A reusable `BarStyle`. The other keyword arguments override its fields.
+  - `label`: A name for this plot in the legend (see `legend`).
+
+  *Raises:*
+
+  - `ValueError`: If the samples are not numbers, the positions not one per group, or `width` or `whisker` not valid.
+
+- **`grid.violin_plot()`**
+
+  ```py
+  grid.violin_plot(
+      surface: pygame.Surface,
+      samples: ArrayLike,
+      start: float = 0,
+      *,
+      positions: ArrayLike | None = None,
+      width: float | None = None,
+      bandwidth: float | None = None,
+      horizontal: bool = False,
+      color: ColorLike | None = None,
+      opacity: float | None = None,
+      edge_width: float | None = None,
+      style: BarStyle | None = None,
+      label: str | None = None,
+  )
+  ```
+
+  Draw violin plots: the density of groups of samples, side by side.
+
+  `samples` is one group or several, as for `box_plot`:
+
+  ```py
+  grid.violin_plot(screen, [rng.normal(size=500), rng.gamma(2, size=500)])
+  grid.box_plot(screen, groups, width=0.1)   # a narrow box inside each
+  ```
+
+  Each violin is the density of its samples, estimated with a Gaussian kernel (its bandwidth by Silverman's rule unless given), mirrored either side of the group's position, `width` wide where the density is greatest, from the smallest sample to the largest, with the median as a line across. Densities are of the logarithms on a log axis.
+
+  *Parameters:*
+
+  - `surface`: The surface to draw on.
+  - `samples`: One group of samples, or a list of groups. NaN and infinite samples are left out; a group needs two different values to have a shape.
+  - `start`: The position of the first group, without `positions`.
+  - `positions`: Each group's position (x, or y when horizontal).
+  - `width`: The violins' greatest width in x units (default: 0.8 of the smallest gap between groups).
+  - `bandwidth`: The kernel's standard deviation, in value units (default: Silverman's rule).
+  - `horizontal`: Lay the violins along x.
+  - `color`: Colour of the violins (default: the next palette colour).
+  - `opacity`: Opacity of their fill in `[0, 1]` (default 0.5).
+  - `edge_width`: Width of their outline in pixels (default 1.5).
+  - `style`: A reusable `BarStyle`. The other keyword arguments override its fields.
+  - `label`: A name for this plot in the legend (see `legend`).
+
+  *Raises:*
+
+  - `ValueError`: If the samples are not numbers, the positions not one per group, or `width` or `bandwidth` not positive.
+
+- **`grid.text()`**
+
+  ```py
+  grid.text(
+      surface: pygame.Surface,
+      text: str,
+      position: tuple[float, float],
+      *,
+      anchor: Anchor = 'center',
+      gap: float = 0.0,
+      color: ColorLike | None = None,
+      size: int | None = None,
+      opacity: float | None = None,
+      halo: bool | None = None,
+      style: TextStyle | None = None,
+  )
+  ```
+
+  Write text at a point of the plane, which moves with the point.
+
+  The text keeps its size in pixels while the point follows panning and zooming, like a marker. `anchor` is the point of the text's box placed at `position`, and `gap` moves the text that many pixels further from it, on the anchored sides:
+
+  ```py
+  grid.text(screen, "A", (1, 2))                          # centred
+  grid.text(screen, "max", (np.pi / 2, 1), anchor="bottom", gap=8)
+  grid.text(screen, "y = sin x", (2, 1), anchor="left", color=RED)
+  ```
+
+  `anchor="bottom"` puts the text above the point, `"left"` to its right (the point is at the text's left), `"top-right"` below and to its left, and so on. `"\n"` starts a new line; lines are aligned to the anchor's side. The text is drawn with the theme's label font, in its label colour unless given one (text never takes palette colours), and with the label halo, which keeps it readable over lines and curves.
+
+  *Parameters:*
+
+  - `surface`: The surface to draw on.
+  - `text`: The text.
+  - `position`: The world point `(x, y)` the text is anchored to. Nothing is drawn if it is NaN (or not positive on a log axis).
+  - `anchor`: `"center"` (default), `"left"`, `"right"`, `"top"`, `"bottom"`, `"top-left"`, `"top-right"`, `"bottom-left"` or `"bottom-right"`.
+  - `gap`: Pixels between the point and the text (default 0).
+  - `color`: Text colour (default: the theme's label colour).
+  - `size`: Font size in points (default: the theme's label size).
+  - `opacity`: Opacity in `[0, 1]`.
+  - `halo`: Whether to outline the glyphs in the background colour (default `True`).
+  - `style`: A reusable `TextStyle`. The other keyword arguments override its fields.
+
+  *Raises:*
+
+  - `TypeError`: If `text` is not a string.
+  - `ValueError`: If `position` is not one point, or `anchor` or `gap` is invalid.
+
+- **`grid.legend()`**
+
+  ```py
+  grid.legend(surface: pygame.Surface, *, corner: Corner = 'top-right')
+  ```
+
+  Draw a legend naming the plots drawn with a `label=` in this frame.
+
+  Every plotting method takes a `label=`; the legend lists the labelled calls since the frame began (`draw`), in order, each beside a small sample of the plot in its style and colour:
+
+  ```py
+  grid.plot(screen, np.sin, label="sin x")
+  grid.plot(screen, np.cos, label="cos x")
+  grid.fill_between(screen, np.sin, np.cos, label="between")
+  grid.legend(screen)
+  ```
+
+  Call it after the plots, so it is on top of them. It is drawn in a panel in a corner of the plane, like the sliders' panels: presses on it never pan the plane, and a legend in the same corner as sliders sits beyond their panel. A call repeated exactly (the same label, style and colour) is listed once, so a plot drawn in pieces can label every piece. With no labelled calls, nothing is drawn.
+
+  *Parameters:*
+
+  - `surface`: The surface to draw on.
+  - `corner`: `"top-right"` (default), `"top-left"`, `"bottom-left"` or `"bottom-right"`.
+
+  *Raises:*
+
+  - `ValueError`: If the corner is unknown.
+
+- **`grid.color_bar()`**
+
+  ```py
+  grid.color_bar(
+      surface: pygame.Surface,
+      colors: ColorMapLike,
+      value_range: tuple[float, float],
+      *,
+      log: bool = False,
+      title: str | None = None,
+      corner: Corner = 'top-right',
+  )
+  ```
+
+  Draw a colour bar: which colour is which value.
+
+  The key to points coloured with `color_map`: give it the same colour map, range and scale:
+
+  ```py
+  colors = pgp.color_map(speed, "plasma", (0, 5))
+  grid.points(screen, positions, color=colors)
+  grid.color_bar(screen, "plasma", (0, 5), title="speed")
+  ```
+
+  The map is drawn upright, low at the bottom, with ticks at round values (multiples of 1, 2 or 5 times a power of ten, or powers of ten on a log scale) and a title above. It is a panel in a corner, like the legend: it stays put while you pan and zoom, presses on it never pan the plane, and in a corner with sliders or the legend it goes beyond them.
+
+  *Parameters:*
+
+  - `surface`: The surface to draw on.
+  - `colors`: The colour map, as for `color_map`.
+  - `value_range`: `(low, high)`: the values at the map's ends.
+  - `log`: Whether the values are on a log scale.
+  - `title`: A title above the bar (`None` for none).
+  - `corner`: `"top-right"` (default), `"top-left"`, `"bottom-left"` or `"bottom-right"`.
+
+  *Raises:*
+
+  - `ValueError`: If the map, range or corner is not valid.
+
+- **`grid.draggable()`**
+
+  ```py
+  grid.draggable(
       position: tuple[float, float] | None = None,
       *,
       lock: Lock | None = None,
@@ -655,12 +1120,12 @@ The initial view can be given like a graphing calculator's window settings, `x_r
 
   Create a point that the user can drag with the mouse.
 
-  Create the point once, before the main loop. `handle_event` then drags it, your code reads its `DraggablePoint.x` and `DraggablePoint.y` every frame, and `draw_draggables` draws it:
+  Create the point once, before the main loop. `handle_event` then drags it, your code reads its `DraggablePoint.x` and `DraggablePoint.y` every frame, and `draw_controls` draws it:
 
   ```py
-  a = plane.draggable((1, 2))                       # free
-  s = plane.draggable((-3, 0.5), lock="x", y_range=(0, 1))  # a slider
-  c = plane.draggable(curve=(np.cos, np.sin, (0, 2 * np.pi)))
+  a = grid.draggable((1, 2))                       # free
+  s = grid.draggable((-3, 0.5), lock="x", y_range=(0, 1))  # a slider
+  c = grid.draggable(curve=(np.cos, np.sin, (0, 2 * np.pi)))
   ```
 
   *Parameters:*
@@ -682,37 +1147,93 @@ The initial view can be given like a graphing calculator's window settings, `x_r
 
   - `ValueError`: If the options conflict (`lock` with `curve`, ranges with `curve`), a free or locked point has no position, or a range or position is invalid.
 
-- **`plane.draggables`** (`tuple[DraggablePoint, ...]`, read only)
+- **`grid.slider()`**
+
+  ```py
+  grid.slider(
+      label: str,
+      value_range: tuple[float, float],
+      *,
+      value: float | None = None,
+      step: float | None = None,
+      log: bool = False,
+      color: ColorLike | None = None,
+      corner: Corner = 'bottom-left',
+      enabled: bool = True,
+  ) -> Slider[Any]
+  ```
+
+  Create a slider: a value the user sets by dragging a handle along a track.
+
+  Create the slider once, before the main loop. It is drawn in a panel in a corner of the plane, with its label and value, and stays put while the plane is panned and zoomed. `handle_event` drags it, your code reads its `Slider.value` every frame, and `draw_controls` draws it:
+
+  ```py
+  a = grid.slider("a", (0, 5), value=1)              # any value
+  n = grid.slider("n", (1, 50), value=10, step=1)    # whole numbers
+  r = grid.slider("r", (0.01, 100), value=1, log=True)
+
+  grid.plot(screen, lambda x: a.value * np.sin(x))
+  grid.plot(screen, pgp.taylor(np.sin, 0, n.value))
+  grid.draw_controls(screen)
+  ```
+
+  Pressing the track moves the handle there; the mouse wheel over a slider moves it by a step. Sliders in the same corner are stacked in the order they are drawn.
+
+  *Parameters:*
+
+  - `label`: The name shown before the value (`"a"` shows `a = 1.5`; `""` shows the value alone).
+  - `value_range`: `(low, high)`, the values at the ends of the track.
+  - `value`: The starting value (default: `low`), kept within the range and on the step.
+  - `step`: The spacing of the allowed values, from `low`. An `int` (`step=1`) makes an integer slider, whose value is an `int`; `None` (the default) allows any value, rounded to what one pixel of the track can set.
+  - `log`: Make the track geometric, for values spanning several powers of ten (`low` must be positive).
+  - `color`: The handle's colour. The default gives each slider its own palette colour, in the order the sliders were created.
+  - `corner`: `"bottom-left"` (the default), `"bottom-right"`, `"top-left"` or `"top-right"`: where the slider's panel is.
+  - `enabled`: Whether the slider can be dragged (a disabled slider is drawn faded).
+
+  *Returns:* The slider, registered with this plane until its `Slider.remove` is called.
+
+  *Raises:*
+
+  - `TypeError`: If the label is not a string, or a number is not a number.
+  - `ValueError`: If the range is not two finite numbers in increasing order (positive for a log slider), the step is not positive or wider than the range, an integer step has ends that are not whole numbers, or the corner is unknown.
+
+- **`grid.sliders`** (`tuple[Slider[Any], ...]`, read only)
+
+  The plane's sliders, in the order they were created.
+
+- **`grid.draggables`** (`tuple[DraggablePoint, ...]`, read only)
 
   The plane's draggable points, in the order they were created.
 
-- **`plane.dragged`** (`DraggablePoint | None`, read only)
+- **`grid.dragged`** (`DraggablePoint | None`, read only)
 
   The draggable point being dragged, if any.
 
-- **`plane.draw_draggables()`**
+- **`grid.draw_controls()`**
 
   ```py
-  plane.draw_draggables(surface: pygame.Surface, *points: DraggablePoint)
+  grid.draw_controls(surface: pygame.Surface, *items: DraggablePoint | Slider[Any])
   ```
 
-  Draw draggable points, with their highlight and coordinates.
+  Draw draggable points and sliders, with their highlights and labels.
 
-  Call it after the plots, so the points sit on top of the curves they control. A hovered or dragged point gets a translucent ring, and its coordinates are shown as set by its `DraggablePoint.coordinates`.
+  Call it after the plots, so the points sit on top of the curves they control and the sliders' panels on top of everything. A hovered or dragged point gets a translucent ring, and its coordinates are shown as set by its `DraggablePoint.coordinates`; sliders are drawn in panels in the corners of the plane (see `slider`).
+
+  Only sliders drawn here can be dragged until the next frame, so leaving a slider out (`grid.draw_controls(screen, a, n)`) hides it and switches it off.
 
   *Parameters:*
 
   - `surface`: The surface to draw on.
-  - `*points`: The points to draw (default: all of this plane's points, in creation order).
+  - `*items`: The points and sliders to draw (default: all of this plane's points, then all its sliders, in creation order).
 
   *Raises:*
 
-  - `ValueError`: If a point does not belong to this plane.
+  - `ValueError`: If a point or slider does not belong to this plane.
 
-- **`plane.to_world()`**
+- **`grid.to_world()`**
 
   ```py
-  plane.to_world(px: Any, py: Any) -> Any
+  grid.to_world(px: Any, py: Any) -> Any
   ```
 
   Convert screen coordinates (for example the mouse) to world coordinates.
@@ -724,10 +1245,10 @@ The initial view can be given like a graphing calculator's window settings, `x_r
 
   *Returns:* The world coordinates `(x, y)`.
 
-- **`plane.to_screen()`**
+- **`grid.to_screen()`**
 
   ```py
-  plane.to_screen(x: Any, y: Any) -> Any
+  grid.to_screen(x: Any, y: Any) -> Any
   ```
 
   Convert world coordinates to continuous screen coordinates.
@@ -739,10 +1260,10 @@ The initial view can be given like a graphing calculator's window settings, `x_r
 
   *Returns:* The screen coordinates `(p_x, p_y)` in pixels.
 
-- **`plane.set_view()`**
+- **`grid.set_view()`**
 
   ```py
-  plane.set_view(
+  grid.set_view(
       x_range: tuple[float, float] | None = None,
       y_range: tuple[float, float] | None = None,
   )
@@ -761,18 +1282,18 @@ The initial view can be given like a graphing calculator's window settings, `x_r
 
   - `ValueError`: If a range is empty, reversed, not finite, or not positive on a log axis.
 
-- **`plane.reset_view()`**
+- **`grid.reset_view()`**
 
   ```py
-  plane.reset_view()
+  grid.reset_view()
   ```
 
   Return to the home view (initially the view the plane was created with).
 
-- **`plane.set_home()`**
+- **`grid.set_home()`**
 
   ```py
-  plane.set_home(state: ViewState | None = None)
+  grid.set_home(state: ViewState | None = None)
   ```
 
   Change the view that `reset_view` (and the Home key) returns to.
@@ -796,20 +1317,22 @@ pgp.show(
     center: tuple[float, float] | None = None,
     scale: float | tuple[float, float] | None = None,
     width: float | None = None,
+    x_title: str | None = None,
+    y_title: str | None = None,
     fps: int = 60,
 )
 ```
 
 Open a window, plot `functions` and run until the window is closed.
 
-Each function gets the next colour of the theme's palette. The view options are the same as `Plane`'s, for example `show(np.exp, log_y=True)` or `show(np.sin, x_range=(0, 10))`.
+Each function gets the next colour of the theme's palette. The view options are the same as `Grid`'s, for example `show(np.exp, log_y=True)` or `show(np.sin, x_range=(0, 10))`.
 
 *Parameters:*
 
 - `*functions`: Functions `y = f(x)` to plot.
 - `size`: Initial window size in pixels.
 - `title`: Window title.
-- `theme`: Plane appearance (defaults to `LIGHT`).
+- `theme`: Grid appearance (defaults to `LIGHT`).
 - `x_range`: `(x_min, x_max)` to show at first.
 - `y_range`: `(y_min, y_max)` to show at first.
 - `log_x`: Make the x axis logarithmic.
@@ -817,6 +1340,8 @@ Each function gets the next colour of the theme's palette. The view options are 
 - `center`: World point initially at the middle of the window.
 - `scale`: Initial pixels per world unit (per decade on a log axis).
 - `width`: Line width in pixels for the functions (default 2.5).
+- `x_title`: A title for the x axis (see `Grid.draw`).
+- `y_title`: A title for the y axis.
 - `fps`: Frame-rate cap.
 
 ## Calculus
@@ -836,7 +1361,7 @@ The result is a function of `x` like any other: plot it, call it at a point, or 
 ```py
 df = derivative(np.sin)        # cos
 d3f = derivative(f, 3)
-plane.plot(screen, df)
+grid.plot(screen, df)
 slope = df(1.5)
 ```
 
@@ -901,7 +1426,7 @@ The integral is computed adaptively, to about 10 significant digits for smooth f
 
 *Parameters:*
 
-- `func`: The function, written with NumPy or `math` (or anything `Plane.plot` accepts).
+- `func`: The function, written with NumPy or `math` (or anything `Grid.plot` accepts).
 - `a`: The lower limit.
 - `b`: The upper limit.
 
@@ -923,7 +1448,7 @@ The result is a function of `x` like any other: plot it, call it at a point, or 
 
 ```py
 F = antiderivative(np.cos)                         # sin
-plane.plot(screen, F)
+grid.plot(screen, F)
 cdf = antiderivative(lambda x: np.exp(-x**2 / 2) / np.sqrt(2 * np.pi), -np.inf)
 cdf(1.96)                                          # 0.975
 ```
@@ -952,7 +1477,7 @@ The polynomial `Σ f⁽ᵏ⁾(a) (x - a)ᵏ / k!` is a function of `x` like any 
 
 ```py
 p = taylor(np.sin, 0, 5)           # x - x³/6 + x⁵/120
-plane.plot(screen, p)
+grid.plot(screen, p)
 p.coefficients                     # [0, 1, 0, -1/6, 0, 1/120]
 ```
 
@@ -987,8 +1512,8 @@ The series is that of the function on `interval`, repeated with the interval's l
 
 ```py
 square = fourier(np.sign, 9)                      # 9 harmonics
-plane.plot(screen, square)
-wave = fourier(lambda x: x * (1 - x), 5, (0, 1))  # period 1
+grid.plot(screen, square)
+wave = fourier(lambda x: x * (1 - x), 5, (0, 1))   # period 1
 square.sines[1]                                    # 4/π
 ```
 
@@ -1000,16 +1525,91 @@ The coefficients are integrals over the interval, computed accurately (to about 
 - `n`: The number of harmonics, a whole number in `[0, 1000]` (0 gives the mean).
 - `interval`: `(start, end)`, one period. The default (`None`) is `(-π, π)`.
 
-*Returns:* The partial sum `a₀/2 + Σ (aₖ cos kωx + bₖ sin kωx)`, `ω = 2π/T`, with `cosines` (`a₀ ... aₙ`), `sines` (`b₀ ... bₙ`), `interval` and `period` as attributes. Its values are NaN if the function's integral over the interval is undefined (it diverges, or the function is undefined on part of it).
+*Returns:* The partial sum `a₀/2 + Σ (aₖ cos kωx + bₖ sin kωx)`, `ω = 2π/T`, with `cosines` (`a₀ ... aₙ`), `sines` (`b₀ ... bₙ`), `amplitudes` (the spectrum), `interval` and `period` as attributes. Its values are NaN if the function's integral over the interval is undefined (it diverges, or the function is undefined on part of it).
 
 *Raises:*
 
 - `TypeError`: If `func` is not callable or the interval's ends are not numbers.
 - `ValueError`: If the interval is not two finite numbers with `start < end`, or `n` is not a whole number in `[0, 1000]`.
 
-## Draggable points
+## Data
 
-Points the user drags, created with `Plane.draggable`.
+Helpers for plotting data: colours for values, and ranges that show the data.
+
+### color_map
+
+```py
+pgp.color_map(
+    values: ArrayLike,
+    colors: ColorMapLike = 'viridis',
+    value_range: tuple[float, float] | None = None,
+    *,
+    log: bool = False,
+) -> NDArray[np.uint8]
+```
+
+Return a colour for each value, along a colour map.
+
+For colouring points by a value, with `Grid.points>`, and saying which colour is which with `Grid.color_bar`:
+
+```py
+colors = pgp.color_map(speed, "plasma", (0, 5))
+grid.points(screen, positions, color=colors)
+grid.color_bar(screen, "plasma", (0, 5), title="speed")
+```
+
+Values are mapped linearly from `value_range[0]` (the map's first colour) to `value_range[1]` (its last), or on a log scale with `log=True`. Values beyond the range take the colour of its end; NaN (and with `log`, values not positive) are transparent, so their points are not drawn. Without a range, the values' own smallest and largest are used; give one for values that change from frame to frame, so a colour keeps its meaning.
+
+*Parameters:*
+
+- `values`: The values: a number, a sequence or an array, of any shape.
+- `colors`: A built-in map, `"viridis"` (default), `"plasma"`, `"inferno"`, `"magma"`, `"coolwarm"` (diverging, for values either side of a middle) or `"gray"`; or a sequence of two or more colours, evenly spaced from low to high (names, hex strings or `(r, g, b)` tuples).
+- `value_range`: `(low, high)`, the values at the map's ends (default: the values' own).
+- `log`: Map the values on a log scale (they and the range must be positive).
+
+*Returns:* RGBA bytes, of shape `values.shape + (4,)`: ready for `color=`.
+
+*Raises:*
+
+- `ValueError`: If the map or the range is not valid, or the values are not numbers.
+
+### data_range
+
+```py
+pgp.data_range(
+    values: object,
+    *,
+    margin: float = 0.05,
+    include: object = None,
+    log: bool = False,
+) -> tuple[float, float] | None
+```
+
+Return a range that shows all of some values, with a margin.
+
+For setting up the view from data, on one axis at a time:
+
+```py
+grid = pgp.Grid(x_range=pgp.data_range(xs), y_range=pgp.data_range(ys))
+grid.set_view(y_range=pgp.data_range(heights, include=0))  # bars from 0
+```
+
+*Parameters:*
+
+- `values`: Numbers of any shape (a sequence, an array, a column of points). NaN and infinities are ignored, and with `log`, values that are not positive.
+- `margin`: Space beyond the values on each side, as a fraction of their spread (on a log scale, of their spread in decades).
+- `include`: A number, or numbers, the range must also show (`0` for the baseline of bars, say).
+- `log`: Whether the range is for a log axis: the margin is then a fraction of the decades the values span.
+
+*Returns:* `(low, high)`, or `None` when there is no value to show (an empty stream, say), which `Grid.set_view` and `Grid` take as "leave this axis as it is". Values all equal are given room around them: ±10% (±1 at zero), or half a decade on a log scale.
+
+*Raises:*
+
+- `ValueError`: If `values` or `include` are not numbers, or `margin` is negative or not finite.
+
+## Draggable points and sliders
+
+Points the user drags, created with `Grid.draggable`, and sliders, created with `Grid.slider`.
 
 ### DraggablePoint
 
@@ -1033,7 +1633,7 @@ pgp.DraggablePoint(
 
 A point that can be dragged with the mouse, freely or along a constraint.
 
-Create points with `Plane.draggable` rather than directly: the plane then routes mouse events to them and draws them.
+Create points with `Grid.draggable` rather than directly: the plane then routes mouse events to them and draws them.
 
 *Parameters:*
 
@@ -1111,7 +1711,7 @@ Create points with `Plane.draggable` rather than directly: the plane then routes
 
   Whether the point moved between the previous frame and this one.
 
-  Frames start at `Plane.draw_grid` (or `Plane.begin_frame`), so the value stays the same while you draw; use it to recompute something only when needed.
+  Frames start at `Grid.draw` (or `Grid.begin_frame`), so the value stays the same while you draw; use it to recompute something only when needed.
 
 - **`draggablePoint.visible`** (`bool`, read only)
 
@@ -1163,7 +1763,7 @@ Create points with `Plane.draggable` rather than directly: the plane then routes
 
   Start a new frame: update `moved` and resample a curve when needed.
 
-  `Plane.begin_frame` calls this for every point.
+  `Grid.begin_frame` calls this for every point.
 
 - **`draggablePoint.remove()`**
 
@@ -1172,6 +1772,179 @@ Create points with `Plane.draggable` rather than directly: the plane then routes
   ```
 
   Remove the point from its plane: it is no longer dragged or drawn.
+
+### Slider
+
+```py
+pgp.Slider(
+    label: str,
+    value_range: tuple[float, float],
+    *,
+    value: float | None = None,
+    step: float | None = None,
+    log: bool = False,
+    color: ColorLike | None = None,
+    corner: Corner = 'bottom-left',
+    enabled: bool = True,
+    on_remove: Callable[[Slider[Any]], None] | None = None,
+)
+```
+
+A value set by dragging a handle along a track, shown in a panel.
+
+Create sliders with `Grid.slider`, which registers them with the plane so that `Grid.handle_event` drags them and `Grid.draw_controls` draws them.
+
+*Parameters:*
+
+- `label`: The name shown before the value (`"a"` shows `a = 1.5`).
+- `value_range`: `(low, high)`, the values at the ends of the track.
+- `value`: The starting value (default: `low`), kept within the range and on the step.
+- `step`: The spacing of the allowed values, from `low`; an `int` makes an integer slider. `None` (the default) for any value.
+- `log`: Make the track geometric (`low` must then be positive).
+- `color`: The colour of the handle and of the track up to it; `None` gives each slider its own palette colour, in the order the sliders were created.
+- `corner`: Which corner of the plane the slider's panel is in.
+- `enabled`: Whether the slider can be dragged (a disabled slider is drawn faded).
+- `on_remove`: Called by `remove` (the plane forgets the slider).
+
+*Raises:*
+
+- `TypeError`: If the label is not a string, or the range, value or step are not numbers.
+- `ValueError`: If the range is not two finite numbers in increasing order (positive for a log slider), the step is not positive or wider than the range, an integer step has ends that are not whole numbers, the value is NaN, or the corner is unknown.
+
+#### Members of `Slider`
+
+- **`slider.value`** (`ValueT`, read and write)
+
+  The value: within the range, on the step (an `int` for an integer slider).
+
+  Setting it moves the handle; a value outside the range is clamped, and one between steps goes to the nearest step.
+
+- **`slider.value_range`** (`tuple[float, float]`, read only)
+
+  `(low, high)`, the values at the ends of the track.
+
+- **`slider.step`** (`float | None`, read only)
+
+  The spacing of the allowed values, or `None` for any value.
+
+- **`slider.log`** (`bool`, read only)
+
+  Whether the track is geometric.
+
+- **`slider.integer`** (`bool`, read only)
+
+  Whether the value is always a whole number (an `int`).
+
+- **`slider.corner`** (`Corner`, read and write)
+
+  Which corner of the plane the slider's panel is in.
+
+- **`slider.fraction`** (`float`, read only)
+
+  How far along the track the handle is, from 0 (`low`) to 1 (`high`).
+
+- **`slider.value_at()`**
+
+  ```py
+  slider.value_at(fraction: float) -> float
+  ```
+
+  Return the value at a point of the track, as a drag would set it.
+
+  *Parameters:*
+
+  - `fraction`: How far along the track, from 0 to 1 (clamped).
+
+  *Returns:* The value: on the step, or rounded to the size of a pixel of the track (see `track_px`).
+
+- **`slider.drag_to()`**
+
+  ```py
+  slider.drag_to(fraction: float) -> bool
+  ```
+
+  Move the handle to a point of the track, as a drag does.
+
+  *Parameters:*
+
+  - `fraction`: How far along the track, from 0 to 1 (clamped).
+
+  *Returns:* Whether the value changed.
+
+- **`slider.nudge()`**
+
+  ```py
+  slider.nudge(notches: int) -> bool
+  ```
+
+  Move the value by whole steps, as the mouse wheel does.
+
+  *Parameters:*
+
+  - `notches`: How many steps up (negative for down). Without a step, each is `WHEEL_FRACTION` of the track.
+
+  *Returns:* Whether the value changed.
+
+- **`slider.text()`**
+
+  ```py
+  slider.text(fmt: NumberFormat) -> LabelText
+  ```
+
+  Return what the slider shows: `label = value`.
+
+  The value is written like a tick label, with as many digits as the step has (at most two beyond its first: `π/12` shows `0.262`), or as one pixel of the track resolves.
+
+  *Parameters:*
+
+  - `fmt`: How numbers are written (the theme's number format).
+
+  *Returns:* The text.
+
+- **`slider.moved`** (`bool`, read only)
+
+  Whether the value changed between the previous frame and this one.
+
+  Frames start at `Grid.draw` (or `Grid.begin_frame`), so the value stays the same while you draw; use it to recompute something only when needed.
+
+- **`slider.dragging`** (`bool`, read only)
+
+  Whether the slider is being dragged.
+
+- **`slider.hovered`** (`bool`, read only)
+
+  Whether the cursor is over the slider's track (and it can be dragged).
+
+- **`slider.set_interaction()`**
+
+  ```py
+  slider.set_interaction(*, hovered: bool, dragging: bool)
+  ```
+
+  Record whether the slider is hovered and dragged (by the plane).
+
+  *Parameters:*
+
+  - `hovered`: Whether the cursor is over the track.
+  - `dragging`: Whether the handle is being dragged.
+
+- **`slider.begin_frame()`**
+
+  ```py
+  slider.begin_frame()
+  ```
+
+  Start a new frame: update `moved`.
+
+  `Grid.begin_frame` calls this for every slider.
+
+- **`slider.remove()`**
+
+  ```py
+  slider.remove()
+  ```
+
+  Remove the slider from its plane: it is no longer dragged or drawn.
 
 ## Styles
 
@@ -1201,6 +1974,8 @@ pgp.PointStyle(
     edge_color: ColorLike | None = None,
     edge_width: float = 1.5,
     opacity: float = 1.0,
+    error_width: float = 1.5,
+    error_cap: float = 8.0,
 )
 ```
 
@@ -1209,11 +1984,13 @@ How points are drawn. Points keep the same size in pixels at every zoom.
 *Attributes:*
 
 - `color`: Fill colour, or `None` for the next palette colour.
-- `radius`: Size of the marker in pixels (the radius of a circle; other shapes have about the same area as that circle).
+- `radius`: Size of the marker in pixels (the radius of a circle; other shapes have about the same area as that circle). `0` draws no marker, for error bars alone.
 - `marker`: The marker shape.
 - `edge_color`: Colour of an outline drawn just outside the marker, or `None` for no outline. A background-coloured outline separates points from the curves they sit on.
 - `edge_width`: Thickness of the outline in pixels.
 - `opacity`: Opacity in `[0, 1]`.
+- `error_width`: Thickness of the error bars in pixels (see `Grid.points`).
+- `error_cap`: Width of the caps across the ends of the error bars, in pixels (`0` for none).
 
 ### PolygonStyle
 
@@ -1249,7 +2026,7 @@ pgp.FillStyle(color: ColorLike | None = None, opacity: float = 0.25)
 
 How a shaded area is drawn: a translucent fill, without an outline.
 
-Used by `Plane.fill_between` and `Plane.inequality`. Their boundaries are curves of their own, drawn with `Plane.plot` or `Plane.implicit` when wanted.
+Used by `Grid.fill_between` and `Grid.inequality`. Their boundaries are curves of their own, drawn with `Grid.plot` or `Grid.implicit` when wanted.
 
 *Attributes:*
 
@@ -1269,7 +2046,7 @@ pgp.ArrowStyle(
 
 How arrows are drawn: a straight shaft with a triangular head.
 
-Used by `Plane.arrow` and `Plane.vector_field`. Sizes are in pixels, so arrows look the same at every zoom level; only where they start and end is in world units.
+Used by `Grid.arrow` and `Grid.vector_field`. Sizes are in pixels, so arrows look the same at every zoom level; only where they start and end is in world units.
 
 *Attributes:*
 
@@ -1277,6 +2054,72 @@ Used by `Plane.arrow` and `Plane.vector_field`. Sizes are in pixels, so arrows l
 - `width`: Thickness of the shaft in pixels.
 - `opacity`: Opacity in `[0, 1]`.
 - `head_size`: Length of the head in pixels, or `None` for a head in proportion to the shaft (about `3 × width + 4`). `0` draws no head: a plain segment with square ends. An arrow shorter than its head is drawn as a smaller head alone.
+
+### SequenceStyle
+
+```py
+pgp.SequenceStyle(
+    color: ColorLike | None = None,
+    width: float = 2.0,
+    radius: float = 3.5,
+    marker: MarkerShape = 'circle',
+    opacity: float = 1.0,
+)
+```
+
+How the terms of a sequence are drawn: a stem and a marker each.
+
+Used by `Grid.sequence`. Each term `aₙ` gets a vertical stem from the x axis up (or down) to `(n, aₙ)`, and a marker there. Sizes are in pixels, so they look the same at every zoom level.
+
+*Attributes:*
+
+- `color`: Colour of the stems and markers, or `None` for the next palette colour.
+- `width`: Thickness of the stems in pixels (`0` for markers alone).
+- `radius`: Size of the markers in pixels, as for `PointStyle` (`0` for stems alone).
+- `marker`: The marker shape.
+- `opacity`: Opacity in `[0, 1]`.
+
+### BarStyle
+
+```py
+pgp.BarStyle(
+    color: ColorLike | None = None,
+    opacity: float = 0.5,
+    edge_width: float = 1.5,
+)
+```
+
+How bars are drawn: a translucent fill with an outline.
+
+Used by `Grid.bars` and `Grid.histogram`. The bars themselves are in world units (they grow and shrink with the zoom); only the outline is in pixels.
+
+*Attributes:*
+
+- `color`: Colour of the fill and the outline, or `None` for the next palette colour.
+- `opacity`: Opacity of the fill in `[0, 1]`; the outline is opaque.
+- `edge_width`: Thickness of the outline in pixels (`0` for none).
+
+### TextStyle
+
+```py
+pgp.TextStyle(
+    color: ColorLike | None = None,
+    size: int | None = None,
+    opacity: float = 1.0,
+    halo: bool = True,
+)
+```
+
+How text is drawn by `Grid.text`.
+
+Text uses the theme's label font. Unlike plots, it never takes palette colours, so labelling a plot does not change the colours of the plots drawn after it: pass the plot's colour to match it.
+
+*Attributes:*
+
+- `color`: Text colour, or `None` for the theme's label colour.
+- `size`: Font size in points (a whole number), or `None` for the theme's label size.
+- `opacity`: Opacity in `[0, 1]`.
+- `halo`: Whether to outline the glyphs in the background colour (the theme's label halo), so the text stays readable over grid lines and curves.
 
 ## Themes
 
@@ -1304,8 +2147,10 @@ pgp.GridTheme(
     show_major: bool = True,
     show_axes: bool = True,
     show_labels: bool = True,
+    show_arrows: bool = False,
     label_font: str | None = None,
     label_size: int = 12,
+    title_size: int = 14,
     label_halo_width: int = 2,
     label_gap: int = 4,
     label_edge_margin: int = 4,
@@ -1340,8 +2185,10 @@ This covers the grid, the axes and the tick labels, plus the palette that plotte
 - `show_major`: Whether to draw major grid lines. If minor lines are shown but major lines are not, major positions use the minor style so the grid has no gaps.
 - `show_axes`: Whether to draw the axes.
 - `show_labels`: Whether to draw tick labels.
+- `show_arrows`: Whether to end each axis in an arrowhead at its positive end (the right of the x axis, the top of the y axis), as in textbook diagrams. The heads grow with `axis_width`.
 - `label_font`: Font for labels: `None` for the bundled DejaVu Sans, a path to a font file, or a system font name.
 - `label_size`: Label font size in points.
+- `title_size`: Font size of the axis titles in points (see `Grid.draw`). They use the label font, colour and halo.
 - `label_halo_width`: Thickness of the label halo in pixels (0 disables).
 - `label_gap`: Distance in pixels between an axis and its labels.
 - `label_edge_margin`: Smallest distance in pixels between a label pinned to the plane's edge and that edge.
@@ -1355,6 +2202,10 @@ This covers the grid, the axes and the tick labels, plus the palette that plotte
 - **`gridTheme.label_font_spec`** (`FontSpec`, read only)
 
   The label font as a `FontSpec`.
+
+- **`gridTheme.title_font_spec`** (`FontSpec`, read only)
+
+  The axis titles' font as a `FontSpec`.
 
 - **`gridTheme.resolved_halo_color`** (`ColorLike | None`, read only)
 
@@ -1426,7 +2277,7 @@ Settings for the built-in mouse and keyboard controls.
 - `key_zoom_factor`: Zoom factor for one `+`/`-` key press.
 - `smoothing`: Time constant in seconds of the easing spring. A single wheel notch is about 90% complete after `3.9 * smoothing` (0.2 s with the default). `0` makes movement instant.
 - `bindings`: Which keys trigger which actions.
-- `drag_button`: Mouse button that drags draggable points (see `Plane.draggable`).
+- `drag_button`: Mouse button that drags draggable points (see `Grid.draggable`).
 - `grab_margin_px`: A draggable point can be grabbed this many pixels beyond the edge of its marker.
 - `hover_cursor`: Show the hand cursor while the mouse is over a draggable point.
 
@@ -1458,10 +2309,10 @@ Each attribute is a tuple of pygame key codes. Pass an empty tuple to disable an
 - `zoom_out`: Zoom out about the middle of the plane.
 - `reset`: Restore the initial view.
 
-### SamplingConfig
+### FunctionSampling
 
 ```py
-pgp.SamplingConfig(
+pgp.FunctionSampling(
     samples_per_px: float = 1.0,
     tolerance_px: float = 0.25,
     max_rounds: int = 8,
@@ -1606,7 +2457,7 @@ How often plotting calls were reused.
 
 ## The view
 
-The camera behind every plane (`plane.view`): centre, scale, axes and every coordinate conversion.
+The camera behind every plane (`grid.view`): centre, scale, axes and every coordinate conversion.
 
 ### View
 

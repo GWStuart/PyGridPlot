@@ -11,7 +11,7 @@ from hypothesis import given, settings
 from hypothesis import strategies as st
 from numpy.typing import NDArray
 
-from pygridplot.core.handles.tracking import nearest_on_curve
+from pygridplot.core.handles.tracking import along_axis, graph_axis, nearest_on_curve
 from pygridplot.core.plot.curves import CurvePiece, sample_curve_pieces
 
 BOX = (-100.0, -100.0, 900.0, 700.0)
@@ -177,3 +177,57 @@ def test_a_closed_curve_with_a_gap_wraps_through_its_ends() -> None:
         sampled, [(400 + 120 * math.cos(3.05), 300 - 120 * math.sin(3.05))], 1.95
     )
     assert near_gap[0] > 3.0
+
+
+# --- Graphs: following the cursor's x ----------------------------------------
+
+
+def wave(t: NDArray[np.float64]) -> Points:
+    """A wavy graph y = f(x) on screen, x from 100 to 700."""
+    return 400 + 100 * t, 300 - 80 * (np.sin(2 * t) + 0.3 * np.sin(5.4 * t))
+
+
+@pytest.mark.parametrize(
+    ("curve", "t_range", "axis"),
+    [
+        (wave, (-3.0, 3.0), "x"),
+        (lambda t: (400 - 100 * t, 300 + 50 * t**2), (-2.0, 2.0), "x"),  # right to left
+        (
+            lambda t: (400 + 100 * (t - np.sin(t)), 300 - 50 * (1 - np.cos(t))),
+            (0, 12),
+            "x",
+        ),
+        (lambda t: (400 + 100 * t, 300 - 100 * np.floor(t)), (-2.0, 2.0), "x"),  # jumps
+        (lambda t: (400 + 30 * t**2, 300 - 40 * t), (-3.0, 3.0), "y"),  # x = y²
+        (lambda t: (400 + 0 * t, 300 + 40 * t), (-3.0, 3.0), "y"),  # a vertical line
+        (circle, (0.0, 2 * math.pi), None),
+        (lambda t: (400 + 10 * t * np.cos(t), 300 - 10 * t * np.sin(t)), (0, 20), None),
+    ],
+)
+def test_graphs_are_recognised(
+    curve: Curve, t_range: tuple[float, float], axis: str | None
+) -> None:
+    assert graph_axis(pieces(curve, t_range)) == axis
+
+
+def test_a_graph_point_is_level_with_the_target() -> None:
+    sampled = pieces(wave, (-3.0, 3.0))
+    for x in (130.0, 333.3, 400.0, 612.5):
+        t = along_axis(sampled, (x, 50.0), "x")  # far above the curve
+        assert t is not None
+        assert float(wave(np.array([t]))[0][0]) == pytest.approx(x, abs=1e-9)
+    assert along_axis(sampled, (20.0, 300.0), "x") == -3.0  # beyond the left end
+    assert along_axis(sampled, (790.0, 300.0), "x") == 3.0
+    assert along_axis([], (0.0, 0.0), "x") is None
+
+
+def test_gaps_in_a_graph_go_to_the_nearer_end() -> None:
+    def gappy(t: NDArray[np.float64]) -> Points:
+        return 400 + 100 * t, np.where(np.abs(t) < 0.5, np.nan, 300.0)
+
+    sampled = pieces(gappy, (-2.0, 2.0))
+    assert graph_axis(sampled) == "x"
+    left = along_axis(sampled, (380.0, 300.0), "x")  # nearer the left end, x = 350
+    right = along_axis(sampled, (420.0, 300.0), "x")  # nearer the right end, x = 450
+    assert left == pytest.approx(-0.5, abs=1e-3)
+    assert right == pytest.approx(0.5, abs=1e-3)

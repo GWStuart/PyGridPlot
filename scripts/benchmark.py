@@ -20,6 +20,7 @@ import os
 import statistics
 import time
 from collections.abc import Callable
+from dataclasses import replace
 
 os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
 os.environ.setdefault("PYGAME_HIDE_SUPPORT_PROMPT", "1")
@@ -36,24 +37,24 @@ Case = Callable[[pygame.Surface], None]
 """Draws one benchmark case onto a surface."""
 
 
-def plane_for(**kwargs: object) -> pgp.Plane:
+def grid_for(**kwargs: object) -> pgp.Grid:
     """Return a plane covering the whole benchmark surface.
 
     The cache is off unless asked for, so that the cases measure the work of
     drawing, not of reusing the previous frame.
     """
     kwargs.setdefault("cache", False)
-    return pgp.Plane(pygame.Rect(0, 0, *SIZE), **kwargs)  # type: ignore[arg-type]
+    return pgp.Grid(pygame.Rect(0, 0, *SIZE), **kwargs)  # type: ignore[arg-type]
 
 
 def grid_case(**kwargs: object) -> Case:
     """Draw just the grid of a plane created with ``kwargs``."""
-    plane = plane_for(**kwargs)
-    return plane.draw_grid
+    grid = grid_for(**kwargs)
+    return grid.draw
 
 
 def plot_case(
-    draw: Callable[[pgp.Plane, pygame.Surface], None],
+    draw: Callable[[pgp.Grid, pygame.Surface], None],
     *,
     draggables: int = 0,
     **kwargs: object,
@@ -63,30 +64,30 @@ def plot_case(
     ``draggables`` free draggable points are added, spread over the plane,
     the first of them hovered.
     """
-    plane = plane_for(**kwargs)
+    grid = grid_for(**kwargs)
     for k in range(draggables):
-        point = plane.draggable((k % 5 * 2.0 - 4.0, k // 5 * 1.5 - 2.0))
+        point = grid.draggable((k % 5 * 2.0 - 4.0, k // 5 * 1.5 - 2.0))
         point.set_interaction(hovered=k == 0, dragging=False)
 
     def run(surface: pygame.Surface) -> None:
-        plane.begin_frame()
-        draw(plane, surface)
+        grid.begin_frame()
+        draw(grid, surface)
 
     return run
 
 
 def cached_case(
-    draw: Callable[[pgp.Plane, pygame.Surface], None], **kwargs: object
+    draw: Callable[[pgp.Grid, pygame.Surface], None], **kwargs: object
 ) -> Case:
     """Draw the grid and plots with the cache on, nothing changing between frames.
 
     This is an idle frame: what a program costs while the user only looks.
     """
-    plane = plane_for(cache=True, **kwargs)
+    grid = grid_for(cache=True, **kwargs)
 
     def run(surface: pygame.Surface) -> None:
-        plane.draw_grid(surface)
-        draw(plane, surface)
+        grid.draw(surface)
+        draw(grid, surface)
 
     return run
 
@@ -103,8 +104,8 @@ def damped_math(x: float) -> float:
 
 def drag_case() -> Case:
     """Drag a point along a spirograph: one mouse motion per call."""
-    plane = plane_for(scale=60.0)
-    point = plane.draggable(
+    grid = grid_for(scale=60.0)
+    point = grid.draggable(
         curve=(
             lambda t: (
                 (BIG - SMALL) * np.cos(t) + PEN * np.cos((BIG - SMALL) / SMALL * t)
@@ -127,6 +128,123 @@ def drag_case() -> Case:
     return run
 
 
+def slider_case() -> Case:
+    """Draw five sliders in two corners, one of them hovered."""
+    grid = grid_for(scale=60.0)
+    for k in range(4):
+        grid.slider(f"s{k}", (0.0, 1.0), value=k / 4)
+    grid.slider("n", (1, 50), value=7, step=1, corner="top-right")
+    grid.sliders[0].set_interaction(hovered=True, dragging=False)
+    return grid.draw_controls
+
+
+def titled_grid_case(**kwargs: object) -> Case:
+    """Draw the grid with arrowheads on the axes and both axis titles."""
+    grid = grid_for(theme=replace(pgp.LIGHT, show_arrows=True), **kwargs)
+
+    def run(surface: pygame.Surface) -> None:
+        grid.draw(surface, x_title="time t (s)", y_title="speed v (m/s)")
+
+    return run
+
+
+def text_case() -> Case:
+    """Write 20 labels, some of two lines, anchored round points."""
+    grid = grid_for(scale=60.0)
+    anchors = ("left", "bottom", "top-right", "center")
+
+    def run(surface: pygame.Surface) -> None:
+        for k in range(20):
+            text = f"point {k}" if k % 3 else f"point {k}\n({k}, {k % 5})"
+            grid.text(
+                surface,
+                text,
+                (k % 5 * 3.0 - 6.0, k // 5 * 2.0 - 3.0),
+                anchor=anchors[k % 4],
+                gap=6,
+            )
+
+    return run
+
+
+def legend_case(change: str) -> Case:
+    """Draw a legend of eight entries.
+
+    The legend's panel and swatches are reused while unchanged, so their
+    coverage is not rasterised again. ``change`` is ``"nothing"`` (a legend
+    at rest), ``"label"`` (a label changing every frame, as when it shows a
+    value: only its text is drawn anew) or ``"all"`` (built and rasterised
+    afresh every frame).
+    """
+    grid = grid_for(scale=60.0)
+    styles = [
+        pgp.LineStyle(),
+        pgp.FillStyle(),
+        pgp.PolygonStyle(),
+        pgp.PointStyle(),
+        pgp.SequenceStyle(),
+        pgp.ArrowStyle(),
+        pgp.LineStyle(width=1.5, opacity=0.5),
+        pgp.PointStyle(marker="diamond"),
+    ]
+    frame = [0]
+
+    def run(surface: pygame.Surface) -> None:
+        grid.begin_frame()
+        frame[0] += 1
+        if change == "all":
+            grid._legend_drawings.clear()
+        for k, style in enumerate(styles):
+            label = f"entry {k}"
+            if change == "label" and k == 0:
+                label += f" = {frame[0] % 10}"
+            grid._add_entry(label, style, grid.theme.palette[k % 6])
+        grid.legend(surface)
+
+    return run
+
+
+def color_bar_case(*, afresh: bool) -> Case:
+    """Draw a colour bar with a title, the same every frame or built afresh."""
+    grid = grid_for(scale=60.0)
+
+    def run(surface: pygame.Surface) -> None:
+        grid.begin_frame()
+        if afresh:
+            grid._color_bar_drawing = None
+        grid.color_bar(surface, "viridis", (0, 10), title="value")
+
+    return run
+
+
+def category_grid_case(names: list[str]) -> Case:
+    """Draw the grid with names along x, zoomed out so they are thinned."""
+    grid = grid_for(x_range=(-2.0, 102.0))
+
+    def run(surface: pygame.Surface) -> None:
+        grid.draw(surface, x_labels=names)
+
+    return run
+
+
+def graph_drag_case() -> Case:
+    """Drag a point along a wavy graph, sideways: one mouse motion per call."""
+    grid = grid_for(scale=60.0)
+    point = grid.draggable(
+        curve=(lambda t: t, lambda t: np.sin(t) + 0.3 * np.sin(2.7 * t), (-12, 12))
+    )
+    step = [0]
+
+    def run(surface: pygame.Surface) -> None:
+        if step[0] % 30 == 0:
+            point.begin_frame()  # a new frame: the curve is sampled again
+        step[0] += 1
+        sx, _ = point.screen_position
+        point.drag_to(100 + (sx + 3.0) % 900, 200.0)
+
+    return run
+
+
 BIG, SMALL, PEN = 2.5, 0.9, 1.6
 """Wheel sizes of the spirograph (a hypotrochoid) case."""
 
@@ -143,6 +261,18 @@ def cases() -> dict[str, Case]:
         )
     )
     square50 = pgp.fourier(np.sign, 50)
+    spectrum = pgp.fourier(np.sign, 100).amplitudes
+    wave20000 = np.sin(np.arange(20000) / 300)
+    rng = np.random.default_rng(0)
+    scatter = rng.normal(size=(2000, 2)) * 3
+    scatter_colors = rng.integers(0, 256, (2000, 3))
+    scatter_sizes = rng.uniform(2, 8, 2000)
+    normal100k = rng.normal(size=100_000) * 2
+    heights = rng.uniform(1, 5, 20)
+    speeds = np.hypot(scatter[:, 0], scatter[:, 1])
+    groups1k = [rng.normal(k, 1 + k / 4, 1000) for k in range(4)]
+    groups10k = [rng.normal(k, 1 + k / 4, 10_000) for k in range(4)]
+    names = [f"category {k}" for k in range(100)]
     taylor10 = pgp.taylor(damped, 0.0, 10)
     return {
         "grid linear": grid_case(),
@@ -265,9 +395,32 @@ def cases() -> dict[str, Case]:
         "plot taylor degree 10": plot_case(
             lambda p, s: p.plot(s, taylor10), scale=60.0
         ),
+        "sequence spectrum, 101 terms": plot_case(
+            lambda p, s: p.sequence(s, spectrum), scale=10.0
+        ),
+        "sequence (-1)^n/n": plot_case(
+            lambda p, s: p.sequence(s, lambda n: (-1) ** n / n, start=1), scale=60.0
+        ),
+        "sequence zoomed out": plot_case(
+            lambda p, s: p.sequence(s, np.sin), scale=(0.05, 60.0), equal_aspect=False
+        ),
+        "sequence 20000-term array": plot_case(
+            lambda p, s: p.sequence(s, wave20000),
+            scale=(0.05, 60.0),
+            equal_aspect=False,
+            center=(10000.0, 0.0),
+        ),
+        "draw 5 sliders": slider_case(),
+        "grid with titles and arrows": titled_grid_case(),
+        "grid log-log with titles and arrows": titled_grid_case(log_x=True, log_y=True),
+        "text 20 labels": text_case(),
+        "legend 8 entries": legend_case("nothing"),
+        "legend 8 entries, a label changing": legend_case("label"),
+        "legend 8 entries, built afresh": legend_case("all"),
         "drag along a spirograph": drag_case(),
+        "drag along a graph": graph_drag_case(),
         "draw 20 draggable points": plot_case(
-            lambda p, s: p.draw_draggables(s), scale=60.0, draggables=20
+            lambda p, s: p.draw_controls(s), scale=60.0, draggables=20
         ),
         "cached: idle test set": cached_case(
             lambda p, s: [p.plot(s, f) for f in test_set], scale=60.0
@@ -284,6 +437,9 @@ def cases() -> dict[str, Case]:
         "cached: idle antiderivative": cached_case(
             lambda p, s: p.plot(s, pgp.antiderivative(damped)), scale=60.0
         ),
+        "cached: idle sequence": cached_case(
+            lambda p, s: p.sequence(s, lambda n: (-1) ** n / n, start=1), scale=60.0
+        ),
         "cached: idle inequality disc": cached_case(
             lambda p, s: p.inequality(s, lambda x, y: x**2 + y**2 < 16), scale=60.0
         ),
@@ -291,6 +447,58 @@ def cases() -> dict[str, Case]:
             lambda p, s: p.points(s, np.column_stack((xs, np.sin(xs))))
         ),
         "polygon big fill": plot_case(lambda p, s: p.polygon(s, ellipse), scale=55.0),
+        "points 2000, a colour each": plot_case(
+            lambda p, s: p.points(s, scatter, color=scatter_colors), scale=60.0
+        ),
+        "points 2000, a colour and size each, outlined": plot_case(
+            lambda p, s: p.points(
+                s,
+                scatter,
+                color=scatter_colors,
+                radius=scatter_sizes,
+                edge_color="white",
+            ),
+            scale=60.0,
+        ),
+        "points 500 with x and y error bars": plot_case(
+            lambda p, s: p.points(s, scatter[:500], x_error=0.2, y_error=0.3),
+            scale=60.0,
+        ),
+        "polyline 2000 steps": plot_case(
+            lambda p, s: p.polyline(s, np.column_stack((xs, np.sin(xs))), step="post")
+        ),
+        "bars 20": plot_case(lambda p, s: p.bars(s, heights, start=-10), scale=60.0),
+        "histogram 10^5 samples": plot_case(
+            lambda p, s: p.histogram(s, normal100k), scale=60.0
+        ),
+        "cached: idle histogram 10^5 samples": cached_case(
+            lambda p, s: p.histogram(s, normal100k), scale=60.0
+        ),
+        "histogram 10^5 samples, cumulative": plot_case(
+            lambda p, s: p.histogram(s, normal100k, cumulative=True), scale=60.0
+        ),
+        "points 2000 coloured by value (color_map)": plot_case(
+            lambda p, s: p.points(
+                s, scatter, color=pgp.color_map(speeds, "plasma", (0, 9))
+            ),
+            scale=60.0,
+        ),
+        "colour bar": color_bar_case(afresh=False),
+        "colour bar, built afresh": color_bar_case(afresh=True),
+        "stacked bars 3 x 20": plot_case(
+            lambda p, s: [
+                p.bars(s, heights * (k + 1), start=-10, baseline=heights * k)
+                for k in range(3)
+            ],
+            scale=30.0,
+        ),
+        "box plot 4 groups of 1000": plot_case(
+            lambda p, s: p.box_plot(s, groups1k), scale=60.0
+        ),
+        "violin plot 4 groups of 10^4": plot_case(
+            lambda p, s: p.violin_plot(s, groups10k), scale=60.0
+        ),
+        "grid with 100 category names": category_grid_case(names),
     }
 
 

@@ -129,7 +129,7 @@ def integral(func: Function, a: float, b: float) -> float:
 
     Args:
         func: The function, written with NumPy or :mod:`math` (or anything
-            :meth:`~pygridplot.Plane.plot` accepts).
+            :meth:`~pygridplot.Grid.plot` accepts).
         a: The lower limit.
         b: The upper limit.
 
@@ -163,7 +163,7 @@ def antiderivative(func: Function, a: float = 0.0) -> Antiderivative:
     antiderivative is the function itself)::
 
         F = antiderivative(np.cos)                         # sin
-        plane.plot(screen, F)
+        grid.plot(screen, F)
         cdf = antiderivative(lambda x: np.exp(-x**2 / 2) / np.sqrt(2 * np.pi), -np.inf)
         cdf(1.96)                                          # 0.975
 

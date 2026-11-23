@@ -1,7 +1,7 @@
 # Interaction
 
 A plane has pan and zoom controls built in. They work as soon as you pass
-events to `plane.handle_event`, and they can be configured, limited or
+events to `grid.handle_event`, and they can be configured, limited or
 switched off.
 
 ## The controls
@@ -22,7 +22,7 @@ ignored while `Ctrl`, `Alt` or `Meta` is held, so your own shortcuts such as
 **Eased motion.** Wheel and key movements glide to their target instead of
 jumping: each notch adds to the remaining movement, so fast scrolling feels
 continuous. The easing is a critically damped spring advanced by
-`draw_grid`, independent of the frame rate. Dragging is never eased; it
+`grid.draw`, independent of the frame rate. Dragging is never eased; it
 follows the mouse exactly.
 
 ## Configuring the controls
@@ -31,8 +31,8 @@ Pass an `InteractionConfig` (all fields optional) when creating the plane,
 or assign one later:
 
 ```python
-plane = pgp.Plane(interaction=pgp.InteractionConfig(zoom_per_notch=1.3))
-plane.interaction = pgp.InteractionConfig(keyboard=False, smoothing=0.0)
+grid = pgp.Grid(interaction=pgp.InteractionConfig(zoom_per_notch=1.3))
+grid.interaction = pgp.InteractionConfig(keyboard=False, smoothing=0.0)
 ```
 
 | Field | Default | Meaning |
@@ -72,7 +72,7 @@ wasd = pgp.KeyBindings(
     pan_left=(pygame.K_a,), pan_right=(pygame.K_d,),
     pan_up=(pygame.K_w,), pan_down=(pygame.K_s,),
 )
-plane.interaction = replace(plane.interaction, bindings=wasd)
+grid.interaction = replace(grid.interaction, bindings=wasd)
 ```
 
 ## Handling your own input
@@ -82,17 +82,17 @@ your own handling from reacting to the same input:
 
 ```python
 for event in pygame.event.get():
-    if plane.handle_event(event):
-        continue                       # the plane panned, zoomed or dragged a point
+    if grid.handle_event(event):
+        continue                       # the grid panned, zoomed or dragged a point
     if event.type == pygame.MOUSEBUTTONDOWN and event.button == 3:
-        x, y = plane.to_world(*event.pos)
+        x, y = grid.to_world(*event.pos)
         print(f"right click at ({x:.3g}, {y:.3g})")
 ```
 
 To switch the pan and zoom controls off (for a fixed view, or while a
-dialog is open), set `plane.interactive = False`; `handle_event` then
-ignores everything except [draggable points](draggable-points.md), which
-still work (set their `enabled` to `False` to stop them too). To keep the mouse but not the keys, or the reverse, use
+dialog is open), set `grid.interactive = False`; `handle_event` then
+ignores everything except [draggable points and sliders](draggable-points.md),
+which still work (set their `enabled` to `False` to stop them too). To keep the mouse but not the keys, or the reverse, use
 `InteractionConfig(keyboard=False)` or `InteractionConfig(wheel_zoom=False,
 pan_button=0)`.
 
@@ -102,10 +102,10 @@ The [view](the-plane.md#the-view) can be changed at any time. These moves
 are instant:
 
 ```python
-plane.view.center = (10.0, 0.0)
-plane.view.pan_pixels(-50, 0)          # content moves 50 px left
-plane.view.zoom_at(400, 300, 1.5)      # zoom about a pixel
-plane.set_view(x_range=(0, 1))         # fit a range
+grid.view.center = (10.0, 0.0)
+grid.view.pan_pixels(-50, 0)          # content moves 50 px left
+grid.view.zoom_at(400, 300, 1.5)      # zoom about a pixel
+grid.set_view(x_range=(0, 1))         # fit a range
 ```
 
 `set_view` and `reset_view` also cancel any eased movement still in
@@ -115,13 +115,13 @@ To animate the view, change it a little every frame. For example, to glide
 smoothly to a new centre over half a second:
 
 ```python
-start, goal = plane.view.center, (5.0, 2.0)
+start, goal = grid.view.center, (5.0, 2.0)
 for frame in range(30):
     t = (frame + 1) / 30
     t = t * t * (3 - 2 * t)             # ease in and out
-    plane.view.center = (start[0] + (goal[0] - start[0]) * t,
+    grid.view.center = (start[0] + (goal[0] - start[0]) * t,
                          start[1] + (goal[1] - start[1]) * t)
-    plane.draw_grid(screen)
+    grid.draw(screen)
     pygame.display.flip()
 ```
 

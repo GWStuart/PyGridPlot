@@ -28,8 +28,8 @@ def test_numbers_in_numbers_out() -> None:
     df = pgp.derivative(lambda x: x**3)
     assert df(2.0) == 12.0
     assert isinstance(df(2.0), float)
-    grid = np.ones((2, 3))
-    assert df(grid).shape == (2, 3)
+    values = np.ones((2, 3))
+    assert df(values).shape == (2, 3)
 
 
 def test_jumps_kinks_poles_and_edges_are_exact() -> None:
@@ -149,13 +149,13 @@ def test_derivatives_plot_like_functions() -> None:
     theme = pgp.GridTheme(
         show_minor=False, show_major=False, show_axes=False, show_labels=False
     )
-    plane = pgp.Plane(pygame.Rect(0, 0, 320, 240), theme=theme)
+    grid = pgp.Grid(pygame.Rect(0, 0, 320, 240), theme=theme)
     surface = pygame.Surface((320, 240))
-    plane.draw_grid(surface)
-    plane.plot(surface, pgp.derivative(lambda x: x**2 / 2), color=(0, 0, 0))  # y = x
+    grid.draw(surface)
+    grid.plot(surface, pgp.derivative(lambda x: x**2 / 2), color=(0, 0, 0))  # y = x
     ink = plot_pixels(surface)
     for x in (-1.0, 0.5, 1.5):
-        px, py = (round(v) for v in plane.to_screen(x, x))
+        px, py = (round(v) for v in grid.to_screen(x, x))
         assert ink[py, px] > 0.9
 
 

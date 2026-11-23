@@ -39,49 +39,49 @@ class Example:
 
     Attributes:
         title: Caption shown in the corner.
-        plane: The plane, configured from ranges.
+        grid: The plane, configured from ranges.
         draw: Draws the plots on top of the plane's grid.
     """
 
     title: str
-    plane: pgp.Plane
-    draw: Callable[[pgp.Plane, pygame.Surface], None]
+    grid: pgp.Grid
+    draw: Callable[[pgp.Grid, pygame.Surface], None]
 
 
-def draw_power_laws(plane: pgp.Plane, screen: pygame.Surface) -> None:
+def draw_power_laws(grid: pgp.Grid, screen: pygame.Surface) -> None:
     """Draw power laws with the measured data on top."""
     for power in (-1.0, 0.5, 1.0, 2.0, 3.0):
-        plane.plot(screen, lambda x, k=power: x**k, width=2)
-    plane.plot(screen, lambda x: 0.8 * x**1.5, color="black", width=1.5, opacity=0.6)
-    plane.points(screen, np.column_stack((DATA_X, DATA_Y)), edge_color="white")
+        grid.plot(screen, lambda x, k=power: x**k, width=2)
+    grid.plot(screen, lambda x: 0.8 * x**1.5, color="black", width=1.5, opacity=0.6)
+    grid.points(screen, np.column_stack((DATA_X, DATA_Y)), edge_color="white")
 
 
-def draw_growth(plane: pgp.Plane, screen: pygame.Surface) -> None:
+def draw_growth(grid: pgp.Grid, screen: pygame.Surface) -> None:
     """Draw exponential growth at three rates, and a power law for contrast."""
     for rate in (0.5, 1.0, 2.0):
-        plane.plot(screen, lambda x, r=rate: np.exp(r * x))
-    plane.plot(screen, lambda x: x**3, width=1.5, opacity=0.7)
+        grid.plot(screen, lambda x, r=rate: np.exp(r * x))
+    grid.plot(screen, lambda x: x**3, width=1.5, opacity=0.7)
     days = np.arange(0, 11)
-    plane.points(screen, np.column_stack((days, 3 * 1.9**days)), marker="square")
+    grid.points(screen, np.column_stack((days, 3 * 1.9**days)), marker="square")
 
 
-def draw_filter(plane: pgp.Plane, screen: pygame.Surface) -> None:
+def draw_filter(grid: pgp.Grid, screen: pygame.Surface) -> None:
     """Draw the gain of first- and second-order low-pass filters, in decibels."""
     cutoff = 1000.0
     for order in (1, 2):
-        plane.plot(
+        grid.plot(
             screen,
             lambda f, n=order: -10 * n * np.log10(1 + (f / cutoff) ** 2),
         )
-    plane.polyline(screen, [(10, -3), (1e5, -3)], color="gray", width=1)
-    plane.points(screen, (cutoff, -3.0), edge_color="white", radius=5)
+    grid.polyline(screen, [(10, -3), (1e5, -3)], color="gray", width=1)
+    grid.points(screen, (cutoff, -3.0), edge_color="white", radius=5)
 
 
-def draw_waves(plane: pgp.Plane, screen: pygame.Surface) -> None:
+def draw_waves(grid: pgp.Grid, screen: pygame.Surface) -> None:
     """Draw a few waves on a plane whose axes have different scales."""
-    plane.plot(screen, np.sin)
-    plane.plot(screen, lambda x: 0.5 * np.cos(3 * x))
-    plane.plot(screen, lambda x: np.exp(-x / 4) * np.sin(4 * x), width=1.5)
+    grid.plot(screen, np.sin)
+    grid.plot(screen, lambda x: 0.5 * np.cos(3 * x))
+    grid.plot(screen, lambda x: np.exp(-x / 4) * np.sin(4 * x), width=1.5)
 
 
 def make_examples() -> list[Example]:
@@ -89,24 +89,22 @@ def make_examples() -> list[Example]:
     return [
         Example(
             "log-log: power laws are straight lines",
-            pgp.Plane(
-                x_range=(0.01, 1000), y_range=(0.01, 1e4), log_x=True, log_y=True
-            ),
+            pgp.Grid(x_range=(0.01, 1000), y_range=(0.01, 1e4), log_x=True, log_y=True),
             draw_power_laws,
         ),
         Example(
             "semi-log y: exponential growth is a straight line",
-            pgp.Plane(x_range=(-1, 11), y_range=(0.5, 1e6), log_y=True),
+            pgp.Grid(x_range=(-1, 11), y_range=(0.5, 1e6), log_y=True),
             draw_growth,
         ),
         Example(
             "semi-log x: a low-pass filter's gain in dB",
-            pgp.Plane(x_range=(10, 1e5), y_range=(-70, 10), log_x=True),
+            pgp.Grid(x_range=(10, 1e5), y_range=(-70, 10), log_x=True),
             draw_filter,
         ),
         Example(
             "linear, set up from x and y ranges",
-            pgp.Plane(x_range=(-1, 13), y_range=(-1.5, 1.5)),
+            pgp.Grid(x_range=(-1, 13), y_range=(-1.5, 1.5)),
             draw_waves,
         ),
     ]
@@ -116,8 +114,8 @@ def draw_caption(
     screen: pygame.Surface, font: pygame.font.Font, example: Example
 ) -> None:
     """Draw the example's title and the keys that control it."""
-    plane = example.plane
-    kinds = ["log" if log else "linear" for log in (plane.log_x, plane.log_y)]
+    grid = example.grid
+    kinds = ["log" if log else "linear" for log in (grid.log_x, grid.log_y)]
     lines = [
         example.title,
         f"x {kinds[0]}, y {kinds[1]}   (Space: next   X / Y: toggle log)",
@@ -152,14 +150,14 @@ def main() -> None:
             elif event.type == pygame.KEYDOWN and event.key == pygame.K_SPACE:
                 current = (current + 1) % len(examples)
             elif event.type == pygame.KEYDOWN and event.key == pygame.K_x:
-                example.plane.log_x = not example.plane.log_x
+                example.grid.log_x = not example.grid.log_x
             elif event.type == pygame.KEYDOWN and event.key == pygame.K_y:
-                example.plane.log_y = not example.plane.log_y
-            example.plane.handle_event(event)
+                example.grid.log_y = not example.grid.log_y
+            example.grid.handle_event(event)
 
         example = examples[current]
-        example.plane.draw_grid(screen)
-        example.draw(example.plane, screen)
+        example.grid.draw(screen)
+        example.draw(example.grid, screen)
         draw_caption(screen, font, example)
         pygame.display.flip()
         clock.tick(60)

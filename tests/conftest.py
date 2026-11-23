@@ -26,13 +26,15 @@ CHAR_WIDTH = 7
 SUPERSCRIPT_CHAR_WIDTH = 5
 DIGIT_HEIGHT = 9
 SUPERSCRIPT_OVERFLOW = 3
+DESCENT = 3
 
 
 class FakeMeasurer:
     """A deterministic text measurer for testing the core without fonts.
 
     Every normal character is 7 px wide, superscript characters 5 px, and the
-    digit box is 9 px tall with 3 px of superscript overflow.
+    digit box is 9 px tall with 3 px of superscript overflow, and letters
+    reach 3 px below the baseline.
     """
 
     def measure_text(self, text: LabelText, font: FontSpec) -> TextSize:
@@ -49,7 +51,7 @@ class FakeMeasurer:
                 if index == 0 and run.role == "sign":
                     sign = run_width
                 width += run_width
-        return TextSize(width, DIGIT_HEIGHT, sign, overflow)
+        return TextSize(width, DIGIT_HEIGHT, sign, overflow, DESCENT)
 
 
 def labels_by_axis(scene: GridScene) -> list[tuple[tuple[str, str], TextItem]]:
@@ -64,12 +66,15 @@ def labels_by_axis(scene: GridScene) -> list[tuple[tuple[str, str], TextItem]]:
 
     Returns:
         ``((axis, text), label)`` for every label, where the axis is
-        ``"x"``, ``"zero"`` (the origin's ``0``) or ``"y"``.
+        ``"x"``, ``"zero"`` (the origin's ``0``), ``"y"``, ``"x_title"`` or
+        ``"y_title"``.
     """
     groups = (
         ("x", scene.axis_labels.x),
         ("zero", scene.axis_labels.zero),
         ("y", scene.axis_labels.y),
+        ("x_title", scene.axis_labels.x_title),
+        ("y_title", scene.axis_labels.y_title),
     )
     return [((axis, item.text.plain), item) for axis, items in groups for item in items]
 

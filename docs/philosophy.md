@@ -10,13 +10,17 @@ anyone changing it (they decide what belongs in it).
 
 ### 1. One way to do things, done well
 
-There is one way to draw: call the plane's methods. Each kind of drawing
+There is one way to draw: call the plane's methods (a `pgp.Grid`). Each kind of drawing
 is one method (`plot`, `parametric`, `polar`, `implicit`, `fill_between`,
-`inequality`, `vector_field`, `slope_field`, `points`, `polyline`,
-`polygon`, `arrow`), and every improvement goes into that method, so
-every program benefits from it. There is no second, parallel API doing
-the same things another way, which would have to be learned, documented,
-tested and kept in step with the first.
+`inequality`, `vector_field`, `slope_field`, `sequence`, `points`,
+`polyline`, `polygon`, `bars`, `histogram`, `box_plot`, `violin_plot`,
+`arrow`, `text`, `legend`, `color_bar`), and every improvement goes into
+that method, so every program benefits from it. There is no second,
+parallel API doing the same things another way, which would have to be
+learned, documented, tested and kept in step with the first. (A scatter
+plot is `points` with a colour per point, not a `scatter` method; error
+bars are part of `points` too, and stacked bars are `bars` with a
+baseline per bar.)
 
 A small library that does one thing very well is worth more than a large
 one that does many things adequately.
@@ -29,7 +33,7 @@ refer to each other through ordinary Python: variables, closures, your own
 classes. A wave that follows a draggable point is just
 
 ```py
-plane.plot(screen, lambda x: p.y * np.sin(x - p.x))
+grid.plot(screen, lambda x: p.y * np.sin(x - p.x))
 ```
 
 There is no second language to learn (no expressions as text, no parser),
@@ -39,7 +43,7 @@ Python is already good at all of that.
 ### 3. A library, not a framework
 
 Your program owns the main loop. The plane is an object you call
-(`handle_event`, `draw_grid`, `plot`, ...); it never takes control, never
+(`handle_event`, `draw`, `plot`, ...); it never takes control, never
 sleeps, never reads events by itself, and never draws outside its
 rectangle. So it fits next to the rest of a pygame program (menus,
 sidebars, games, several planes in one window), and it never decides how
@@ -54,9 +58,9 @@ plot follows panning and zooming, and the state of the picture is the
 state of your program, in your own variables, where you can see it.
 
 The plane keeps only what it must between frames, and keeps it explicit:
-the view (which the user pans and zooms), the draggable points (which the
-user moves), and caches that make frames fast without changing what they
-show.
+the view (which the user pans and zooms), the draggable points and
+sliders (which the user moves), and caches that make frames fast without
+changing what they show.
 
 ### 5. It just looks right
 
@@ -100,7 +104,7 @@ drift from what the library does.
 
 The principles are also how features are judged. A new feature should:
 
-- be a better plane method, or a new one, rather than a second way to
+- be a better `Grid` method, or a new one, rather than a second way to
   draw something that can already be drawn;
 - take Python values (functions, numbers, arrays), not a description in
   another language;
@@ -125,6 +129,6 @@ removed, because they failed these tests:
   language next to Python (principle 2).
 
 They are not planned to come back. Programs that want them can build them
-on top of the plane's methods, which is exactly what those features did;
+on top of the `Grid` methods, which is exactly what those features did;
 see [the developer guide](dev/architecture.md#retired-experiments) for
 where their code can still be found.

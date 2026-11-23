@@ -27,7 +27,15 @@ coordinates cannot be shown at all and are treated like NaN.
 * :func:`slope_field_strokes`: the segments of a slope field.
 * :func:`polyline_stroke`: connected vertices, open or closed.
 * :func:`polygon_shapes`: a filled polygon and its outline.
-* :func:`point_markers`: fixed-size markers at points.
+* :func:`point_markers`: fixed-size markers at points (one colour and size,
+  or each its own).
+* :func:`error_bar_stroke`: error bars on points.
+* :func:`bar_shapes`: bars from a baseline (a bar chart).
+* :func:`histogram_shapes`: the bars of a histogram of samples.
+* :func:`box_plot_primitives`: box plots of groups of samples.
+* :func:`violin_primitives`: violin plots of groups of samples.
+* :func:`sequence_primitives`: the stems and markers of a sequence's terms.
+* :func:`text_items`: text anchored to a point.
 """
 
 from __future__ import annotations
@@ -36,7 +44,7 @@ import math
 import warnings
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
-from typing import Final, TypeAlias
+from typing import Final, Literal, TypeAlias
 
 import numpy as np
 from numpy.typing import ArrayLike, NDArray
@@ -49,10 +57,23 @@ from pygridplot.core.plot.curves import (
     CurveSampling,
     sample_curve,
 )
+from pygridplot.core.plot.data import (
+    AUTO_BAR_FRACTION,
+    PointColors,
+    Step,
+    auto_bar_width,
+    step_vertices,
+)
+from pygridplot.core.plot.distributions import (
+    DEFAULT_WHISKER,
+    BoxStats,
+    box_stats,
+    violin_shape,
+)
 from pygridplot.core.plot.evaluation import (
     Function,
-    PlaneFunction,
     VectorFunction,
+    XYFunction,
     evaluate_quietly,
     evaluate_vectors_quietly,
     evaluate_xy_quietly,
@@ -67,12 +88,20 @@ from pygridplot.core.plot.fields import (
     screen_directions,
 )
 from pygridplot.core.plot.geometry import (
+    COORDINATE_LIMIT,
     Box,
     as_points,
     clamp_coordinates,
     clip_path,
     clip_paths,
     clip_polygon,
+    clip_segments,
+)
+from pygridplot.core.plot.histograms import (
+    Bins,
+    auto_bin_width,
+    bin_by_edges,
+    bin_samples,
 )
 from pygridplot.core.plot.implicit import (
     DEFAULT_IMPLICIT_SAMPLING,
@@ -82,17 +111,29 @@ from pygridplot.core.plot.implicit import (
 from pygridplot.core.plot.regions import sample_region
 from pygridplot.core.plot.sampling import (
     DEFAULT_SAMPLING,
-    SamplingConfig,
+    FunctionSampling,
     sample_function,
 )
+from pygridplot.core.plot.sequences import sequence_lattice, visible_indices
 from pygridplot.core.plot.style import (
     ArrowStyle,
+    BarStyle,
     FillStyle,
     LineStyle,
     PointStyle,
     PolygonStyle,
+    SequenceStyle,
+    TextStyle,
 )
-from pygridplot.core.primitives import Fill, Markers, Stroke
+from pygridplot.core.plot.text import Anchor, place_lines, text_lines
+from pygridplot.core.primitives import (
+    Fill,
+    FontSpec,
+    Markers,
+    Stroke,
+    TextItem,
+    TextMeasurer,
+)
 from pygridplot.core.transforms import AxisTransform
 from pygridplot.core.view import View
 
@@ -106,6 +147,21 @@ WorldCurve: TypeAlias = Callable[
     [NDArray[np.float64]], tuple[NDArray[np.float64], NDArray[np.float64]]
 ]
 """Maps parameter values to world points ``(x, y)``, with NaN where undefined."""
+
+BOX_FRACTION: Final = 0.5
+"""An automatic box is this fraction of the smallest gap between groups."""
+
+OUTLIER_RADIUS_PX: Final = 2.5
+"""The size of a box plot's outliers."""
+
+SEPARATOR_FADE_START_PX: Final = 3.0
+"""Bins narrower than this on screen have no lines between them."""
+
+SEPARATOR_FADE_END_PX: Final = 8.0
+"""Bins at least this wide on screen have their lines between them in full.
+
+Between the two, the lines fade in, so zooming never makes them pop.
+"""
 
 CLIP_MARGIN_PX: Final = 2.0
 """Extra pixels around the plane kept when clipping, beyond half a line width.
@@ -123,7 +179,7 @@ def function_stroke(
     color: ColorLike,
     *,
     domain: tuple[float, float] | None = None,
-    sampling: SamplingConfig = DEFAULT_SAMPLING,
+    sampling: FunctionSampling = DEFAULT_SAMPLING,
 ) -> Stroke | None:
     """Sample the graph of ``y = func(x)`` and return it as a stroke.
 
@@ -265,7 +321,7 @@ def polar_stroke(
 
 def implicit_stroke(
     view: View,
-    func: PlaneFunction,
+    func: XYFunction,
     style: LineStyle,
     color: ColorLike,
     *,
@@ -335,7 +391,7 @@ def area_fill(
     color: ColorLike,
     *,
     domain: tuple[float, float] | None = None,
-    sampling: SamplingConfig = DEFAULT_SAMPLING,
+    sampling: FunctionSampling = DEFAULT_SAMPLING,
 ) -> Fill | None:
     """Return the fill of the area between the graphs of ``first`` and ``second``.
 
@@ -384,7 +440,7 @@ def area_fill(
 
 def region_fill(
     view: View,
-    func: PlaneFunction,
+    func: XYFunction,
     style: FillStyle,
     color: ColorLike,
     *,
@@ -559,7 +615,7 @@ def vector_field_fills(
 
 def slope_field_strokes(
     view: View,
-    slope: PlaneFunction,
+    slope: XYFunction,
     style: LineStyle,
     color: ColorLike,
     *,
@@ -619,6 +675,7 @@ def polyline_stroke(
     color: ColorLike,
     *,
     closed: bool = False,
+    step: Step | None = None,
 ) -> Stroke | None:
     """Return the stroke for a polyline through world-space vertices.
 
@@ -629,6 +686,10 @@ def polyline_stroke(
         style: Line width and opacity (its colour is ignored).
         color: The resolved line colour.
         closed: Whether to connect the last vertex back to the first.
+        step: Draw steps between the vertices instead of straight lines
+            (see :data:`pygridplot.core.plot.data.Step`). They are made in
+            transformed coordinates, so a ``"mid"`` step is half way on
+            screen on a log axis too.
 
     Returns:
         The stroke, or ``None`` if nothing is visible.
@@ -637,7 +698,17 @@ def polyline_stroke(
     if view.rect.is_empty or pts.shape[0] == 0:
         return None
     box = _clip_box(view, style.width / 2 + CLIP_MARGIN_PX)
-    paths = clip_path(_to_screen(view, pts), box, closed=closed)
+    if step is None:
+        screen = _to_screen(view, pts)
+    else:
+        u, w = step_vertices(
+            view.transform_x.forward(pts[:, 0]),
+            view.transform_y.forward(pts[:, 1]),
+            step,
+        )
+        with np.errstate(invalid="ignore"):
+            screen = np.column_stack(view.transformed_to_screen(u, w))
+    paths = clip_path(screen, box, closed=closed)
     if not paths:
         return None
     return Stroke(tuple(paths), color, style.width, style.opacity)
@@ -682,7 +753,13 @@ def polygon_shapes(
 
 
 def point_markers(
-    view: View, points: ArrayLike, style: PointStyle, color: ColorLike
+    view: View,
+    points: ArrayLike,
+    style: PointStyle,
+    color: ColorLike,
+    *,
+    colors: PointColors | None = None,
+    radii: NDArray[np.float64] | None = None,
 ) -> Markers | None:
     """Return markers for the visible points among world-space ``points``.
 
@@ -692,6 +769,10 @@ def point_markers(
             Points with a NaN coordinate are skipped.
         style: Marker shape, size, outline and opacity (its colour is ignored).
         color: The resolved fill colour.
+        colors: A colour per point, replacing ``color`` (see
+            :func:`pygridplot.core.plot.data.per_point_colors`), or ``None``.
+        radii: A size per point, replacing ``style.radius``; points of size 0
+            get no marker.
 
     Returns:
         The markers, or ``None`` if none are visible.
@@ -699,10 +780,582 @@ def point_markers(
     pts = as_points(points)
     if view.rect.is_empty or pts.shape[0] == 0:
         return None
+    if radii is None and style.radius <= 0:
+        return None
     screen = _to_screen(view, pts)
     edge_width = style.edge_width if style.edge_color is not None else 0.0
-    reach = style.radius + edge_width + CLIP_MARGIN_PX
-    x_min, y_min, x_max, y_max = _clip_box(view, reach)
+    size = style.radius if radii is None else radii
+    reach = size + edge_width + CLIP_MARGIN_PX
+    rect = view.rect
+    with np.errstate(invalid="ignore"):
+        visible = (
+            (screen[:, 0] >= rect.left - 0.5 - reach)
+            & (screen[:, 0] <= rect.right - 0.5 + reach)
+            & (screen[:, 1] >= rect.top - 0.5 - reach)
+            & (screen[:, 1] <= rect.bottom - 0.5 + reach)
+        )
+    if radii is not None:
+        visible &= radii > 0
+    if not visible.any():
+        return None
+    shown: PointColors | None = None
+    if isinstance(colors, np.ndarray):
+        shown = colors[visible]
+    elif colors is not None:
+        shown = tuple(
+            c for c, keep in zip(colors, visible.tolist(), strict=True) if keep
+        )
+    return Markers(
+        positions=screen[visible],
+        shape=style.marker,
+        radius=style.radius,
+        color=color,
+        edge_color=style.edge_color,
+        edge_width=edge_width,
+        opacity=style.opacity,
+        colors=shown,
+        radii=None if radii is None else radii[visible],
+    )
+
+
+def error_bar_stroke(
+    view: View,
+    points: ArrayLike,
+    style: PointStyle,
+    color: ColorLike,
+    *,
+    x_error: NDArray[np.float64] | None = None,
+    y_error: NDArray[np.float64] | None = None,
+) -> Stroke | None:
+    """Return the error bars of points: a segment across each, with caps.
+
+    A y error bar runs from ``y - below`` to ``y + above`` at the point's x,
+    and an x error bar likewise across x; both are in world units, so they
+    scale with the zoom, while their width and caps are in pixels. On a log
+    axis an end at or below zero runs off the plane, and has no cap.
+
+    Args:
+        view: The view being drawn.
+        points: The points (see :func:`pygridplot.core.plot.geometry.as_points`).
+        style: The error bars' width and caps, and the opacity.
+        color: The resolved colour.
+        x_error: Lengths left and right of each point, shape ``(2, N)``
+            (see :func:`pygridplot.core.plot.data.as_errors`), or ``None``.
+        y_error: Lengths below and above each point, likewise.
+
+    Returns:
+        One stroke with every bar and cap, or ``None`` if none is visible.
+    """
+    pts = as_points(points)
+    if view.rect.is_empty or pts.shape[0] == 0:
+        return None
+    half_cap = style.error_cap / 2
+    pieces: list[NDArray[np.float64]] = []
+    sides: tuple[tuple[Literal["x", "y"], NDArray[np.float64] | None], ...] = (
+        ("y", y_error),
+        ("x", x_error),
+    )
+    for along, errors in sides:
+        if errors is None:
+            continue
+        across: Literal["x", "y"] = "x" if along == "y" else "y"
+        index = 1 if along == "y" else 0
+        value, fixed = pts[:, index], pts[:, 1 - index]
+        transform = view.axis_transform(along)
+        with np.errstate(invalid="ignore", divide="ignore"):
+            low = transform.forward(value - errors[0])
+            high = transform.forward(value + errors[1])
+            if transform.is_log:  # an end at or below zero is off the plane
+                low = np.where(value - errors[0] <= 0, -np.inf, low)
+            at = view.axis_to_screen(across, view.axis_transform(across).forward(fixed))
+        keep = np.isfinite(at) & ~np.isnan(low) & ~np.isnan(high) & (high > low)
+        if not keep.any():
+            continue
+        at, low, high = at[keep], low[keep], high[keep]
+        ends = np.column_stack(
+            (view.axis_to_screen(along, low), view.axis_to_screen(along, high))
+        )
+        ends = np.clip(ends, -COORDINATE_LIMIT, COORDINATE_LIMIT)
+        bars = np.stack((np.column_stack((at, ends[:, 0])),
+                         np.column_stack((at, ends[:, 1]))), axis=1)  # fmt: skip
+        caps = []
+        if half_cap > 0:
+            for end, finite in (
+                (ends[:, 0], np.isfinite(low)),
+                (ends[:, 1], np.isfinite(high)),
+            ):
+                cap = np.stack((np.column_stack((at[finite] - half_cap, end[finite])),
+                                np.column_stack((at[finite] + half_cap, end[finite]))),
+                               axis=1)  # fmt: skip
+                caps.append(cap)
+        segments = np.concatenate([bars, *caps])
+        if along == "x":
+            segments = segments[:, :, ::-1]  # (along, across) -> (x, y)
+        pieces.append(segments)
+    if not pieces:
+        return None
+    # The bars and caps are separate segments: clipped all at once, as many
+    # thousands of them would be slow one path at a time.
+    segments = np.concatenate(pieces)
+    box = _clip_box(view, style.error_width / 2 + CLIP_MARGIN_PX)
+    keep, t0, t1 = clip_segments(segments[:, 0], segments[:, 1], box)
+    if not keep.any():
+        return None
+    start, end, t0, t1 = segments[keep, 0], segments[keep, 1], t0[keep], t1[keep]
+    step = end - start
+    clipped = np.stack((start + t0[:, None] * step, start + t1[:, None] * step), axis=1)
+    return Stroke(clipped, color, style.error_width, style.opacity)
+
+
+def bar_shapes(
+    view: View,
+    bars: NDArray[np.float64],
+    style: BarStyle,
+    color: ColorLike,
+    *,
+    width: float | None = None,
+    baseline: float | NDArray[np.float64] = 0.0,
+    horizontal: bool = False,
+) -> tuple[Fill | None, Stroke | None]:
+    """Return the fill and outlines of bars standing on a baseline.
+
+    Each bar is a rectangle from its baseline to its top, ``width`` wide and
+    centred on its position. Upright bars stand at an x and reach a y;
+    horizontal bars stand at a y and reach an x. Positions and values are
+    transformed (``log10`` on a log axis), so on a log axis along the bars'
+    positions the width is in decades and bars look alike, and on a log axis
+    along their values a baseline of 0 (or below) is infinitely far off, so
+    the bars reach the plane's edge.
+
+    Args:
+        view: The view being drawn.
+        bars: The bars' ``(position, top)``, shape ``(N, 2)``: ``(x, y)``
+            upright, ``(y, x)`` horizontal. A NaN leaves a bar out.
+        style: Fill opacity and outline width (its colour is ignored).
+        color: The resolved colour.
+        width: The bars' width in transformed position units, or ``None``
+            for :func:`~pygridplot.core.plot.data.auto_bar_width`.
+        baseline: Where the bars stand: one value for all, or one per bar
+            (stacked or floating bars).
+        horizontal: Lay the bars along x instead of upright.
+
+    Returns:
+        ``(fill, outlines)``: all the bars as one fill, and their outlines
+        as one stroke (drawn once where neighbouring bars share an edge);
+        either is ``None`` when switched off or nothing is visible.
+    """
+    if view.rect.is_empty or bars.shape[0] == 0:
+        return (None, None)
+    along: Literal["x", "y"] = "y" if horizontal else "x"
+    across: Literal["x", "y"] = "x" if horizontal else "y"
+    values = view.axis_transform(across)
+    bases = np.broadcast_to(np.asarray(baseline, dtype=np.float64), bars.shape[:1])
+    with np.errstate(invalid="ignore", divide="ignore"):
+        u = view.axis_transform(along).forward(bars[:, 0])
+        top = values.forward(bars[:, 1])
+        base = values.forward(bases)
+    if values.is_log:  # zero or below is infinitely far off the edge
+        top = np.where(bars[:, 1] <= 0, -np.inf, top)
+        base = np.where(bases <= 0, -np.inf, base)
+    half = (width if width is not None else auto_bar_width(u)) / 2
+    keep = np.isfinite(u) & ~np.isnan(top) & ~np.isnan(base) & (top != base)
+    if not keep.any():
+        return (None, None)
+    u, top, base = u[keep], top[keep], base[keep]
+    rings = _rectangles(
+        view, u - half, u + half, top, base, style.edge_width, horizontal=horizontal
+    )
+    return _bar_primitives(rings, style, color)
+
+
+def histogram_shapes(
+    view: View,
+    samples: NDArray[np.float64],
+    style: BarStyle,
+    color: ColorLike,
+    *,
+    width: float | None = None,
+    edges: NDArray[np.float64] | None = None,
+    density: bool = False,
+    cumulative: bool = False,
+) -> tuple[Fill | None, Stroke | None, Stroke | None]:
+    """Return the bars of a histogram of samples.
+
+    The samples are counted in bins (see
+    :mod:`pygridplot.core.plot.histograms`): anchored bins of ``width``, or
+    of an automatic width, or bins with explicit ``edges``. Each bin with
+    samples is a bar from 0 to its count, or to the density the samples
+    estimate there (count over the number of samples and the bin's width in
+    x units, so that the bars' area is 1 and a probability density plotted
+    over them matches). Neighbouring bars are drawn as one shape with one
+    outline, and the edges between them as separate lines, which fade out
+    as the bins narrow to a few pixels, so a histogram zoomed far out shows
+    its outline rather than a comb of lines.
+
+    Args:
+        view: The view being drawn.
+        samples: The samples; NaN and infinite ones (and on a log x axis,
+            ones not positive) are left out.
+        style: Fill opacity and outline width (its colour is ignored).
+        color: The resolved colour.
+        width: The bins' width in transformed x units (decades on a log x
+            axis), or ``None`` for an automatic one.
+        edges: Explicit bin edges in x units, replacing ``width``.
+        density: Draw densities instead of counts (with ``cumulative``,
+            fractions of the samples).
+        cumulative: Draw each bin as high as all the samples up to its
+            right edge, rising to the number of samples (or 1).
+
+    Returns:
+        ``(fill, outline, separators)``; each is ``None`` when switched off
+        or nothing is visible.
+    """
+    nothing: tuple[None, None, None] = (None, None, None)
+    with np.errstate(invalid="ignore"):
+        chosen = samples[np.isfinite(samples) & ((samples > 0) | (not view.log_x))]
+    if view.rect.is_empty or chosen.shape[0] == 0:
+        return nothing
+    transform = view.transform_x
+    if edges is not None:
+        bins = bin_by_edges(chosen, edges, transform)
+        total = float(np.count_nonzero((chosen >= edges[0]) & (chosen <= edges[-1])))
+    else:
+        u = transform.forward(chosen)
+        bins = bin_samples(u, width if width is not None else auto_bin_width(u))
+        total = float(bins.counts.sum())
+    if bins.index.shape[0] == 0:
+        return nothing
+    if cumulative:
+        # Each bin as high as all the samples up to its right edge (as a
+        # fraction with density); the stretches between bins keep the
+        # height reached, so the histogram is one rising shape.
+        rising = np.cumsum(bins.counts)
+        if density:
+            rising = rising / total
+        bins = _without_gaps(Bins(bins.index, bins.left, bins.right, rising))
+    elif density:
+        spans = transform.inverse(bins.right) - transform.inverse(bins.left)
+        bins = Bins(bins.index, bins.left, bins.right, bins.counts / (total * spans))
+    visible = _visible_bins(view, bins, style.edge_width / 2 + CLIP_MARGIN_PX)
+    if visible is None:
+        return nothing
+    bins = visible
+    heights = bins.counts
+    with np.errstate(divide="ignore"):
+        top = view.transform_y.forward(heights)
+        base = float(view.transform_y.forward(0.0))
+    margin = style.edge_width / 2 + CLIP_MARGIN_PX
+    x_min, y_min, x_max, y_max = _clip_box(view, margin)
+    # Everything on screen at once, clamped to just beyond the plane (a
+    # shape of horizontal and vertical edges stays the same inside the box).
+    with np.errstate(invalid="ignore"):
+        lx = np.clip(view.axis_to_screen("x", bins.left), x_min, x_max)
+        rx = np.clip(view.axis_to_screen("x", bins.right), x_min, x_max)
+        ty = np.clip(view.axis_to_screen("y", top), y_min, y_max)
+        by = float(np.clip(view.axis_to_screen("y", base), y_min, y_max))
+    breaks = np.flatnonzero(np.diff(bins.index) != 1) + 1
+    starts, stops = np.r_[0, breaks], np.r_[breaks, bins.index.shape[0]]
+    # A run of neighbouring bins is one ring: up the left edge, along the
+    # tops (stepping at each shared edge) and down the right edge.
+    corners_x = np.column_stack((lx, rx)).ravel()
+    corners_y = np.repeat(ty, 2)
+    rings = [
+        np.column_stack(
+            (
+                np.r_[lx[first], corners_x[2 * first : 2 * last], rx[last - 1]],
+                np.r_[by, corners_y[2 * first : 2 * last], by],
+            )
+        )
+        for first, last in zip(starts.tolist(), stops.tolist(), strict=True)
+    ]
+    # The edges shared within runs: from the baseline to the lower bar.
+    inner = np.ones(bins.index.shape[0] - 1, dtype=bool)
+    inner[breaks - 1] = False
+    shared_y = np.where(np.abs(ty[:-1] - by) < np.abs(ty[1:] - by), ty[:-1], ty[1:])
+    separators = list(
+        np.stack(
+            (
+                np.column_stack((rx[:-1][inner], np.full(int(inner.sum()), by))),
+                np.column_stack((rx[:-1][inner], shared_y[inner])),
+            ),
+            axis=1,
+        )
+    )
+    fill, outline = _bar_primitives(rings, style, color)
+    lines = None
+    if style.edge_width > 0 and separators:
+        pixels = float(np.median(bins.right - bins.left)) * view.scale_x
+        fade = (pixels - SEPARATOR_FADE_START_PX) / (
+            SEPARATOR_FADE_END_PX - SEPARATOR_FADE_START_PX
+        )
+        opacity = min(max(fade, 0.0), 1.0)
+        if opacity > 0:
+            lines = Stroke(tuple(separators), color, style.edge_width, opacity)
+    return (fill, outline, lines)
+
+
+def _without_gaps(bins: Bins) -> Bins:
+    """Return bins with the stretches between them filled at the height before.
+
+    For a cumulative histogram: where there are no samples, the count so far
+    holds until the next bin.
+
+    Args:
+        bins: The bins, their ``counts`` the heights.
+
+    Returns:
+        The bins and the gaps between them, numbered consecutively.
+    """
+    gaps = np.flatnonzero(np.diff(bins.index) != 1)
+    if gaps.size:
+        left = np.insert(bins.left, gaps + 1, bins.right[gaps])
+        right = np.insert(bins.right, gaps + 1, bins.left[gaps + 1])
+        heights = np.insert(bins.counts, gaps + 1, bins.counts[gaps])
+    else:
+        left, right, heights = bins.left, bins.right, bins.counts
+    return Bins(np.arange(left.shape[0], dtype=np.int64), left, right, heights)
+
+
+def box_plot_primitives(
+    view: View,
+    groups: list[NDArray[np.float64]],
+    positions: NDArray[np.float64],
+    style: BarStyle,
+    color: ColorLike,
+    *,
+    width: float | None = None,
+    whisker: float = DEFAULT_WHISKER,
+    horizontal: bool = False,
+) -> tuple[Fill | None, Stroke | None, Stroke | None, Markers | None]:
+    """Return the boxes, whiskers, medians and outliers of groups of samples.
+
+    Each group's box spans its quartiles, ``width`` wide about its position,
+    with the median across it and whiskers with caps out to the furthest
+    samples within reach (see :func:`pygridplot.core.plot.distributions.box_stats`);
+    samples beyond are outliers, drawn as small points. The statistics are
+    of the transformed samples (``log10`` on a log axis), as shown.
+
+    Args:
+        view: The view being drawn.
+        groups: The groups of samples.
+        positions: Each group's position (x, or y when ``horizontal``).
+        style: The boxes' fill opacity and outline width.
+        color: The resolved colour.
+        width: The boxes' width in transformed position units, or ``None``
+            for half the smallest gap between groups.
+        whisker: The whiskers' reach, in interquartile ranges.
+        horizontal: Lay the boxes along x.
+
+    Returns:
+        ``(boxes, lines, medians, outliers)``: the boxes' fill, their
+        outlines with the whiskers and caps, the medians (a little thicker),
+        and the outliers; each ``None`` when there is nothing to draw.
+    """
+    along: Literal["x", "y"] = "y" if horizontal else "x"
+    across: Literal["x", "y"] = "x" if horizontal else "y"
+    places = view.axis_transform(along).forward(positions)
+    half = (width if width is not None else _auto_width(places, BOX_FRACTION)) / 2
+    values = view.axis_transform(across)
+    boxes: list[tuple[float, BoxStats]] = []
+    for place, group in zip(places.tolist(), groups, strict=True):
+        if not math.isfinite(place):
+            continue
+        with np.errstate(invalid="ignore", divide="ignore"):
+            stats = box_stats(np.asarray(values.forward(group)), whisker)
+        if stats is not None:
+            boxes.append((place, stats))
+    if view.rect.is_empty or not boxes:
+        return (None, None, None, None)
+    u = np.array([place for place, _ in boxes])
+    q1 = np.array([b.q1 for _, b in boxes])
+    q3 = np.array([b.q3 for _, b in boxes])
+    rings = _rectangles(
+        view, u - half, u + half, q3, q1, style.edge_width, horizontal=horizontal
+    )
+    fill = (
+        Fill(tuple(rings), color, style.opacity)
+        if rings and style.opacity > 0
+        else None
+    )
+    lines_width = max(style.edge_width, 1.0)
+    segments = []
+    medians = []
+    for place, b in boxes:
+        corners = [
+            (place - half, b.q1),
+            (place + half, b.q1),
+            (place + half, b.q3),
+            (place - half, b.q3),
+            (place - half, b.q1),
+        ]
+        segments.append(corners)
+        segments.append([(place, b.q1), (place, b.low)])
+        segments.append([(place, b.q3), (place, b.high)])
+        for end in (b.low, b.high):
+            segments.append([(place - half / 2, end), (place + half / 2, end)])
+        medians.append([(place - half, b.median), (place + half, b.median)])
+    box = _clip_box(view, lines_width + CLIP_MARGIN_PX)
+    lines = _place_paths(view, segments, box, horizontal)
+    middle = _place_paths(view, medians, box, horizontal)
+    outline = Stroke(tuple(lines), color, lines_width) if lines else None
+    median = Stroke(tuple(middle), color, lines_width + 1.0) if middle else None
+    spots = [(place, float(v)) for place, b in boxes for v in b.outliers.tolist()]
+    markers = None
+    if spots:
+        where = _place_points(view, np.array(spots), horizontal)
+        markers = point_markers_at(view, where, OUTLIER_RADIUS_PX, color)
+    return (fill, outline, median, markers)
+
+
+def violin_primitives(
+    view: View,
+    groups: list[NDArray[np.float64]],
+    positions: NDArray[np.float64],
+    style: BarStyle,
+    color: ColorLike,
+    *,
+    width: float | None = None,
+    bandwidth: float | None = None,
+    horizontal: bool = False,
+) -> tuple[Fill | None, Stroke | None, Stroke | None]:
+    """Return the violins of groups of samples: their densities, mirrored.
+
+    Each group's violin is its density (see
+    :func:`pygridplot.core.plot.distributions.violin_shape`) drawn either side
+    of its position, ``width`` wide where the density is greatest, from the
+    smallest sample to the largest, with the median as a line across.
+
+    Args:
+        view: The view being drawn.
+        groups: The groups of samples.
+        positions: Each group's position (x, or y when ``horizontal``).
+        style: The violins' fill opacity and outline width.
+        color: The resolved colour.
+        width: The violins' greatest width in transformed position units, or
+            ``None`` for 0.8 of the smallest gap between groups.
+        bandwidth: The kernel's bandwidth in transformed value units, or
+            ``None`` for Silverman's rule.
+        horizontal: Lay the violins along x.
+
+    Returns:
+        ``(fill, outline, medians)``, each ``None`` with nothing to draw.
+    """
+    along: Literal["x", "y"] = "y" if horizontal else "x"
+    across: Literal["x", "y"] = "x" if horizontal else "y"
+    places = view.axis_transform(along).forward(positions)
+    half = (width if width is not None else _auto_width(places, AUTO_BAR_FRACTION)) / 2
+    values = view.axis_transform(across)
+    rings = []
+    medians = []
+    for place, group in zip(places.tolist(), groups, strict=True):
+        if not math.isfinite(place):
+            continue
+        with np.errstate(invalid="ignore", divide="ignore"):
+            data = np.asarray(values.forward(group))
+        shape = violin_shape(data, bandwidth)
+        if shape is None:
+            continue
+        v, density = shape
+        spread = half * density / np.max(density)
+        ring = np.column_stack(
+            (np.r_[place + spread, place - spread[::-1]], np.r_[v, v[::-1]])
+        )
+        rings.append(ring)
+        centre = float(np.median(data[np.isfinite(data)]))
+        reach = float(np.interp(centre, v, spread))
+        medians.append([(place - reach, centre), (place + reach, centre)])
+    if view.rect.is_empty or not rings:
+        return (None, None, None)
+    screen = [_place_points(view, ring, horizontal) for ring in rings]
+    fill = None
+    if style.opacity > 0:
+        clipped = [
+            clip_polygon(ring, _clip_box(view, CLIP_MARGIN_PX)) for ring in screen
+        ]
+        kept = tuple(ring for ring in clipped if ring.shape[0] >= 3)
+        fill = Fill(kept, color, style.opacity) if kept else None
+    box = _clip_box(view, max(style.edge_width, 1.0) + CLIP_MARGIN_PX)
+    outline = None
+    if style.edge_width > 0:
+        paths = [p for ring in screen for p in clip_path(ring, box, closed=True)]
+        outline = Stroke(tuple(paths), color, style.edge_width) if paths else None
+    middle = _place_paths(view, medians, box, horizontal)
+    median = (
+        Stroke(tuple(middle), color, max(style.edge_width, 1.0) + 1.0)
+        if middle
+        else None
+    )
+    return (fill, outline, median)
+
+
+def _auto_width(places: NDArray[np.float64], fraction: float) -> float:
+    """Return a fraction of the smallest gap between positions (of 1 for one)."""
+    return auto_bar_width(places) / AUTO_BAR_FRACTION * fraction
+
+
+def _place_points(
+    view: View, points: NDArray[np.float64], horizontal: bool
+) -> NDArray[np.float64]:
+    """Return ``(position, value)`` points in transformed units on screen.
+
+    Args:
+        view: The view being drawn.
+        points: Rows of ``(position, value)``, transformed.
+        horizontal: Whether positions are along y.
+
+    Returns:
+        Screen points, clamped to ``±COORDINATE_LIMIT``.
+    """
+    if horizontal:
+        u, w = points[:, 1], points[:, 0]
+    else:
+        u, w = points[:, 0], points[:, 1]
+    with np.errstate(invalid="ignore"):
+        px, py = view.transformed_to_screen(u, w)
+    return clamp_coordinates(np.column_stack((px, py)))
+
+
+def _place_paths(
+    view: View,
+    paths: list[list[tuple[float, float]]],
+    box: Box,
+    horizontal: bool,
+) -> list[NDArray[np.float64]]:
+    """Return polylines of ``(position, value)`` vertices on screen, clipped.
+
+    Args:
+        view: The view being drawn.
+        paths: The polylines, transformed.
+        box: The clip box.
+        horizontal: Whether positions are along y.
+
+    Returns:
+        The visible pieces.
+    """
+    if not paths:
+        return []
+    placed = [
+        _place_points(view, np.array(path, dtype=np.float64), horizontal)
+        for path in paths
+    ]
+    return clip_paths(placed, box)
+
+
+def point_markers_at(
+    view: View, screen: NDArray[np.float64], radius: float, color: ColorLike
+) -> Markers | None:
+    """Return small filled markers at screen points that reach the plane.
+
+    Args:
+        view: The view being drawn.
+        screen: The points, in screen pixels.
+        radius: The markers' size.
+        color: Their colour.
+
+    Returns:
+        The markers, or ``None`` if none is visible.
+    """
+    x_min, y_min, x_max, y_max = _clip_box(view, radius + CLIP_MARGIN_PX)
     with np.errstate(invalid="ignore"):
         visible = (
             (screen[:, 0] >= x_min)
@@ -712,15 +1365,245 @@ def point_markers(
         )
     if not visible.any():
         return None
-    return Markers(
-        positions=screen[visible],
-        shape=style.marker,
-        radius=style.radius,
-        color=color,
-        edge_color=style.edge_color,
-        edge_width=edge_width,
-        opacity=style.opacity,
+    return Markers(screen[visible], "circle", radius, color)
+
+
+def _visible_bins(view: View, bins: Bins, margin: float) -> Bins | None:
+    """Return the bins that reach the plane (grown by ``margin`` pixels).
+
+    Bins are in order along x, so the visible ones are a contiguous range;
+    a run of bins cut at the ends of the range then ends beyond the plane.
+
+    Args:
+        view: The view being drawn.
+        bins: The bins.
+        margin: Extra pixels on each side.
+
+    Returns:
+        The visible bins, or ``None`` if none is.
+    """
+    rect = view.rect
+    low = view.screen_to_axis("x", rect.left - 0.5 - margin)
+    high = view.screen_to_axis("x", rect.right - 0.5 + margin)
+    first = int(np.searchsorted(bins.right, low, side="left"))
+    last = int(np.searchsorted(bins.left, high, side="right"))
+    if last <= first:
+        return None
+    return Bins(
+        bins.index[first:last],
+        bins.left[first:last],
+        bins.right[first:last],
+        bins.counts[first:last],
     )
+
+
+def _rectangles(
+    view: View,
+    start: NDArray[np.float64],
+    end: NDArray[np.float64],
+    top: NDArray[np.float64],
+    base: NDArray[np.float64],
+    edge_width: float,
+    *,
+    horizontal: bool = False,
+) -> list[NDArray[np.float64]]:
+    """Return the visible ones of rectangles given in transformed coordinates.
+
+    Args:
+        view: The view being drawn.
+        start: Each rectangle's edge before its position (transformed x, or
+            y when ``horizontal``).
+        end: Each rectangle's edge after its position.
+        top: Each rectangle's far end (transformed y, or x; may be infinite).
+        base: Each rectangle's near end, its baseline (likewise).
+        edge_width: The outline's width, which they keep room for.
+        horizontal: Whether positions are along y and values along x.
+
+    Returns:
+        Each visible rectangle as a ring in screen pixels, clamped to just
+        beyond the plane (an axis-aligned rectangle stays one when clamped).
+    """
+    box = _clip_box(view, edge_width / 2 + CLIP_MARGIN_PX)
+    x_min, y_min, x_max, y_max = box
+    along: Literal["x", "y"] = "y" if horizontal else "x"
+    across: Literal["x", "y"] = "x" if horizontal else "y"
+    limit = COORDINATE_LIMIT
+    with np.errstate(invalid="ignore"):
+        a0 = np.clip(view.axis_to_screen(along, start), -limit, limit)
+        a1 = np.clip(view.axis_to_screen(along, end), -limit, limit)
+        v0 = np.clip(view.axis_to_screen(across, base), -limit, limit)
+        v1 = np.clip(view.axis_to_screen(across, top), -limit, limit)
+    if horizontal:
+        left, right = np.minimum(v0, v1), np.maximum(v0, v1)
+        upper, lower = np.minimum(a0, a1), np.maximum(a0, a1)
+    else:
+        left, right = np.minimum(a0, a1), np.maximum(a0, a1)
+        upper, lower = np.minimum(v0, v1), np.maximum(v0, v1)
+    visible = (right >= x_min) & (left <= x_max) & (lower >= y_min) & (upper <= y_max)
+    if not visible.any():
+        return []
+    left, right = (
+        np.clip(left[visible], x_min, x_max),
+        np.clip(right[visible], x_min, x_max),
+    )
+    upper, lower = (
+        np.clip(upper[visible], y_min, y_max),
+        np.clip(lower[visible], y_min, y_max),
+    )
+    rings = np.stack(
+        (
+            np.column_stack((left, upper)),
+            np.column_stack((right, upper)),
+            np.column_stack((right, lower)),
+            np.column_stack((left, lower)),
+        ),
+        axis=1,
+    )
+    return list(rings)
+
+
+def _bar_primitives(
+    rings: list[NDArray[np.float64]], style: BarStyle, color: ColorLike
+) -> tuple[Fill | None, Stroke | None]:
+    """Return the fill and outline of bars' rings.
+
+    Args:
+        rings: The rings in screen pixels.
+        style: Fill opacity and outline width.
+        color: The colour.
+
+    Returns:
+        ``(fill, outline)``, each ``None`` when switched off or empty.
+    """
+    if not rings:
+        return (None, None)
+    fill = Fill(tuple(rings), color, style.opacity) if style.opacity > 0 else None
+    outline = None
+    if style.edge_width > 0:
+        closed = tuple(np.vstack((ring, ring[:1])) for ring in rings)
+        outline = Stroke(closed, color, style.edge_width, 1.0)
+    return (fill, outline)
+
+
+def sequence_primitives(
+    view: View,
+    terms: Function | NDArray[np.float64],
+    start: int,
+    style: SequenceStyle,
+    color: ColorLike,
+    *,
+    baseline: float = 0.0,
+) -> tuple[Stroke | Markers, ...]:
+    """Return the stems and markers of the visible terms of a sequence.
+
+    Term ``aₙ`` gets a stem from ``(n, baseline)`` to ``(n, aₙ)`` and a marker
+    at its end. A finite sequence (an array) has its terms at ``start``,
+    ``start + 1``, ... and is drawn in full; an infinite one (a function of
+    ``n``) has a term at every ``n >= start``, thinned where the terms are
+    closer than a pixel apart (see :mod:`pygridplot.core.plot.sequences`).
+    On a log y axis, a baseline of 0 (or below) is infinitely far down, so
+    the stems reach the bottom edge; terms that cannot be shown (NaN or
+    infinite, or not positive on a log y axis) are left out.
+
+    Args:
+        view: The view being drawn.
+        terms: The terms: an array, or a function of ``n`` taking a float
+            array of whole numbers, evaluated robustly.
+        start: The index of the first term.
+        style: Stem width, marker size and shape, and opacity (its colour is
+            ignored).
+        color: The resolved colour.
+        baseline: Where the stems start (a finite number).
+
+    Returns:
+        The stems (one stroke per level of fade) and then the markers (one
+        primitive per level of fade); empty if nothing is visible. Where
+        several terms fall in one pixel column, their stems are drawn as one,
+        from the column's lowest point to its highest, which covers exactly
+        what they cover together: so a dense sequence costs one stem per
+        pixel, however many terms it has. Every term keeps its marker.
+    """
+    reach = max(style.radius, style.width / 2) + CLIP_MARGIN_PX
+    if callable(terms):
+        lattice = sequence_lattice(view, start, reach)
+        if lattice is None:
+            return ()
+        n, fade = lattice.n, lattice.fade
+        with np.errstate(all="ignore"), warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            values = evaluate_quietly(terms, n.astype(np.float64))
+    else:
+        visible = visible_indices(view, start, reach)
+        if visible is None:
+            return ()
+        first, last = visible[0], min(visible[1], start + terms.shape[0] - 1)
+        if last < first:
+            return ()
+        n = np.arange(first, last + 1, dtype=np.int64)
+        values = terms[n - start]
+        fade = np.ones(n.shape)
+    with np.errstate(all="ignore"):
+        px = (
+            view.to_screen_x(n.astype(np.float64))
+            if view.log_x
+            else view.multiples_to_screen("x", 1.0, n)
+        )
+        py = view.to_screen_y(values)
+        base = float(
+            view.to_screen_y(baseline if baseline > 0 or not view.log_y else 0.0)
+        )
+    shown = np.isfinite(px) & np.isfinite(py) & (fade > 0)
+    if not math.isnan(base) and shown.any():
+        # Clamp to just beyond the plane: a term (or a baseline of 0 on a log
+        # y axis) far off the top or bottom still has its stem run off the edge.
+        top, bottom = view.rect.top - 0.5 - reach, view.rect.bottom - 0.5 + reach
+        py = np.clip(py, top, bottom)
+        base = min(max(base, top), bottom)
+        outside = ((py <= top) & (base <= top)) | ((py >= bottom) & (base >= bottom))
+        shown &= ~outside
+    if not shown.any():
+        return ()
+    px, py, fade = px[shown], py[shown], fade[shown]
+    strokes: list[Stroke | Markers] = []
+    markers: list[Stroke | Markers] = []
+    for level in np.unique(fade)[::-1]:  # the most faded in first
+        group = fade == level
+        x, y = px[group], py[group]
+        opacity = style.opacity * float(level)
+        if style.width > 0:
+            strokes.append(Stroke(_stems(x, y, base), color, style.width, opacity))
+        if style.radius > 0:
+            markers.append(
+                Markers(np.column_stack((x, y)), style.marker, style.radius, color,
+                        opacity=opacity)
+            )  # fmt: skip
+    return (*strokes, *markers)
+
+
+def _stems(
+    x: NDArray[np.float64], y: NDArray[np.float64], base: float
+) -> NDArray[np.float64]:
+    """Return the stems from ``base`` to the terms at screen points ``(x, y)``.
+
+    Args:
+        x: Screen x of each term, increasing.
+        y: Screen y of each term.
+        base: Screen y of the stems' foot (the x axis, clamped to the plane).
+
+    Returns:
+        Two-point paths, shape ``(M, 2, 2)``: one per term, or one per pixel
+        column where several terms share it, at the middle of their x and
+        spanning all of them.
+    """
+    top, bottom = np.minimum(y, base), np.maximum(y, base)
+    column = np.floor(x + 0.5)
+    starts = np.flatnonzero(np.r_[True, column[1:] != column[:-1]])
+    if starts.size < x.size:
+        ends = np.r_[starts[1:], x.size] - 1
+        top = np.minimum.reduceat(top, starts)
+        bottom = np.maximum.reduceat(bottom, starts)
+        x = (x[starts] + x[ends]) / 2
+    return np.stack((np.column_stack((x, top)), np.column_stack((x, bottom))), axis=1)
 
 
 def _curve_stroke(
@@ -833,7 +1716,7 @@ def _side(
     part: Boundary,
     span: tuple[float, float],
     band: tuple[float, float],
-    sampling: SamplingConfig,
+    sampling: FunctionSampling,
 ) -> list[NDArray[np.float64]]:
     """Return one side of an area as pieces in transformed coordinates.
 
@@ -1026,6 +1909,83 @@ def _transformed_to_screen(
     """
     px, py = view.transformed_to_screen(points[:, 0], points[:, 1])
     return np.column_stack((px, py))
+
+
+def text_items(
+    view: View,
+    text: str,
+    position: tuple[float, float],
+    style: TextStyle,
+    color: ColorLike,
+    *,
+    font: FontSpec,
+    halo: tuple[ColorLike, int] | None,
+    measurer: TextMeasurer,
+    anchor: Anchor = "center",
+    gap: float = 0.0,
+) -> list[TextItem]:
+    r"""Return the lines of a text anchored to a world point.
+
+    See :mod:`pygridplot.core.plot.text` for how anchors, gaps and lines
+    work.
+
+    Args:
+        view: The view being drawn.
+        text: The text (``"\n"`` starts a new line).
+        position: The world point the text is anchored to.
+        style: The text's opacity (its colour and size are resolved into
+            ``color`` and ``font``).
+        color: The resolved text colour.
+        font: The font to draw with.
+        halo: The halo's colour and width, or ``None`` for no halo.
+        measurer: Measures the lines.
+        anchor: Which point of the text's box is placed at the position.
+        gap: Pixels between the position and the box, on the anchored sides.
+
+    Returns:
+        A text item per line that reaches the plane (none if the position
+        is undefined, for example negative on a log axis).
+    """
+    rect = view.rect
+    if rect.is_empty or not text:
+        return []
+    px, py = view.to_screen(float(position[0]), float(position[1]))
+    if not (math.isfinite(px) and math.isfinite(py)):
+        return []
+    # Text far off the plane is left out before it is placed, so pixel
+    # positions always stay small enough for the renderer.
+    reach = gap + 2 * max(rect.width, rect.height)
+    if not (
+        rect.left - reach <= px <= rect.right + reach
+        and rect.top - reach <= py <= rect.bottom + reach
+    ):
+        return []
+    lines = text_lines(text)
+    sizes = [measurer.measure_text(line, font) for line in lines]
+    places = place_lines((px, py), sizes, anchor, gap)
+    halo_color, halo_width = halo if halo is not None else (None, 0)
+    items = []
+    for line, size, (left, top) in zip(lines, sizes, places, strict=True):
+        if (
+            left >= rect.right
+            or left + size.width + halo_width <= rect.left - halo_width
+            or top - size.overflow_top - halo_width >= rect.bottom
+            or top + size.height + size.descent + halo_width <= rect.top
+        ):
+            continue  # entirely outside the plane
+        items.append(
+            TextItem(
+                text=line,
+                left=left,
+                top=top,
+                font=font,
+                color=color,
+                opacity=style.opacity,
+                halo_color=halo_color,
+                halo_width=halo_width,
+            )
+        )
+    return items
 
 
 def _to_screen(view: View, points: NDArray[np.float64]) -> NDArray[np.float64]:

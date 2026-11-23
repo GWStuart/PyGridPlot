@@ -1,7 +1,7 @@
 """Framing a view: initial ranges, the home view, and switching axis kinds.
 
 A plane is usually told what to show as world ranges
-(``Plane(x_range=..., y_range=...)``), but ranges can only be turned into a
+(``Grid(x_range=..., y_range=...)``), but ranges can only be turned into a
 centre and scale once the plane knows its size in pixels. An automatic
 plane (one that fills whatever surface it is drawn on) only learns its real
 size when it is first drawn: the window may not exist yet, or may still
@@ -16,7 +16,7 @@ change size. :class:`ViewFraming` takes care of that:
   updates the equal-aspect setting and makes the result the new home view.
 
 It works on a :class:`~pygridplot.core.view.View` only, so it is pure and
-tested directly; :class:`pygridplot.Plane` delegates to it.
+tested directly; :class:`pygridplot.Grid` delegates to it.
 """
 
 from __future__ import annotations

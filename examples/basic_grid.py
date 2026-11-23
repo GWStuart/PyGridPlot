@@ -17,7 +17,7 @@ def main() -> None:
     pygame.init()
     screen = pygame.display.set_mode((960, 640), pygame.RESIZABLE)
     pygame.display.set_caption("PyGridPlot: basic grid")
-    plane = pgp.Plane()  # rect=None: fill the window and follow resizes
+    grid = pgp.Grid()  # rect=None: fill the window and follow resizes
     clock = pygame.time.Clock()
 
     running = True
@@ -25,9 +25,9 @@ def main() -> None:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 running = False
-            plane.handle_event(event)
+            grid.handle_event(event)
 
-        plane.draw_grid(screen)
+        grid.draw(screen)
         pygame.display.flip()
         clock.tick(60)
     pygame.quit()

@@ -16,7 +16,7 @@ SIDEBAR_WIDTH = 260
 MARGIN = 16
 
 
-def plane_rect(screen: pygame.Surface) -> pygame.Rect:
+def grid_rect(screen: pygame.Surface) -> pygame.Rect:
     """Return the rectangle the plane occupies for the current window size.
 
     Args:
@@ -35,19 +35,19 @@ def plane_rect(screen: pygame.Surface) -> pygame.Rect:
 
 
 def draw_sidebar(
-    screen: pygame.Surface, font: pygame.font.Font, plane: pgp.Plane
+    screen: pygame.Surface, font: pygame.font.Font, grid: pgp.Grid
 ) -> None:
     """Draw the sidebar with the cursor's world coordinates.
 
     Args:
         screen: The display surface.
         font: Font for the sidebar text.
-        plane: The embedded plane.
+        grid: The embedded plane.
     """
     mx, my = pygame.mouse.get_pos()
     lines = ["Embedded plane", ""]
-    if plane.rect.contains_point(mx, my):
-        x, y = plane.to_world(mx, my)
+    if grid.rect.contains_point(mx, my):
+        x, y = grid.to_world(mx, my)
         lines += [f"x = {x:.6g}", f"y = {y:.6g}"]
     else:
         lines += ["(move the mouse", " over the plane)"]
@@ -63,7 +63,7 @@ def main() -> None:
     screen = pygame.display.set_mode((1100, 680), pygame.RESIZABLE)
     pygame.display.set_caption("PyGridPlot: embedded plane")
     font = pygame.font.Font(bundled_font_path(), 16)
-    plane = pgp.Plane(plane_rect(screen))
+    grid = pgp.Grid(grid_rect(screen))
     clock = pygame.time.Clock()
 
     running = True
@@ -72,13 +72,13 @@ def main() -> None:
             if event.type == pygame.QUIT:
                 running = False
             elif event.type == pygame.WINDOWSIZECHANGED:
-                plane.rect = plane_rect(screen)
-            plane.handle_event(event)
+                grid.rect = grid_rect(screen)
+            grid.handle_event(event)
 
         screen.fill((48, 52, 62))
-        draw_sidebar(screen, font, plane)
-        plane.draw_grid(screen)
-        r = plane.rect
+        draw_sidebar(screen, font, grid)
+        grid.draw(screen)
+        r = grid.rect
         border = pygame.Rect(r.x - 1, r.y - 1, r.width + 2, r.height + 2)
         pygame.draw.rect(screen, (24, 26, 31), border, 1)
         pygame.display.flip()

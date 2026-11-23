@@ -3,9 +3,9 @@
 Either axis of a plane, or both, can be logarithmic (base 10):
 
 ```python
-plane = pgp.Plane(log_x=True, log_y=True)                            # log-log
-plane = pgp.Plane(log_y=True, x_range=(0, 10), y_range=(0.1, 1e5))  # semi-log y
-plane = pgp.Plane(log_x=True, x_range=(10, 1e5), y_range=(-60, 10))  # semi-log x
+grid = pgp.Grid(log_x=True, log_y=True)                            # log-log
+grid = pgp.Grid(log_y=True, x_range=(0, 10), y_range=(0.1, 1e5))   # semi-log y
+grid = pgp.Grid(log_x=True, x_range=(10, 1e5), y_range=(-60, 10))  # semi-log x
 ```
 
 On a log axis equal distances are equal *ratios*: every decade (1 to 10,
@@ -56,7 +56,7 @@ sooner, change the theme's [number format](styles-and-themes.md#number-formats):
 from dataclasses import replace
 
 fmt = pgp.NumberFormat(sci_large_exponent=4, sci_small_exponent=-3)
-plane.theme = replace(plane.theme, number_format=fmt)   # 1000, then 10⁴
+grid.theme = replace(grid.theme, number_format=fmt)   # 1000, then 10⁴
 ```
 
 ## Plotting on log axes
@@ -76,11 +76,11 @@ plane.theme = replace(plane.theme, number_format=fmt)   # 1000, then 10⁴
 
 ## Switching at run time
 
-`plane.log_x` and `plane.log_y` can be assigned at any time, for example
+`grid.log_x` and `grid.log_y` can be assigned at any time, for example
 from a key press:
 
 ```python
-plane.log_y = not plane.log_y
+grid.log_y = not grid.log_y
 ```
 
 The visible range of the axis is kept where the new kind of axis can show

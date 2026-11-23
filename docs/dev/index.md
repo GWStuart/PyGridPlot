@@ -23,6 +23,8 @@ that were tried and deliberately removed.
    documentation checks, and the visual and benchmark tools.
 7. [Extending PyGridPlot](extending.md): recipes for new kinds of plots,
    axes, markers, theme options and backends, and the coding conventions.
+8. [Releasing](releasing.md): continuous integration, packaging, and the
+   steps to publish a version on PyPI.
 
 Every module, class and function also has a docstring explaining what it
 does and why, so the code itself is the detailed reference; these pages
@@ -33,7 +35,7 @@ give the overview and the reasoning that spans modules.
 ```bash
 python -m venv venv && source venv/bin/activate
 pip install -e ".[dev]"
-pytest                                   # ~900 tests, about 25 s, headless
+pytest                                   # ~1300 tests, about 40 s, headless
 ruff check . && ruff format --check .    # lint and formatting
 mypy                                     # strict type checking of src/
 python scripts/build_api_docs.py         # after changing a public docstring

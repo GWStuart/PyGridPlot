@@ -13,9 +13,17 @@ The rules follow the conventions of graphing calculators such as Desmos:
   readable.
 * Zero is labelled once, at the bottom-left of the origin. The label stays
   while at least one axis is on screen (then it labels that axis line).
+* Axis titles sit at the axes' positive ends, on the side away from the
+  tick labels, as in textbook diagrams: the x axis' title right-aligned
+  at the right edge, just **above** the axis, and the y axis' title at
+  the top edge, just **right** of the axis. They are pushed and pinned
+  like the labels, so they stay on screen with their axes off it; the x
+  title rides above the row of pinned x labels when the axis is below
+  the plane.
 * Labels fade out as they come close to labels with a higher priority
-  (x labels, then the ``0``, then y labels) instead of overlapping them,
-  which matters in corners when both axes are pinned.
+  (the titles, x before y, then x labels, then the ``0``, then y labels)
+  instead of overlapping them, which matters in corners when both axes
+  are pinned.
 
 All positions are snapped with :mod:`pygridplot.core.pixels`, using the
 same rules the renderer uses to draw lines. A label therefore sits a fixed
@@ -247,6 +255,109 @@ def place_origin_label(
         The placed label.
     """
     return PlacedLabel(text, y_label_left(axis_x, rect, size.width, spacing), top, size)
+
+
+def title_box(size: TextSize) -> TextSize:
+    """Return a title's size with its descent counted in its box.
+
+    Titles are words, whose letters (g, y, brackets) reach below the
+    baseline, so they keep clear of the axis and other labels by their
+    whole height; tick labels are digits, which never do.
+
+    Args:
+        size: The title's measured size.
+
+    Returns:
+        The size of the box the title occupies.
+    """
+    return replace(size, height=size.height + size.descent, descent=0)
+
+
+def place_x_title(
+    text: LabelText,
+    size: TextSize,
+    axis_y: float,
+    rect: ScreenRect,
+    spacing: LabelSpacing,
+    clearance: int,
+    row_top: int | None,
+    labels_clear: int = 0,
+) -> PlacedLabel:
+    """Place the x axis' title at the axis' right end, just above it.
+
+    Args:
+        text: The title.
+        size: Its measured size.
+        axis_y: Continuous screen y of the x axis (may be off screen).
+        rect: The plane's screen rectangle.
+        spacing: Gap, margin and axis-width settings.
+        clearance: Extra pixels to keep from the axis (to clear an
+            arrowhead).
+        row_top: The top of the x labels' row, superscripts included, or
+            ``None`` without tick labels. The title stays above it, so with
+            the axis below the plane it rides on the row of pinned labels.
+        labels_clear: How far above the row the title stays at least: far
+            enough that labels do not fade for it (see
+            :func:`fade_collisions`). Only pinned to the top edge does the
+            title come closer, and the labels near it then fade.
+
+    Returns:
+        The placed title, its box including its descent (see
+        :func:`title_box`).
+    """
+    box = title_box(size)
+    bottom = line_start(axis_y, spacing.axis_width) - spacing.gap - clearance
+    if row_top is not None:
+        bottom = min(bottom, row_top - max(spacing.gap, labels_clear))
+    margin = spacing.edge_margin
+    top = _clamp(
+        bottom - box.height,
+        rect.top + margin + size.overflow_top,
+        rect.bottom - margin - box.height,
+    )
+    right_aligned = rect.right - margin - size.width
+    left = _clamp(right_aligned, rect.left + margin, right_aligned)
+    return PlacedLabel(text, left, top, box)
+
+
+def place_y_title(
+    text: LabelText,
+    size: TextSize,
+    axis_x: float,
+    rect: ScreenRect,
+    spacing: LabelSpacing,
+    clearance: int,
+    labels_clear: int = 0,
+) -> PlacedLabel:
+    """Place the y axis' title at the axis' top end, just right of it.
+
+    Args:
+        text: The title.
+        size: Its measured size.
+        axis_x: Continuous screen x of the y axis (may be off screen).
+        rect: The plane's screen rectangle.
+        spacing: Gap, margin and axis-width settings.
+        clearance: Extra pixels to keep from the axis (to clear an
+            arrowhead).
+        labels_clear: How far right of the y labels (which end ``gap``
+            pixels left of the axis) the title stays at least, so that they
+            do not fade for it.
+
+    Returns:
+        The placed title, its box including its descent (see
+        :func:`title_box`).
+    """
+    box = title_box(size)
+    first_col = line_start(axis_x, spacing.axis_width)
+    beside = max(
+        first_col + spacing.axis_width + spacing.gap + clearance,
+        first_col - spacing.gap + labels_clear,
+    )
+    margin = spacing.edge_margin
+    left = _clamp(beside, rect.left + margin, rect.right - margin - size.width)
+    highest = rect.top + margin + size.overflow_top
+    top = _clamp(highest, highest, rect.bottom - margin - box.height)
+    return PlacedLabel(text, left, top, box)
 
 
 def separation(a: PlacedLabel, b: PlacedLabel, *, exact: bool = False) -> float:

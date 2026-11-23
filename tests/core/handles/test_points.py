@@ -136,12 +136,16 @@ def test_curves_can_change_and_keep_the_parameter() -> None:
 
 def test_curves_follow_log_axes_as_seen() -> None:
     view = make_view(log_x=True, log_y=True, center=(1.0, 1.0), scale=100.0)
-    # y = x², a straight line on log-log axes, for x in [0.1, 10].
+    # y = x², a straight line on log-log axes, for x in [0.1, 10]: a graph,
+    # so a dragged point goes to the cursor's x, half a decade right.
     point = DraggablePoint(view, curve=(lambda t: t, lambda t: t**2, (0.1, 10.0)))
-    point.drag_to(450, 200)  # perpendicular foot on the line of slope 2
+    point.drag_to(450, 50)
     assert point.y == pytest.approx(point.x**2)
-    log_x = math.log10(point.x)
-    assert log_x == pytest.approx((0.5 + 2 * 1.0) / 5, abs=1e-4)
+    assert math.log10(point.x) == pytest.approx(0.5, abs=1e-4)  # 0.01 px
+    # Placing it from code still takes the nearest point (the perpendicular
+    # foot on the line of slope 2).
+    point.position = (10**0.5, 10**-1.0)
+    assert math.log10(point.x) == pytest.approx((0.5 - 2 * 1.0) / 5, abs=1e-4)
 
 
 def test_undefined_curves() -> None:
@@ -199,3 +203,57 @@ def test_remove_calls_back_once() -> None:
     point.remove()
     point.remove()
     assert removed == [point]
+
+
+# --- Graphs ---------------------------------------------------------------------
+
+
+def wavy(x: np.ndarray) -> np.ndarray:
+    """The graph of the derivatives example."""
+    return np.sin(x) + 0.3 * np.sin(2.7 * x) + 0.05 * x**2
+
+
+@settings(max_examples=60, deadline=None)
+@given(
+    height=st.floats(-280.0, 280.0),
+    start=st.floats(-7.0, 7.0),
+    moves=st.lists(st.floats(-40.0, 40.0), min_size=1, max_size=20),
+)
+def test_points_on_graphs_stay_level_with_the_cursor(
+    height: float, start: float, moves: list[float]
+) -> None:
+    """Wherever the cursor is, above or below, the point is at its x: no lag, no jumps.
+
+    Following the nearest point instead, a point dragged sideways across a
+    wavy graph lagged up to 190 px behind and jumped up to 290 px at once.
+    """
+    view = make_view()
+    point = DraggablePoint(view, curve=(lambda t: t, wavy, (-10.0, 10.0)), t=start)
+    cx = float(view.to_screen(start, 0.0)[0])
+    for move in moves:
+        cx = min(max(cx + move, 0.0), 799.0)
+        point.drag_to(cx, 300 + height)
+        assert float(view.to_screen(point.x, point.y)[0]) == pytest.approx(cx, abs=0.05)
+        assert point.y == pytest.approx(float(wavy(np.array([point.x]))[0]))
+
+
+def test_points_on_graphs_pass_through_jumps_and_stop_at_domain_edges() -> None:
+    view = make_view()
+    steps = DraggablePoint(view, curve=(lambda t: t, np.floor, (-5.0, 5.0)), t=0.5)
+    steps.drag_to(view.to_screen(1.5, 0.0)[0], 300)
+    assert (steps.x, steps.y) == pytest.approx((1.5, 1.0))
+    root = DraggablePoint(view, curve=(lambda t: t, np.sqrt, (-5.0, 5.0)), t=1.0)
+    root.drag_to(view.to_screen(-2.0, 0.0)[0], 300)  # where sqrt is undefined
+    assert root.x == pytest.approx(0.0, abs=1e-3)
+    assert root.visible
+
+
+def test_sideways_graphs_follow_the_cursor_y() -> None:
+    view = make_view()
+    point = DraggablePoint(
+        view, curve=(lambda t: t**2, lambda t: t, (-3.0, 3.0)), t=1.0
+    )
+    _, py = view.to_screen(0.0, -1.5)
+    point.drag_to(700, py)  # far to the right, but at y = -1.5
+    assert point.y == pytest.approx(-1.5, abs=1e-3)
+    assert point.x == pytest.approx(2.25, abs=1e-2)

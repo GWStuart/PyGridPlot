@@ -33,49 +33,47 @@ RED = (200, 50, 60)
 class Wave:
     """A sine wave set by four sliders in two corners."""
 
-    def __init__(self, plane: pgp.Plane) -> None:
-        self.a = plane.slider("a", (0.0, 3.0), value=1.5, color=BLUE)
-        self.k = plane.slider("k", (0.1, 10.0), value=1.0, log=True, color=BLUE)
-        self.phase = plane.slider(
+    def __init__(self, grid: pgp.Grid) -> None:
+        self.a = grid.slider("a", (0.0, 3.0), value=1.5, color=BLUE)
+        self.k = grid.slider("k", (0.1, 10.0), value=1.0, log=True, color=BLUE)
+        self.phase = grid.slider(
             "φ", (-math.pi, math.pi), value=0.0, step=math.pi / 12, color=BLUE
         )
-        self.c = plane.slider(
-            "c", (-3.0, 3.0), value=0.0, color=RED, corner="top-right"
-        )
+        self.c = grid.slider("c", (-3.0, 3.0), value=0.0, color=RED, corner="top-right")
         self.sliders = (self.a, self.k, self.phase, self.c)
 
-    def draw(self, plane: pgp.Plane, screen: pygame.Surface) -> list[str]:
+    def draw(self, grid: pgp.Grid, screen: pygame.Surface) -> list[str]:
         """Draw the set; return the caption lines."""
         a, k, phase, c = (s.value for s in self.sliders)
-        plane.plot(screen, lambda x: a * np.sin(k * x + phase) + c, color=BLUE)
-        plane.plot(screen, lambda x: 0 * x + c, color=RED, width=1.5, opacity=0.6)
-        plane.draw_draggables(screen, *self.sliders)
+        grid.plot(screen, lambda x: a * np.sin(k * x + phase) + c, color=BLUE)
+        grid.plot(screen, lambda x: 0 * x + c, color=RED, width=1.5, opacity=0.6)
+        grid.draw_controls(screen, *self.sliders)
         return [f"y = {a:g} sin({k:g} x + {phase / math.pi:.3g}π) + {c:g}"]
 
 
 class Lissajous:
     """A Lissajous figure with whole-number frequencies."""
 
-    def __init__(self, plane: pgp.Plane) -> None:
-        self.p = plane.slider("p", (1, 9), value=3, step=1)
-        self.q = plane.slider("q", (1, 9), value=2, step=1)
-        self.delta = plane.slider("δ", (0.0, math.pi), value=math.pi / 2)
+    def __init__(self, grid: pgp.Grid) -> None:
+        self.p = grid.slider("p", (1, 9), value=3, step=1)
+        self.q = grid.slider("q", (1, 9), value=2, step=1)
+        self.delta = grid.slider("δ", (0.0, math.pi), value=math.pi / 2)
         self.sliders = (self.p, self.q, self.delta)
         self.changes = 0  # how many frames a slider had moved in
 
-    def draw(self, plane: pgp.Plane, screen: pygame.Surface) -> list[str]:
+    def draw(self, grid: pgp.Grid, screen: pygame.Surface) -> list[str]:
         """Draw the set; return the caption lines."""
         p, q, delta = self.p.value, self.q.value, self.delta.value
         if any(s.moved for s in self.sliders):  # true for one frame after a move
             self.changes += 1
-        plane.parametric(
+        grid.parametric(
             screen,
             lambda t: 4 * np.sin(p * t + delta),
             lambda t: 4 * np.sin(q * t),
             (0, 2 * math.pi),
             color=RED,
         )
-        plane.draw_draggables(screen, *self.sliders)
+        grid.draw_controls(screen, *self.sliders)
         ratio = math.gcd(p, q)  # p and q are ints, ready for math.gcd
         return [
             f"x = sin({p} t + {delta:.3g}), y = sin({q} t): "
@@ -110,8 +108,8 @@ def main() -> None:
     screen = pygame.display.set_mode((1100, 720), pygame.RESIZABLE)
     pygame.display.set_caption("PyGridPlot: sliders")
     font = pygame.font.Font(bundled_font_path(), 14)
-    plane = pgp.Plane(x_range=(-8, 8))
-    sets: list[Wave | Lissajous] = [Wave(plane), Lissajous(plane)]
+    grid = pgp.Grid(x_range=(-8, 8))
+    sets: list[Wave | Lissajous] = [Wave(grid), Lissajous(grid)]
     current = 0
     clock = pygame.time.Clock()
 
@@ -122,10 +120,10 @@ def main() -> None:
                 running = False
             elif event.type == pygame.KEYDOWN and event.key == pygame.K_SPACE:
                 current = (current + 1) % len(sets)
-            plane.handle_event(event)  # sliders first, then pan and zoom
+            grid.handle_event(event)  # sliders first, then pan and zoom
 
-        plane.draw_grid(screen)
-        lines = sets[current].draw(plane, screen)  # draws only its own sliders
+        grid.draw(screen)
+        lines = sets[current].draw(grid, screen)  # draws only its own sliders
         draw_caption(screen, font, [*lines, "Space: next set"])
         pygame.display.flip()
         clock.tick(60)

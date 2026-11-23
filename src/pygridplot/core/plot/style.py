@@ -1,11 +1,11 @@
-"""Styles for plotted objects: lines, points, polygons, shaded areas and arrows.
+"""Styles for plotted objects: lines, points, polygons, areas, arrows, bars, text.
 
 Every drawing call accepts keyword arguments (``color=``, ``width=``, ...)
 and, optionally, a reusable style dataclass. Keyword arguments override the
 style's fields, so a shared style can be tweaked per call::
 
     thick = LineStyle(width=4)
-    plane.plot(screen, f, style=thick, color="crimson")
+    grid.plot(screen, f, style=thick, color="crimson")
 
 A colour of ``None`` means "take the next colour from the theme's palette"
 (see :attr:`pygridplot.core.grid.theme.GridTheme.palette`).
@@ -32,7 +32,15 @@ from pygridplot.core.primitives import (
 )
 
 StyleT = TypeVar(
-    "StyleT", "LineStyle", "PointStyle", "PolygonStyle", "FillStyle", "ArrowStyle"
+    "StyleT",
+    "LineStyle",
+    "PointStyle",
+    "PolygonStyle",
+    "FillStyle",
+    "ArrowStyle",
+    "SequenceStyle",
+    "BarStyle",
+    "TextStyle",
 )
 
 
@@ -96,13 +104,18 @@ class PointStyle:
     Attributes:
         color: Fill colour, or ``None`` for the next palette colour.
         radius: Size of the marker in pixels (the radius of a circle; other
-            shapes have about the same area as that circle).
+            shapes have about the same area as that circle). ``0`` draws no
+            marker, for error bars alone.
         marker: The marker shape.
         edge_color: Colour of an outline drawn just outside the marker, or
             ``None`` for no outline. A background-coloured outline separates
             points from the curves they sit on.
         edge_width: Thickness of the outline in pixels.
         opacity: Opacity in ``[0, 1]``.
+        error_width: Thickness of the error bars in pixels (see
+            :meth:`~pygridplot.Grid.points`).
+        error_cap: Width of the caps across the ends of the error bars, in
+            pixels (``0`` for none).
     """
 
     color: ColorLike | None = None
@@ -111,11 +124,15 @@ class PointStyle:
     edge_color: ColorLike | None = None
     edge_width: float = 1.5
     opacity: float = 1.0
+    error_width: float = 1.5
+    error_cap: float = 8.0
 
     def __post_init__(self) -> None:
         """Validate the fields."""
-        _check_size("radius", self.radius, allow_zero=False)
+        _check_size("radius", self.radius, allow_zero=True)
         _check_size("edge_width", self.edge_width, allow_zero=True)
+        _check_size("error_width", self.error_width, allow_zero=False)
+        _check_size("error_cap", self.error_cap, allow_zero=True)
         _check_opacity("opacity", self.opacity)
         if self.marker not in MARKER_SHAPES:
             msg = f"marker must be one of {MARKER_SHAPES}, got {self.marker!r}"
@@ -159,10 +176,10 @@ class PolygonStyle:
 class FillStyle:
     """How a shaded area is drawn: a translucent fill, without an outline.
 
-    Used by :meth:`~pygridplot.Plane.fill_between` and
-    :meth:`~pygridplot.Plane.inequality`. Their boundaries are curves of
-    their own, drawn with :meth:`~pygridplot.Plane.plot` or
-    :meth:`~pygridplot.Plane.implicit` when wanted.
+    Used by :meth:`~pygridplot.Grid.fill_between` and
+    :meth:`~pygridplot.Grid.inequality`. Their boundaries are curves of
+    their own, drawn with :meth:`~pygridplot.Grid.plot` or
+    :meth:`~pygridplot.Grid.implicit` when wanted.
 
     Attributes:
         color: Fill colour. ``None`` takes the next palette colour.
@@ -181,8 +198,8 @@ class FillStyle:
 class ArrowStyle:
     """How arrows are drawn: a straight shaft with a triangular head.
 
-    Used by :meth:`~pygridplot.Plane.arrow` and
-    :meth:`~pygridplot.Plane.vector_field`. Sizes are in pixels, so arrows
+    Used by :meth:`~pygridplot.Grid.arrow` and
+    :meth:`~pygridplot.Grid.vector_field`. Sizes are in pixels, so arrows
     look the same at every zoom level; only where they start and end is in
     world units.
 
@@ -207,6 +224,104 @@ class ArrowStyle:
         _check_opacity("opacity", self.opacity)
         if self.head_size is not None:
             _check_size("head_size", self.head_size, allow_zero=True)
+
+
+@dataclass(frozen=True, slots=True)
+class SequenceStyle:
+    """How the terms of a sequence are drawn: a stem and a marker each.
+
+    Used by :meth:`~pygridplot.Grid.sequence`. Each term ``aₙ`` gets a
+    vertical stem from the x axis up (or down) to ``(n, aₙ)``, and a marker
+    there. Sizes are in pixels, so they look the same at every zoom level.
+
+    Attributes:
+        color: Colour of the stems and markers, or ``None`` for the next
+            palette colour.
+        width: Thickness of the stems in pixels (``0`` for markers alone).
+        radius: Size of the markers in pixels, as for
+            :class:`PointStyle` (``0`` for stems alone).
+        marker: The marker shape.
+        opacity: Opacity in ``[0, 1]``.
+    """
+
+    color: ColorLike | None = None
+    width: float = 2.0
+    radius: float = 3.5
+    marker: MarkerShape = "circle"
+    opacity: float = 1.0
+
+    def __post_init__(self) -> None:
+        """Validate the fields."""
+        _check_size("width", self.width, allow_zero=True)
+        _check_size("radius", self.radius, allow_zero=True)
+        _check_opacity("opacity", self.opacity)
+        if self.width == 0 and self.radius == 0:
+            msg = "width and radius cannot both be 0: nothing would be drawn"
+            raise ValueError(msg)
+        if self.marker not in MARKER_SHAPES:
+            msg = f"marker must be one of {MARKER_SHAPES}, got {self.marker!r}"
+            raise ValueError(msg)
+
+
+@dataclass(frozen=True, slots=True)
+class BarStyle:
+    """How bars are drawn: a translucent fill with an outline.
+
+    Used by :meth:`~pygridplot.Grid.bars` and
+    :meth:`~pygridplot.Grid.histogram`. The bars themselves are in world
+    units (they grow and shrink with the zoom); only the outline is in
+    pixels.
+
+    Attributes:
+        color: Colour of the fill and the outline, or ``None`` for the next
+            palette colour.
+        opacity: Opacity of the fill in ``[0, 1]``; the outline is opaque.
+        edge_width: Thickness of the outline in pixels (``0`` for none).
+    """
+
+    color: ColorLike | None = None
+    opacity: float = 0.5
+    edge_width: float = 1.5
+
+    def __post_init__(self) -> None:
+        """Validate the fields."""
+        _check_opacity("opacity", self.opacity)
+        _check_size("edge_width", self.edge_width, allow_zero=True)
+
+
+@dataclass(frozen=True, slots=True)
+class TextStyle:
+    """How text is drawn by :meth:`~pygridplot.Grid.text`.
+
+    Text uses the theme's label font. Unlike plots, it never takes palette
+    colours, so labelling a plot does not change the colours of the plots
+    drawn after it: pass the plot's colour to match it.
+
+    Attributes:
+        color: Text colour, or ``None`` for the theme's label colour.
+        size: Font size in points (a whole number), or ``None`` for the
+            theme's label size.
+        opacity: Opacity in ``[0, 1]``.
+        halo: Whether to outline the glyphs in the background colour (the
+            theme's label halo), so the text stays readable over grid lines
+            and curves.
+    """
+
+    color: ColorLike | None = None
+    size: int | None = None
+    opacity: float = 1.0
+    halo: bool = True
+
+    def __post_init__(self) -> None:
+        """Validate the fields."""
+        _check_opacity("opacity", self.opacity)
+        if self.size is not None and (
+            isinstance(self.size, bool)
+            or not isinstance(self.size, int)
+            or self.size < 1
+        ):
+            msg = f"size must be a positive whole number of points, got {self.size!r}"
+            raise ValueError(msg)
 
 
 def with_overrides(style: StyleT, **overrides: object) -> StyleT:
@@ -239,7 +354,7 @@ class ColorCycle:
 
     In immediate mode everything is drawn again every frame, so the cycle
     must restart every frame for each object to keep its colour.
-    :meth:`pygridplot.Plane.draw_grid` restarts it automatically.
+    :meth:`pygridplot.Grid.draw` restarts it automatically.
 
     Args:
         palette: The colours to cycle through (at least one).

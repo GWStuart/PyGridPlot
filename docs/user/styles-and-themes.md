@@ -9,11 +9,11 @@ default colours of plots.
 Anywhere a colour is accepted, you can use whatever pygame accepts:
 
 ```python
-plane.plot(screen, np.sin, color="crimson")             # a colour name
-plane.plot(screen, np.cos, color="#2d70b3")             # a hex string
-plane.plot(screen, np.tan, color=(46, 143, 72))         # RGB
-plane.plot(screen, np.exp, color=(200, 40, 40, 128))    # RGBA: half transparent
-plane.plot(screen, np.log, color=pygame.Color("gold"))
+grid.plot(screen, np.sin, color="crimson")             # a colour name
+grid.plot(screen, np.cos, color="#2d70b3")             # a hex string
+grid.plot(screen, np.tan, color=(46, 143, 72))         # RGB
+grid.plot(screen, np.exp, color=(200, 40, 40, 128))    # RGBA: half transparent
+grid.plot(screen, np.log, color=pygame.Color("gold"))
 ```
 
 `opacity` multiplies a colour's own alpha, so `color=(200, 40, 40, 128)`
@@ -23,12 +23,12 @@ with `opacity=0.5` is a quarter opaque.
 
 Objects drawn without a colour take the theme's palette colours in order:
 the first plot of a frame gets the first colour, the second the next, and so
-on, wrapping around after the last. `draw_grid` restarts the sequence every
+on, wrapping around after the last. `grid.draw` restarts the sequence every
 frame, so each object keeps its colour as long as you draw things in the
 same order. Objects with an explicit colour do not use up a palette slot.
 
-If you draw plots without calling `draw_grid` (on a plane whose grid you
-draw elsewhere, say), call `plane.begin_frame()` at the start of each frame
+If you draw plots without calling `grid.draw` (on a plane whose grid you
+draw elsewhere, say), call `grid.begin_frame()` at the start of each frame
 instead.
 
 The palette is part of the theme, so a custom one is a theme change:
@@ -36,7 +36,7 @@ The palette is part of the theme, so a custom one is a theme change:
 ```python
 from dataclasses import replace
 
-plane.theme = replace(pgp.LIGHT, palette=("#0072b2", "#e69f00", "#009e73", "#cc79a7"))
+grid.theme = replace(pgp.LIGHT, palette=("#0072b2", "#e69f00", "#009e73", "#cc79a7"))
 ```
 
 ## Reusable styles
@@ -46,17 +46,26 @@ a style object once and override fields per call:
 
 ```python
 thin = pgp.LineStyle(width=1.5, opacity=0.6)
-plane.plot(screen, np.sin, style=thin)
-plane.plot(screen, np.cos, style=thin, color="crimson")    # override one field
+grid.plot(screen, np.sin, style=thin)
+grid.plot(screen, np.cos, style=thin, color="crimson")    # override one field
 
 big = pgp.PointStyle(radius=7, marker="diamond", edge_color="white")
-plane.points(screen, [(0, 0), (1, 1)], style=big)
+grid.points(screen, [(0, 0), (1, 1)], style=big)
 
 hatch = pgp.PolygonStyle(fill_opacity=0.1, width=1.0, fill_rule="evenodd")
-plane.polygon(screen, [(0, 0), (2, 0), (1, 2)], style=hatch)
+grid.polygon(screen, [(0, 0), (2, 0), (1, 2)], style=hatch)
 
 pointer = pgp.ArrowStyle(width=3, head_size=14, color="crimson")
-plane.arrow(screen, (0, 0), (2, 2), style=pointer)
+grid.arrow(screen, (0, 0), (2, 2), style=pointer)
+
+bars = pgp.SequenceStyle(width=4, radius=0)          # stems alone, like bars
+grid.sequence(screen, [1, 0.5, 0.25, 0.125], style=bars)
+
+solid = pgp.BarStyle(opacity=1.0, edge_width=0)      # solid bars, no outline
+grid.bars(screen, [3, 1, 2], style=solid)
+
+note = pgp.TextStyle(size=11, color="gray")
+grid.text(screen, "an aside", (1, -1), style=note)
 ```
 
 A style replaces the method's own defaults as a whole, so
@@ -66,10 +75,13 @@ rather than the field's usual 1.5; set the fields you want in the style.
 | Style | Used by | Fields (defaults) |
 |---|---|---|
 | `LineStyle` | `plot`, `parametric`, `polar`, `implicit`, `polyline`, `slope_field` | `color=None`, `width=2.5`, `opacity=1.0` |
-| `PointStyle` | `points` | `color=None`, `radius=4.5`, `marker="circle"`, `edge_color=None`, `edge_width=1.5`, `opacity=1.0` |
+| `PointStyle` | `points` | `color=None`, `radius=4.5` (`0` for none), `marker="circle"`, `edge_color=None`, `edge_width=1.5`, `opacity=1.0`, `error_width=1.5`, `error_cap=8.0` (error bars) |
 | `PolygonStyle` | `polygon` | `color=None`, `width=2.5`, `opacity=1.0`, `fill=True`, `fill_color=None`, `fill_opacity=0.25`, `fill_rule="nonzero"` |
 | `FillStyle` | `fill_between`, `inequality` | `color=None`, `opacity=0.25` |
 | `ArrowStyle` | `arrow`, `vector_field` | `color=None`, `width=2.5`, `opacity=1.0`, `head_size=None` (in proportion to the width; `0` for none) |
+| `SequenceStyle` | `sequence` | `color=None`, `width=2.0` (stems; `0` for none), `radius=3.5` (markers; `0` for none), `marker="circle"`, `opacity=1.0` |
+| `BarStyle` | `bars`, `histogram`, `box_plot`, `violin_plot` | `color=None`, `opacity=0.5` (the fill), `edge_width=1.5` (the outline, opaque; `0` for none) |
+| `TextStyle` | `text` | `color=None` (the theme's label colour, never a palette colour), `size=None` (the theme's label size), `opacity=1.0`, `halo=True` |
 
 Styles are immutable and validated when they are created, so a mistake such
 as a negative width raises a clear `ValueError` at once rather than in the
@@ -79,14 +91,14 @@ middle of drawing. Derive variations with `dataclasses.replace`.
 
 `pgp.LIGHT` (the default) and `pgp.DARK` are ready-made. Themes are frozen
 dataclasses: derive variations with `dataclasses.replace`, and pass them to
-`Plane(theme=...)` or assign `plane.theme` at any time.
+`Grid(theme=...)` or assign `grid.theme` at any time.
 
 ```python
 from dataclasses import replace
 
-plane.theme = pgp.DARK
-plane.theme = replace(pgp.DARK, axis_color=(120, 190, 255), target_major_px=120)
-plane.theme = replace(pgp.LIGHT, show_minor=False, label_size=14)
+grid.theme = pgp.DARK
+grid.theme = replace(pgp.DARK, axis_color=(120, 190, 255), target_major_px=120)
+grid.theme = replace(pgp.LIGHT, show_minor=False, label_size=14)
 ```
 
 ### Colours and lines
@@ -99,6 +111,7 @@ plane.theme = replace(pgp.LIGHT, show_minor=False, label_size=14)
 | `label_halo_color` | `None` | Outline around label glyphs, keeping them readable over lines; `None` uses `background`. |
 | `minor_width`, `major_width`, `axis_width` | `1`, `1`, `2` | Line thickness in pixels. |
 | `show_minor`, `show_major`, `show_axes`, `show_labels` | `True` | Turn parts of the grid on or off. |
+| `show_arrows` | `False` | End each axis in an arrowhead at its positive end (see [axis titles and arrowheads](the-plane.md#axis-titles-and-arrowheads)). |
 | `palette` | six colours | Default colours for plotted objects, in order. |
 
 `DARK` changes the colours and uses a lighter palette that stands out on
@@ -120,6 +133,7 @@ its near-black background.
 |---|---|---|
 | `label_font` | `None` | `None` for the bundled DejaVu Sans, a path to a font file, or the name of a system font. |
 | `label_size` | `12` | Font size in points. |
+| `title_size` | `14` | Font size of the [axis titles](the-plane.md#axis-titles-and-arrowheads), in points. |
 | `label_halo_width` | `2` | Halo thickness in pixels (`0` turns it off). |
 | `label_gap` | `4` | Pixels between an axis and its labels. |
 | `label_edge_margin` | `4` | Margin between pinned labels and the plane's edge. |
@@ -146,5 +160,5 @@ own, so labels never change while panning across decades (see
 [Logarithmic axes](log-axes.md#labels)).
 
 ```python
-plane.theme = replace(plane.theme, number_format=pgp.NumberFormat(minus="-"))
+grid.theme = replace(grid.theme, number_format=pgp.NumberFormat(minus="-"))
 ```

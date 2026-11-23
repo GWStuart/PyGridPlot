@@ -1,7 +1,22 @@
 """Following a curve with the cursor: which point of a curve to drag to.
 
-A point dragged along a curve should stay under the cursor as closely as
-the curve allows, but a plain "nearest point of the curve" makes it jump
+**Graphs follow the cursor's x.** Most curves points are dragged along are
+graphs: ``(t, f(t))``, a cycloid, any curve that runs steadily from left to
+right (or right to left) on screen. On a graph every x has one point, and
+the point is simply the one at the cursor's x (:func:`along_axis`): it stays
+level with the cursor whatever the cursor's height, moves exactly as the
+cursor moves sideways, and passes straight through jumps. Following the
+nearest point instead makes it lag and jump on any wavy graph: as the
+cursor passes over a trough, the nearest point stays on the crest beside it
+until the next crest is clearly closer, and then jumps there.
+A curve that runs steadily up or down instead (a sideways parabola
+``(t², t)``) is a graph over y, and follows the cursor's y.
+:func:`graph_axis` tells which a sampled curve is, if either.
+
+**Other curves follow the nearest point.** A point dragged along a curve
+that turns back on itself (a circle, a spiral, a figure-eight) should stay
+under the cursor as closely as the curve allows, but a plain "nearest point
+of the curve" makes it jump
 wherever two parts of the curve are about equally close: at the crossing of
 a figure-eight, between the turns of a spiral, between nearby branches.
 :func:`nearest_on_curve` therefore follows the curve *from where the point
@@ -21,6 +36,7 @@ and logarithmic axes alike.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Literal
 
 import numpy as np
 from numpy.typing import NDArray
@@ -92,6 +108,80 @@ def nearest_on_curve(
     j = _descend(distance, i, chains[k].cyclic)
     local = (float(distance[j]), float(t[j]))
     return nearest[1] if nearest[0] < local[0] - switch_px else local[1]
+
+
+def graph_axis(pieces: list[CurvePiece]) -> Literal["x", "y"] | None:
+    """Return whether a sampled curve is a graph over screen x, or over y.
+
+    It is a graph over x if its screen x keeps moving the same way, never
+    turning back, through all of its pieces in order (gaps between pieces,
+    at jumps and domain edges, included): every x is then reached at most
+    once. Repeated samples do not count. A curve that is a graph over both
+    (a line, ``(t, eᵗ)``) is taken over x.
+
+    Args:
+        pieces: The curve sampled on screen, in order of the parameter.
+
+    Returns:
+        ``"x"``, ``"y"`` or ``None``.
+    """
+    points = [p for p, _ in pieces if p.shape[0] >= 1]
+    if not points:
+        return None
+    joined = np.concatenate(points)
+    steps = np.diff(joined, axis=0)
+    steps = steps[np.any(steps != 0.0, axis=1)]  # repeated samples
+    if steps.shape[0] == 0:
+        return None
+    if _one_way(steps[:, 0]):
+        return "x"
+    if _one_way(steps[:, 1]):
+        return "y"
+    return None
+
+
+def _one_way(steps: NDArray[np.float64]) -> bool:
+    """Whether a coordinate's steps along a curve all go the same way."""
+    return bool(np.all(steps > 0.0) or np.all(steps < 0.0))
+
+
+def along_axis(
+    pieces: list[CurvePiece], target: tuple[float, float], axis: Literal["x", "y"]
+) -> float | None:
+    """Return the parameter of the point of a graph level with the target.
+
+    Args:
+        pieces: The curve sampled on screen, a graph over ``axis`` (see
+            :func:`graph_axis`).
+        target: Where the cursor wants the point, in screen pixels.
+        axis: ``"x"`` for the point at the target's x, ``"y"`` at its y.
+
+    Returns:
+        The parameter, interpolated along the sampled segment the target's
+        coordinate falls in. Beyond the ends of the curve, or in a gap
+        between its pieces (a jump, a pole, a stretch where it is undefined),
+        the parameter of the nearest end, measured along the axis. ``None``
+        if the curve has no points.
+    """
+    column = 0 if axis == "x" else 1
+    parts = [(p, t) for p, t in pieces if p.shape[0] >= 1]
+    if not parts:
+        return None
+    c = float(target[column])
+    starts = np.concatenate([p[:-1, column] for p, _ in parts])
+    ends = np.concatenate([p[1:, column] for p, _ in parts])
+    t_starts = np.concatenate([t[:-1] for _, t in parts])
+    t_ends = np.concatenate([t[1:] for _, t in parts])
+    low, high = np.minimum(starts, ends), np.maximum(starts, ends)
+    inside = np.flatnonzero((low <= c) & (c <= high) & (high > low))
+    if inside.size:
+        i = int(inside[0])
+        s = (c - starts[i]) / (ends[i] - starts[i])
+        return float(t_starts[i] + s * (t_ends[i] - t_starts[i]))
+    # Not on the curve: the end of a piece nearest along the axis.
+    coords = np.concatenate([p[[0, -1], column] for p, _ in parts])
+    params = np.concatenate([t[[0, -1]] for _, t in parts])
+    return float(params[int(np.argmin(np.abs(coords - c)))])
 
 
 def _chains(pieces: list[CurvePiece], closed: bool) -> list[_Chain]:

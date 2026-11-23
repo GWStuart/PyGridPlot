@@ -61,33 +61,33 @@ def regular_polygon(
     return np.column_stack((center[0] + 1.2 * np.cos(a), center[1] + 1.2 * np.sin(a)))
 
 
-def draw_scene(plane: pgp.Plane, screen: pygame.Surface, t: float) -> None:
+def draw_scene(grid: pgp.Grid, screen: pygame.Surface, t: float) -> None:
     """Draw every shape of the example.
 
     Args:
-        plane: The plane to draw on.
+        grid: The plane to draw on.
         screen: The display surface.
         t: Animation time in seconds.
     """
     for i, marker in enumerate(MARKERS):
         x = -7 + 1.5 * i
-        plane.points(screen, (x, 4.5), marker=marker, radius=7)
-        plane.points(
+        grid.points(screen, (x, 4.5), marker=marker, radius=7)
+        grid.points(
             screen, (x, 3.3), marker=marker, radius=7, edge_color="white", edge_width=2
         )
-    plane.polygon(screen, star((3.5, 3.0), 1.8), fill_rule="nonzero")
-    plane.polygon(screen, star((7.5, 3.0), 1.8), fill_rule="evenodd")
-    plane.polygon(screen, regular_polygon(6, (-4.0, -2.0), t * 0.7), fill_opacity=0.35)
+    grid.polygon(screen, star((3.5, 3.0), 1.8), fill_rule="nonzero")
+    grid.polygon(screen, star((7.5, 3.0), 1.8), fill_rule="evenodd")
+    grid.polygon(screen, regular_polygon(6, (-4.0, -2.0), t * 0.7), fill_opacity=0.35)
     theta = np.linspace(0, 6 * np.pi, 400)
     spiral = np.column_stack(
         (3.5 + 0.12 * theta * np.cos(theta), -2.5 + 0.12 * theta * np.sin(theta))
     )
-    plane.polyline(screen, spiral, width=2)
+    grid.polyline(screen, spiral, width=2)
     xs = np.linspace(-7.5, 7.5, 61)
     wave = np.column_stack((xs, -4.6 + 0.4 * np.sin(1.5 * xs - 2 * t)))
-    plane.polyline(screen, wave, width=1.5, opacity=0.5)
-    plane.points(screen, wave, radius=3)
-    plane.points(screen, (math.cos(t), math.sin(t)), radius=6, edge_color="white")
+    grid.polyline(screen, wave, width=1.5, opacity=0.5)
+    grid.points(screen, wave, radius=3)
+    grid.points(screen, (math.cos(t), math.sin(t)), radius=6, edge_color="white")
 
 
 def main() -> None:
@@ -95,7 +95,7 @@ def main() -> None:
     pygame.init()
     screen = pygame.display.set_mode((1100, 720), pygame.RESIZABLE)
     pygame.display.set_caption("PyGridPlot: points, polylines and polygons")
-    plane = pgp.Plane(scale=55)
+    grid = pgp.Grid(scale=55)
     clock = pygame.time.Clock()
     t = 0.0
     paused = False
@@ -107,12 +107,12 @@ def main() -> None:
                 running = False
             elif event.type == pygame.KEYDOWN and event.key == pygame.K_SPACE:
                 paused = not paused
-            plane.handle_event(event)
+            grid.handle_event(event)
         dt = clock.tick(60) / 1000
         if not paused:
             t += dt
-        plane.draw_grid(screen)
-        draw_scene(plane, screen, t)
+        grid.draw(screen)
+        draw_scene(grid, screen, t)
         pygame.display.flip()
     pygame.quit()
 

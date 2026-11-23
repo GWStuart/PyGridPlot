@@ -212,7 +212,7 @@ class TextRenderer:
             if is_sup:
                 overflow = max(overflow, sup.digit_height - sup_baseline)
             x += width
-        size = TextSize(x, base.digit_height, sign_width, overflow)
+        size = TextSize(x, base.digit_height, sign_width, overflow, base.descent)
         return _LabelLayout(tuple(runs), size)
 
     def _with_fallbacks(self, chars: str, name: str | None, size: int) -> str:

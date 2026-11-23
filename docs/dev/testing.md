@@ -1,7 +1,7 @@
 # Testing and tools
 
 ```bash
-pytest                                   # everything, headless, about 25 s
+pytest                                   # everything, headless, about 40 s
 pytest tests/core/grid                   # one area
 pytest -k log                            # by name
 ruff check . && ruff format --check .    # lint (Google docstrings required) and formatting
@@ -19,7 +19,7 @@ The tests mirror the package:
 | `tests/core/grid/` | Spacing, ticks, formatting, layout, log axes and the whole grid (`test_scene.py`). |
 | `tests/core/plot/` | Evaluation, both samplers, geometry, styles and the builders. |
 | `tests/render/` | Rasterising and compositing (pure NumPy plus small surfaces). |
-| `tests/` | Integration: the renderer, `Plane`, plotting end to end, interaction, the examples, the docs and the architecture rules. |
+| `tests/` | Integration: the renderer, `Grid`, plotting end to end, interaction, the examples, the docs and the architecture rules. |
 
 `tests/conftest.py` sets SDL's dummy video and audio drivers (so nothing
 opens a window) and provides `FakeMeasurer`, a text measurer with fixed
@@ -43,9 +43,11 @@ on. The important ones:
 - grid lines stay in the plane, and opacities stay in `(0, 1]`;
 - the major spacing stays near the target;
 - labels never overlap (two overlapping labels together are never more
-  opaque than one), on linear and log axes;
-- panning by whole pixels moves every grid line and every plotted pixel
-  rigidly;
+  opaque than one), on linear and log axes, axis titles included, and
+  titles stay inside the plane;
+- panning by whole pixels moves every grid line, axis title, text and
+  plotted pixel rigidly (bars, histograms and error bars included);
+- adding samples to a histogram never moves a bin, only adds to its count;
 - reusing plots between frames never changes a single pixel, through any
   sequence of changes;
 - a tiny zoom step changes every line's and label's opacity only a little
@@ -76,6 +78,12 @@ those two never import each other.
 `examples/` headless for a few frames with a scripted event queue that
 presses some of the keys the examples use, zooms, and closes the window.
 
+**Package tests** (`test_package.py`) check the version string and that
+importing PyGridPlot with the original pygame (a stand-in without
+`pygame.IS_CE`, in a subprocess) fails with advice. CI also builds the
+package and runs the suite from the source archive; see
+[Releasing](releasing.md).
+
 **Documentation tests** (`test_docs.py`):
 
 - the API reference must match what `scripts/build_api_docs.py` generates
@@ -83,7 +91,7 @@ presses some of the keys the examples use, zooms, and closes the window.
   run the script and commit the result;
 - every ```` ```python ```` block in the README and `docs/` must run. The
   blocks of a page run in order in one namespace (with `np`, `math`,
-  `pygame`, `pgp`, `screen`, `surface` and `plane` predefined), and main
+  `pygame`, `pgp`, `screen`, `surface` and `grid` predefined), and main
   loops end after a few frames. Use ```` ```py ```` for signature listings
   and fragments that are not meant to run;
 - every relative link and `#anchor` must resolve.
@@ -96,7 +104,7 @@ Some qualities can only be judged by eye, or are about speed:
   tricky views (deep zooms, far offsets, axes at the edges, cross-fades,
   themes, functions, derivatives, shapes, log axes, ranges, curves,
   implicit curves, draggable points, inequalities and areas, vector and
-  slope fields and arrows, integrals and series) to PNG files plus a contact sheet `_sheet.png`.
+  slope fields and arrows, integrals and series, sequences) to PNG files plus a contact sheet `_sheet.png`.
   Render before and after a change and compare; for refactors, the views
   must stay pixel-identical ([`AGENTS.md`](../../AGENTS.md#verifying-a-change-visually-the-gallery-comparison)
   shows how to render a baseline from the last commit and compare).
@@ -104,7 +112,8 @@ Some qualities can only be judged by eye, or are about speed:
 - `python scripts/benchmark.py` prints the median time of the main
   per-frame operations (grids, functions, curves, implicit curves,
   inequalities and areas, vector and slope fields, arrows, points, fills,
-  dragging, derivatives, integrals, antiderivatives and series, and idle
+  dragging, derivatives, integrals, antiderivatives, series and sequences,
+  and idle
   frames reused by the cache); `--only TEXT` selects cases and
   `--repeat N` steadies the numbers. Compare on the same machine, over a
   few runs.

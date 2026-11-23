@@ -40,31 +40,31 @@ def f(x: np.ndarray) -> np.ndarray:
     return np.sin(x) + 0.3 * np.sin(2.7 * x) + 0.05 * x**2
 
 
-def on_f(plane: pgp.Plane, t: float) -> pgp.DraggablePoint:
+def on_f(grid: pgp.Grid, t: float) -> pgp.DraggablePoint:
     """Create a draggable point on the graph of ``f``, at ``x = t``."""
-    return plane.draggable(curve=(lambda s: s, f, (-12.0, 12.0)), t=t)
+    return grid.draggable(curve=(lambda s: s, f, (-12.0, 12.0)), t=t)
 
 
 class Area:
     """The area under ``f`` between two draggable points, and its antiderivative."""
 
-    def __init__(self, plane: pgp.Plane) -> None:
-        self.a = on_f(plane, -1.0)
-        self.b = on_f(plane, 2.5)
+    def __init__(self, grid: pgp.Grid) -> None:
+        self.a = on_f(grid, -1.0)
+        self.b = on_f(grid, 2.5)
         self.points = (self.a, self.b)
 
-    def draw(self, plane: pgp.Plane, screen: pygame.Surface) -> list[str]:
+    def draw(self, grid: pgp.Grid, screen: pygame.Surface) -> list[str]:
         """Draw the set; return the caption lines."""
         a, b = self.a.x, self.b.x
         area = pgp.integral(f, a, b)
         from_a = pgp.antiderivative(f, a)  # F(x) = ∫ f from a to x
         if a != b:
-            plane.fill_between(screen, f, domain=(min(a, b), max(a, b)), color=BLUE)
-        plane.plot(screen, from_a, style=FADED, color=GREEN)
-        plane.plot(screen, f, color=BLUE)
-        plane.polyline(screen, [(b, 0), (b, area)], width=1.2, color=GREEN)
-        plane.points(screen, [(b, area)], radius=4.0, color=GREEN)
-        plane.draw_draggables(screen, *self.points)
+            grid.fill_between(screen, f, domain=(min(a, b), max(a, b)), color=BLUE)
+        grid.plot(screen, from_a, style=FADED, color=GREEN)
+        grid.plot(screen, f, color=BLUE)
+        grid.polyline(screen, [(b, 0), (b, area)], width=1.2, color=GREEN)
+        grid.points(screen, [(b, area)], radius=4.0, color=GREEN)
+        grid.draw_controls(screen, *self.points)
         return [
             f"∫ f(x) dx from {a:.3f} to {b:.3f} = {area:.6f}",
             "blue: f and the area   green: F(x), the integral from the first point",
@@ -77,10 +77,10 @@ class Riemann:
     RULES = ("left", "right", "midpoint", "trapezoidal")
     LOW, HIGH = -3.0, 4.0
 
-    def __init__(self, plane: pgp.Plane) -> None:
+    def __init__(self, grid: pgp.Grid) -> None:
         # Whole numbers on a geometric track: as much room for 1 to 8 as for
         # 8 to 64.
-        self.slider = plane.slider("n", (1, 64), value=8, step=1, log=True)
+        self.slider = grid.slider("n", (1, 64), value=8, step=1, log=True)
         self.points = (self.slider,)
         self.rule = 0
 
@@ -88,7 +88,7 @@ class Riemann:
         """Switch to the next rule."""
         self.rule = (self.rule + 1) % len(self.RULES)
 
-    def draw(self, plane: pgp.Plane, screen: pygame.Surface) -> list[str]:
+    def draw(self, grid: pgp.Grid, screen: pygame.Surface) -> list[str]:
         """Draw the set; return the caption lines."""
         n = self.slider.value
         rule = self.RULES[self.rule]
@@ -97,7 +97,7 @@ class Riemann:
         if rule == "trapezoidal":
             ys = f(x)
             total = float(np.sum((ys[:-1] + ys[1:]) / 2) * width)
-            plane.fill_between(
+            grid.fill_between(
                 screen,
                 lambda t: np.interp(t, x, ys),
                 domain=(self.LOW, self.HIGH),
@@ -116,15 +116,15 @@ class Riemann:
             def step(t: np.ndarray) -> np.ndarray:
                 return h[np.clip(np.searchsorted(x, t, side="right") - 1, 0, n - 1)]
 
-            plane.fill_between(screen, step, domain=(self.LOW, self.HIGH), color=RED)
+            grid.fill_between(screen, step, domain=(self.LOW, self.HIGH), color=RED)
             gap = np.full(n, np.nan)
             zero = np.zeros(n)
             shapes = np.column_stack(
                 [x[:-1], zero, x[:-1], h, x[1:], h, x[1:], zero, gap, gap]
             )
-        plane.polyline(screen, shapes.reshape(-1, 2), width=1.2, color=RED)
-        plane.plot(screen, f, color=BLUE)
-        plane.draw_draggables(screen, *self.points)
+        grid.polyline(screen, shapes.reshape(-1, 2), width=1.2, color=RED)
+        grid.plot(screen, f, color=BLUE)
+        grid.draw_controls(screen, *self.points)
         exact = pgp.integral(f, self.LOW, self.HIGH)
         return [
             f"{rule} rule with n = {n}: {total:.6f}   integral: {exact:.6f}   "
@@ -136,24 +136,24 @@ class Riemann:
 class Improper:
     """Integrals to infinity: one converges, one diverges."""
 
-    def __init__(self, plane: pgp.Plane) -> None:
-        self.a = plane.draggable((1.0, 0.0), lock="y", x_range=(0.25, 8.0))
+    def __init__(self, grid: pgp.Grid) -> None:
+        self.a = grid.draggable((1.0, 0.0), lock="y", x_range=(0.25, 8.0))
         self.points = (self.a,)
 
-    def draw(self, plane: pgp.Plane, screen: pygame.Surface) -> list[str]:
+    def draw(self, grid: pgp.Grid, screen: pygame.Surface) -> list[str]:
         """Draw the set; return the caption lines."""
         a = self.a.x
         inverse_square = lambda x: 1 / x**2  # noqa: E731
         inverse = lambda x: 1 / x  # noqa: E731
         finite = pgp.integral(inverse_square, a, math.inf)
         infinite = pgp.integral(inverse, a, math.inf)
-        plane.fill_between(
+        grid.fill_between(
             screen, inverse, domain=(a, math.inf), color=RED, opacity=0.15
         )
-        plane.fill_between(screen, inverse_square, domain=(a, math.inf), color=BLUE)
-        plane.plot(screen, inverse, color=RED, domain=(0.05, math.inf))
-        plane.plot(screen, inverse_square, color=BLUE, domain=(0.05, math.inf))
-        plane.draw_draggables(screen, *self.points)
+        grid.fill_between(screen, inverse_square, domain=(a, math.inf), color=BLUE)
+        grid.plot(screen, inverse, color=RED, domain=(0.05, math.inf))
+        grid.plot(screen, inverse_square, color=BLUE, domain=(0.05, math.inf))
+        grid.draw_controls(screen, *self.points)
         diverges = "diverges" if math.isnan(infinite) else f"{infinite:.6f}"
         return [
             f"blue: ∫ 1/x² dx from {a:.3f} to ∞ = {finite:.6f}   (1/a = {1 / a:.6f})",
@@ -187,9 +187,9 @@ def main() -> None:
     screen = pygame.display.set_mode((1100, 720), pygame.RESIZABLE)
     pygame.display.set_caption("PyGridPlot: integrals")
     font = pygame.font.Font(bundled_font_path(), 14)
-    plane = pgp.Plane(x_range=(-8, 8))
-    riemann = Riemann(plane)
-    sets: list[Area | Riemann | Improper] = [Area(plane), riemann, Improper(plane)]
+    grid = pgp.Grid(x_range=(-8, 8))
+    riemann = Riemann(grid)
+    sets: list[Area | Riemann | Improper] = [Area(grid), riemann, Improper(grid)]
     current = 0
     clock = pygame.time.Clock()
 
@@ -210,11 +210,11 @@ def main() -> None:
                 show(current)
             elif event.type == pygame.KEYDOWN and event.key == pygame.K_r:
                 riemann.next_rule()
-            plane.handle_event(event)
+            grid.handle_event(event)
 
         scene = sets[current]
-        plane.draw_grid(screen)
-        lines = scene.draw(plane, screen)
+        grid.draw(screen)
+        lines = scene.draw(grid, screen)
         draw_caption(screen, font, [*lines, "Space: next set"])
         pygame.display.flip()
         clock.tick(60)

@@ -31,7 +31,7 @@ def main() -> None:
     pygame.init()
     screen = pygame.display.set_mode((960, 640), pygame.RESIZABLE)
     pygame.display.set_caption("PyGridPlot: dark theme (Space to switch)")
-    plane = pgp.Plane(theme=pgp.DARK)
+    grid = pgp.Grid(theme=pgp.DARK)
     clock = pygame.time.Clock()
 
     running = True
@@ -40,9 +40,9 @@ def main() -> None:
             if event.type == pygame.QUIT:
                 running = False
             elif event.type == pygame.KEYDOWN and event.key == pygame.K_SPACE:
-                plane.theme = CUSTOM if plane.theme is pgp.DARK else pgp.DARK
-            plane.handle_event(event)
-        plane.draw_grid(screen)
+                grid.theme = CUSTOM if grid.theme is pgp.DARK else pgp.DARK
+            grid.handle_event(event)
+        grid.draw(screen)
         pygame.display.flip()
         clock.tick(60)
     pygame.quit()

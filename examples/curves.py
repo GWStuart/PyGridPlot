@@ -25,21 +25,21 @@ import pygame
 import pygridplot as pgp
 from pygridplot.render.fonts import bundled_font_path
 
-Drawing = Callable[[pgp.Plane, pygame.Surface, float], None]
+Drawing = Callable[[pgp.Grid, pygame.Surface, float], None]
 """Draws one set of curves at time ``t`` (in seconds)."""
 
 
-def draw_parametric(plane: pgp.Plane, screen: pygame.Surface, t: float) -> None:
+def draw_parametric(grid: pgp.Grid, screen: pygame.Surface, t: float) -> None:
     """Draw the parametric set."""
     phase = 0.4 * t
-    plane.parametric(
+    grid.parametric(
         screen,
         lambda s: -5 + 2 * np.sin(3 * s + phase),
         lambda s: 2.5 + 2 * np.sin(2 * s),
         (0, 2 * math.pi),
     )
     big, small, pen = 2.5, 0.9, 1.6  # a hypotrochoid ("spirograph")
-    plane.parametric(
+    grid.parametric(
         screen,
         lambda s: (
             2 + (big - small) * np.cos(s) + pen * np.cos((big - small) / small * s)
@@ -50,19 +50,19 @@ def draw_parametric(plane: pgp.Plane, screen: pygame.Surface, t: float) -> None:
         (0, 18 * math.pi),
         width=1.8,
     )
-    plane.parametric(  # a cycloid: a point on a rolling wheel
+    grid.parametric(  # a cycloid: a point on a rolling wheel
         screen, lambda s: s - np.sin(s), lambda s: -4 + (1 - np.cos(s)), (-12, 12)
     )
-    plane.parametric(screen, np.tan, lambda s: -1.5 + 0.4 * s, (-4, 4), width=2)
+    grid.parametric(screen, np.tan, lambda s: -1.5 + 0.4 * s, (-4, 4), width=2)
 
 
-def draw_polar(plane: pgp.Plane, screen: pygame.Surface, t: float) -> None:
+def draw_polar(grid: pgp.Grid, screen: pygame.Surface, t: float) -> None:
     """Draw the polar set."""
     petals = 3 + 2 * math.sin(0.3 * t)  # k petals (2k when k is even)
-    plane.polar(screen, lambda a: 2.5 * np.cos(petals * a), (0, 4 * math.pi))
-    plane.polar(screen, lambda a: 1.5 * (1 + np.cos(a - 0.2 * t)))  # cardioid
-    plane.polar(screen, lambda a: 3 * np.sqrt(np.cos(2 * a)), width=2)  # lemniscate
-    plane.polar(screen, lambda a: 0.15 * a, (0, 12 * math.pi), width=1.2, opacity=0.7)
+    grid.polar(screen, lambda a: 2.5 * np.cos(petals * a), (0, 4 * math.pi))
+    grid.polar(screen, lambda a: 1.5 * (1 + np.cos(a - 0.2 * t)))  # cardioid
+    grid.polar(screen, lambda a: 3 * np.sqrt(np.cos(2 * a)), width=2)  # lemniscate
+    grid.polar(screen, lambda a: 0.15 * a, (0, 12 * math.pi), width=1.2, opacity=0.7)
 
 
 SETS: list[tuple[str, Drawing]] = [
@@ -88,7 +88,7 @@ def main() -> None:
     screen = pygame.display.set_mode((1100, 720), pygame.RESIZABLE)
     pygame.display.set_caption("PyGridPlot: parametric and polar curves")
     font = pygame.font.Font(bundled_font_path(), 14)
-    plane = pgp.Plane(x_range=(-9, 9))
+    grid = pgp.Grid(x_range=(-9, 9))
     clock = pygame.time.Clock()
     current = 0
     paused = False
@@ -104,15 +104,15 @@ def main() -> None:
                 current = (current + 1) % len(SETS)
             elif event.type == pygame.KEYDOWN and event.key == pygame.K_p:
                 paused = not paused
-            plane.handle_event(event)
+            grid.handle_event(event)
 
         now = time.perf_counter()
         if not paused:
             elapsed += now - last
         last = now
         title, draw = SETS[current]
-        plane.draw_grid(screen)
-        draw(plane, screen, elapsed)
+        grid.draw(screen)
+        draw(grid, screen, elapsed)
         draw_caption(screen, font, title)
         pygame.display.flip()
         clock.tick(60)
