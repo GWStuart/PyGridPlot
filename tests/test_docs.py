@@ -10,7 +10,8 @@
   ``surface``) and a ``grid`` already defined. Main loops end after a few
   frames: the event queue is replaced by one that quits.
 * Every relative link and in-page anchor must resolve (in ``AGENTS.md`` too,
-  the context file for AI agents, so that it cannot point at moved pages).
+  a context file for AI agents kept outside the repository, when present,
+  so that it cannot point at moved pages).
 """
 
 from __future__ import annotations
@@ -29,7 +30,11 @@ import pytest
 import pygridplot as pgp
 
 ROOT = Path(__file__).resolve().parents[1]
-PAGES = sorted([ROOT / "README.md", ROOT / "AGENTS.md", *(ROOT / "docs").rglob("*.md")])
+AGENTS = ROOT / "AGENTS.md"
+PAGES = sorted(
+    [ROOT / "README.md", *(ROOT / "docs").rglob("*.md")]
+    + ([AGENTS] if AGENTS.exists() else [])
+)
 RUNNABLE = re.compile(r"^```python\n(.*?)^```", re.S | re.M)
 
 

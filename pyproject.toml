@@ -82,11 +82,9 @@ include = [
     "/docs",
     "/examples",
     "/scripts",
-    "/AGENTS.md",
     "/CHANGELOG.md",
     "/LICENSE",
     "/README.md",
-    "/ROADMAP.md",
 ]
 exclude = ["__pycache__"]
 

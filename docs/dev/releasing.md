@@ -26,8 +26,7 @@ The project is built with [hatchling](https://hatch.pypa.io/):
   `py.typed`.
 - **The source archive** holds what is needed to build, test and read the
   project (`src`, `tests`, `docs`, `examples`, `scripts`, the README,
-  changelog, roadmap, licence and `AGENTS.md`), but not the owner's
-  `NOTES.md` or local tool files.
+  changelog and licence), and nothing else.
 - **The README on PyPI**: its links are relative, so they work on GitHub
   and in a checkout (and the docs test checks them).
   [hatch-fancy-pypi-readme](https://github.com/hynek/hatch-fancy-pypi-readme)

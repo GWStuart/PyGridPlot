@@ -244,7 +244,6 @@ follow [semantic versioning](https://semver.org/) once 1.0 is released.
   where they were sampled), automatic, and several times faster for idle
   frames and for frames where only some plots change. `Grid(cache=...)`,
   `grid.cache`, `grid.cache_stats`, `grid.clear_cache()`, `CacheStats`.
-- `ROADMAP.md`: ideas for future features and limitations to lift.
 - **Derivatives**: `pgp.derivative(f, n)` returns the `n`-th derivative of a
   function of one variable (up to order 40), to plot or evaluate;
   `pgp.derivatives(f, x, n)` returns every order at once. Exact for NumPy

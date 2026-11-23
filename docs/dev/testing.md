@@ -104,10 +104,10 @@ Some qualities can only be judged by eye, or are about speed:
   tricky views (deep zooms, far offsets, axes at the edges, cross-fades,
   themes, functions, derivatives, shapes, log axes, ranges, curves,
   implicit curves, draggable points, inequalities and areas, vector and
-  slope fields and arrows, integrals and series, sequences) to PNG files plus a contact sheet `_sheet.png`.
-  Render before and after a change and compare; for refactors, the views
-  must stay pixel-identical ([`AGENTS.md`](../../AGENTS.md#verifying-a-change-visually-the-gallery-comparison)
-  shows how to render a baseline from the last commit and compare).
+  slope fields and arrows, integrals and series, sequences, data plots)
+  to PNG files plus a contact sheet `_sheet.png`. Render before and after a
+  change and compare; for refactors, the views must stay pixel-identical
+  (see [comparing the gallery](#comparing-the-gallery-before-and-after)).
   `--only NAME ...` renders a subset.
 - `python scripts/benchmark.py` prints the median time of the main
   per-frame operations (grids, functions, curves, implicit curves,
@@ -121,6 +121,35 @@ Some qualities can only be judged by eye, or are about speed:
   automated zoom and pan, for checking smoothness frame by frame.
 - `python examples/grid_playground.py` toggles theme settings, log axes and
   plot overlays live, and shows the scale, spacings and timings.
+
+### Comparing the gallery before and after
+
+Render a baseline from the last commit in a separate worktree (with
+`PYTHONPATH=src` it uses that checkout's package, not the editable
+install), render the working tree, and compare every view pixel by pixel:
+
+```bash
+git worktree add /tmp/pgp-baseline HEAD
+(cd /tmp/pgp-baseline && PYTHONPATH=src SDL_VIDEODRIVER=dummy \
+  "$OLDPWD"/venv/bin/python scripts/render_gallery.py --out /tmp/gallery-before)
+SDL_VIDEODRIVER=dummy venv/bin/python scripts/render_gallery.py --out /tmp/gallery-after
+git worktree remove --force /tmp/pgp-baseline
+```
+
+```py
+import pathlib, numpy as np, pygame
+before, after = pathlib.Path("/tmp/gallery-before"), pathlib.Path("/tmp/gallery-after")
+for path in sorted(before.glob("[0-9]*.png")):
+    a = pygame.surfarray.array3d(pygame.image.load(path)).astype(int)
+    b = pygame.surfarray.array3d(pygame.image.load(after / path.name)).astype(int)
+    if a.shape != b.shape or (a != b).any():
+        print(path.name, np.abs(a - b).max(), (np.abs(a - b).max(axis=2) > 0).sum())
+```
+
+It prints each view that differs, with the largest change in a channel
+and the number of pixels changed. New features add views at the end; look
+at them as images. A change meant to alter the picture should differ only
+where intended.
 
 ## The checklist
 

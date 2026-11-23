@@ -278,9 +278,9 @@ another form. Their code is still in the history, for reference:
 
 | Feature | What it was | Last commit with it |
 |---|---|---|
-| Graphs | `pgp.Graph`: a Desmos-like list of named items written as lines of maths (`"y = a sin(x - P.x)"`), names usable in any order, errors per item, saving and loading JSON | `c609cfb` ("persistent plot objects"); first version in `45cd36c` ("support for expressions") |
-| The expression language | `core/expr`: a safe parser and compiler from text to NumPy functions, with exact derivatives (`f'(x)`), behind `pgp.expression` | `c609cfb` |
-| Retained plot objects | `pygridplot/objects`: `pgp.Function`, `pgp.Point`, ... kept by the plane (`plane.add`, `plane.draw` on what was then `Plane`) and changed through their attributes | `21e2b31` ("updated docs and tests"), Python only; with text support in `c609cfb` |
+| Graphs | `pgp.Graph`: a Desmos-like list of named items written as lines of maths (`"y = a sin(x - P.x)"`), names usable in any order, errors per item, saving and loading JSON | `3c76ab5` ("persistent plot objects"); first version in `8aaee2b` ("support for expressions") |
+| The expression language | `core/expr`: a safe parser and compiler from text to NumPy functions, with exact derivatives (`f'(x)`), behind `pgp.expression` | `3c76ab5` |
+| Retained plot objects | `pygridplot/objects`: `pgp.Function`, `pgp.Point`, ... kept by the plane (`plane.add`, `plane.draw` on what was then `Plane`) and changed through their attributes | `cc116e8` ("updated docs and tests"), Python only; with text support in `3c76ab5` |
 
 What they taught is kept: a draggable point no longer keeps its plane
 alive (`Grid.draggable` gives points a weak reference to their plane),

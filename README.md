@@ -219,8 +219,7 @@ python scripts/build_api_docs.py        # regenerate the API reference
 ```
 
 See the [developer guide](docs/dev/index.md) for the architecture and
-conventions, the [roadmap](ROADMAP.md) for ideas for the future, and the
-[changelog](CHANGELOG.md) for what has changed.
+conventions, and the [changelog](CHANGELOG.md) for what has changed.
 
 ## Licence
 
