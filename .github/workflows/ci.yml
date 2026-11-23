@@ -35,7 +35,8 @@ jobs:
           python-version: ${{ matrix.python }}
       - name: Install
         run: python -m pip install -e ".[dev]"
-      - name: Test (headless: the tests choose SDL's dummy drivers)
+      # Headless: the tests choose SDL's dummy drivers themselves.
+      - name: Test
         run: python -m pytest -q
 
   oldest:
