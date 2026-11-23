@@ -10,13 +10,16 @@ Press ``Space`` to switch between sets of functions:
    that raises an error for half of its inputs.
 
 Pan and zoom as usual. Asymptotes and jumps are never joined by vertical
-lines, and gaps appear wherever a function is undefined.
+lines, and gaps appear wherever a function is undefined. Each function is
+plotted with a ``label=``, and the legend (top right) names them in their
+colours.
 """
 
 from __future__ import annotations
 
 import math
 from collections.abc import Callable
+from typing import Any
 
 import numpy as np
 import pygame
@@ -24,7 +27,7 @@ import pygame
 import pygridplot as pgp
 from pygridplot.render.fonts import bundled_font_path
 
-FunctionSet = list[tuple[str, Callable[[object], object]]]
+FunctionSet = list[tuple[str, Callable[[Any], Any]]]
 
 
 def safe_sqrt_of_sin(x: float) -> float:
@@ -71,28 +74,20 @@ SETS: list[tuple[str, FunctionSet]] = [
 ]
 
 
-def draw_caption(
-    screen: pygame.Surface,
-    font: pygame.font.Font,
-    title: str,
-    functions: FunctionSet,
-    palette: tuple[object, ...],
-) -> None:
-    """Draw the set's title and each function's name in its plot colour.
+def draw_caption(screen: pygame.Surface, font: pygame.font.Font, title: str) -> None:
+    """Draw the set's title and the key that switches sets.
 
     Args:
         screen: The display surface.
         font: Caption font.
         title: Name of the function set.
-        functions: The functions being shown.
-        palette: The theme palette (functions use it in order).
     """
-    panel = pygame.Surface((240, 26 + 20 * len(functions)), pygame.SRCALPHA)
+    text = font.render(f"{title}  (Space: next set)", True, (40, 40, 40))
+    panel = pygame.Surface(
+        (text.get_width() + 20, text.get_height() + 12), pygame.SRCALPHA
+    )
     panel.fill((255, 255, 255, 225))
-    panel.blit(font.render(f"{title}  (Space)", True, (40, 40, 40)), (10, 6))
-    for i, (name, _) in enumerate(functions):
-        color = pygame.Color(palette[i % len(palette)])  # type: ignore[arg-type]
-        panel.blit(font.render(name, True, color), (10, 26 + 20 * i))
+    panel.blit(text, (10, 6))
     screen.blit(panel, (12, 12))
 
 
@@ -117,9 +112,10 @@ def main() -> None:
 
         title, functions = SETS[current]
         plane.draw_grid(screen)
-        for _, func in functions:
-            plane.plot(screen, func)
-        draw_caption(screen, font, title, functions, plane.theme.palette)
+        for name, func in functions:
+            plane.plot(screen, func, label=name)
+        plane.legend(screen)
+        draw_caption(screen, font, title)
         pygame.display.flip()
         clock.tick(60)
     pygame.quit()

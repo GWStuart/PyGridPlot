@@ -6,7 +6,8 @@ Press ``Space`` to switch between three sets:
    line follows, and the graphs of ``f'`` and ``f''`` show the slope and the
    bending at that point.
 2. **Taylor polynomials** (:func:`pygridplot.taylor`): drag the expansion
-   point along the curve, and the slider to change the degree; the
+   point along the curve, and the slider (:meth:`pygridplot.Plane.slider`,
+   in the bottom-left corner) to change the degree; the
    polynomial hugs the curve near the point and further away as the degree
    grows.
 3. **The osculating circle**: the circle that best fits the curve at the
@@ -70,22 +71,19 @@ class Taylor:
 
     def __init__(self, plane: pgp.Plane) -> None:
         self.point = on_f(plane, 0.5)
-        self.degree = plane.draggable(
-            (3.0, -4.5), lock="y", x_range=(0.0, 20.0), coordinates="never"
-        )
+        self.degree = plane.slider("degree", (0, 20), value=3, step=1)
         self.points = (self.point, self.degree)
 
     def draw(self, plane: pgp.Plane, screen: pygame.Surface) -> list[str]:
         """Draw the set; return the caption lines."""
         a = self.point.x
-        degree = round(self.degree.x)
+        degree = self.degree.value  # an int: the slider's step is 1
         polynomial = pgp.taylor(f, a, degree)  # from the exact derivatives at a
-        plane.polyline(screen, [(0, -4.5), (20, -4.5)], width=4, opacity=0.3)
         plane.plot(screen, f, color=(40, 90, 200))
         plane.plot(screen, polynomial, color=(210, 70, 60))
         return [
             f"Taylor polynomial of degree {degree} about x = {a:.3f}",
-            "drag the point on the curve, and the slider below for the degree",
+            "drag the point on the curve, and the slider for the degree",
         ]
 
 

@@ -77,19 +77,12 @@ class Riemann:
     RULES = ("left", "right", "midpoint", "trapezoidal")
     LOW, HIGH = -3.0, 4.0
 
-    TRACK = (-6.0, 6.0)  # the slider's track, at y = -4.5
-
     def __init__(self, plane: pgp.Plane) -> None:
-        self.slider = plane.draggable(
-            (-1.5, -4.5), lock="y", x_range=self.TRACK, coordinates="never"
-        )
+        # Whole numbers on a geometric track: as much room for 1 to 8 as for
+        # 8 to 64.
+        self.slider = plane.slider("n", (1, 64), value=8, step=1, log=True)
         self.points = (self.slider,)
         self.rule = 0
-
-    @property
-    def rectangles(self) -> int:
-        """The number of rectangles: 1 to 64 along the track, doubling every 2."""
-        return round(2 ** ((self.slider.x - self.TRACK[0]) / 2))
 
     def next_rule(self) -> None:
         """Switch to the next rule."""
@@ -97,7 +90,7 @@ class Riemann:
 
     def draw(self, plane: pgp.Plane, screen: pygame.Surface) -> list[str]:
         """Draw the set; return the caption lines."""
-        n = self.rectangles
+        n = self.slider.value
         rule = self.RULES[self.rule]
         x = np.linspace(self.LOW, self.HIGH, n + 1)
         width = (self.HIGH - self.LOW) / n
@@ -131,13 +124,12 @@ class Riemann:
             )
         plane.polyline(screen, shapes.reshape(-1, 2), width=1.2, color=RED)
         plane.plot(screen, f, color=BLUE)
-        plane.polyline(screen, [(x, -4.5) for x in self.TRACK], width=4, opacity=0.3)
         plane.draw_draggables(screen, *self.points)
         exact = pgp.integral(f, self.LOW, self.HIGH)
         return [
             f"{rule} rule with n = {n}: {total:.6f}   integral: {exact:.6f}   "
             f"error: {total - exact:+.2e}",
-            "drag the slider below for n; R: next rule",
+            "drag the slider for the number of rectangles; R: next rule",
         ]
 
 
