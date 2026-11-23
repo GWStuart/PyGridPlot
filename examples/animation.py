@@ -1,13 +1,9 @@
-"""Animated plots: a moving sine wave, a point on a circle and a rotating polygon.
+"""Animation: a rolling wheel draws a cycloid.
 
-This is the "typical user program" from the project plan. Everything is
-drawn again every frame (immediate mode), so animating only means computing
-new values each frame. Pan and zoom work as usual while it runs.
+Nothing is created, moved or deleted: every frame draws the wheel, the
+pen's velocity and the curve traced so far from the time alone. That is
+all animation takes, and you can still pan and zoom while it runs.
 """
-
-from __future__ import annotations
-
-import math
 
 import numpy as np
 import pygame
@@ -15,32 +11,13 @@ import pygame
 import pygridplot as pgp
 
 
-def triangle(t: float) -> list[tuple[float, float]]:
-    """Return the vertices of a triangle rotating about (3, 2).
-
-    Args:
-        t: Time in seconds.
-
-    Returns:
-        Three world-space vertices.
-    """
-    return [
-        (
-            3 + 1.5 * math.cos(t + k * 2 * math.pi / 3),
-            2 + 1.5 * math.sin(t + k * 2 * math.pi / 3),
-        )
-        for k in range(3)
-    ]
-
-
 def main() -> None:
-    """Open a window and animate until it is closed."""
+    """Open a window and draw until it is closed."""
     pygame.init()
     screen = pygame.display.set_mode((960, 640), pygame.RESIZABLE)
     pygame.display.set_caption("PyGridPlot: animation")
-    grid = pgp.Grid()
     clock = pygame.time.Clock()
-    t = 0.0
+    grid = pgp.Grid(x_range=(-0.8, 13.5))
 
     running = True
     while running:
@@ -48,17 +25,38 @@ def main() -> None:
             if event.type == pygame.QUIT:
                 running = False
             grid.handle_event(event)
-        t += clock.tick(60) / 1000
+
+        t = pygame.time.get_ticks() / 1000  # seconds
+        turn = 0.3 + (1.5 * t) % (4 * np.pi)  # the angle turned: two turns, again
+        pen = np.array([turn - np.sin(turn), 1 - np.cos(turn)])  # on the rim
+        velocity = np.array([1 - np.cos(turn), np.sin(turn)])
 
         grid.draw(screen)
-        grid.plot(screen, lambda x, t=t: np.sin(x - t))  # bind t (late binding)
-        grid.plot(screen, np.tan, width=1.5, opacity=0.6)
-        grid.polyline(
-            screen, [(np.cos(a), np.sin(a)) for a in np.linspace(0, 2 * np.pi, 90)]
+        grid.parametric(
+            screen,
+            lambda s: s - np.sin(s),
+            lambda s: 1 - np.cos(s),
+            (0, turn),
+            width=3,
+            label="cycloid",
         )
-        grid.polygon(screen, triangle(t))
-        grid.points(screen, [(math.cos(t), math.sin(t))], radius=6, edge_color="white")
+        grid.parametric(
+            screen,
+            lambda s: turn + np.cos(s),
+            lambda s: 1 + np.sin(s),
+            (0, 2 * np.pi),
+            color="gray",
+            label="wheel",
+        )
+        for k in range(6):  # spokes, turning with the wheel
+            angle = -np.pi / 2 - turn + k * np.pi / 3
+            spoke_end = (turn + np.cos(angle), 1 + np.sin(angle))
+            grid.polyline(screen, [(turn, 1), spoke_end], color="gray", width=1)
+        grid.arrow(screen, pen, pen + velocity, label="the pen's velocity")
+        grid.points(screen, [pen], radius=6)
+        grid.legend(screen)
         pygame.display.flip()
+        clock.tick(60)
     pygame.quit()
 
 

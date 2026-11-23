@@ -49,6 +49,19 @@ def test_api_reference_is_up_to_date(monkeypatch: pytest.MonkeyPatch) -> None:
     runpy.run_path(str(script), run_name="__main__")  # exits if out of date
 
 
+def test_examples_page_lists_every_example_with_its_picture() -> None:
+    script = runpy.run_path(str(ROOT / "scripts" / "render_examples.py"))
+    examples = sorted(path.stem for path in (ROOT / "examples").glob("*.py"))
+    assert sorted(script["listed"]()) == examples  # each once, in a section
+    for name in examples:
+        assert (ROOT / "docs" / "images" / "examples" / f"{name}.png").exists(), name
+    page = (ROOT / "docs" / "user" / "examples.md").read_text(encoding="utf-8")
+    assert page == script["examples_page"](), (
+        "docs/user/examples.md is out of date: run python scripts/render_examples.py"
+        " --page"
+    )
+
+
 @pytest.mark.usefixtures("pygame_display")
 @pytest.mark.parametrize("page", PAGES, ids=page_id)
 def test_examples_run(

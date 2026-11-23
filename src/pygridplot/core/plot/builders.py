@@ -42,7 +42,7 @@ from __future__ import annotations
 
 import math
 import warnings
-from collections.abc import Callable, Sequence
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Final, Literal, TypeAlias
 
@@ -325,7 +325,7 @@ def implicit_stroke(
     style: LineStyle,
     color: ColorLike,
     *,
-    level: float | Sequence[float] = 0.0,
+    level: ArrayLike = 0.0,
     sampling: ImplicitSampling = DEFAULT_IMPLICIT_SAMPLING,
 ) -> Stroke | None:
     """Find the implicit curve ``func(x, y) = level`` and return it as a stroke.

@@ -24,7 +24,7 @@ pgp.Grid(rect=None, *, x_range=None, y_range=None, log_x=False, log_y=False,
 | `interaction` | [`InteractionConfig`](interaction.md#configuring-the-controls) for the built-in controls. |
 | `limits` | [`ViewLimits`](#zoom-limits) on zooming and panning. |
 | `renderer` | A `PygameRenderer` to share between planes (they then share font and label caches). |
-| `sampling` | Default [`FunctionSampling`](plotting.md#sampling-settings) for `plot`. |
+| `sampling` | Default [`FunctionSampling`](functions.md#sampling-settings) for `plot`. |
 
 ## Setting up the view
 
@@ -101,6 +101,10 @@ stretch one axis at a time.
 
 ## Axis titles and arrowheads
 
+![Axis titles, and arrowheads from a theme with show_arrows=True](../images/examples/calculus.png)
+
+*Axis titles, and arrowheads from a theme with show_arrows=True ([`examples/calculus.py`](../../examples/calculus.py))*
+
 Titles are given to `grid.draw`, every frame, like everything else drawn:
 
 ```python
@@ -129,11 +133,15 @@ grid.theme = replace(pgp.LIGHT, show_arrows=True)
 ```
 
 Each head is a triangle in the axis colour, with the same proportions as
-[plotted arrows](plotting.md#arrows), sized from `axis_width`, and the
+[plotted arrows](shapes-and-text.md#arrows), sized from `axis_width`, and the
 axis line stops under it. An axis that is off screen has no arrowhead, and
 titles keep clear of the heads.
 
 ## Categories on an axis
+
+![Days of the week named along the x axis](../images/examples/bars.png)
+
+*Days of the week named along the x axis ([`examples/bars.py`](../../examples/bars.py))*
 
 `grid.draw(x_labels=...)` names positions along the x axis in place of its
 numbers, for categories: the bars of a bar chart stand at 0, 1, 2, ..., and
@@ -178,6 +186,10 @@ print(f"showing x from {b.x_min:.3g} to {b.x_max:.3g}")
 
 ## Embedding a plane
 
+![A plane in the right of the window, beside a game drawn with pygame](../images/examples/embedded.png)
+
+*A plane in the right of the window, beside a game drawn with pygame ([`examples/embedded.py`](../../examples/embedded.py))*
+
 Give the plane a `rect` to draw it into part of the window, for example
 beside a side panel:
 
@@ -189,7 +201,8 @@ Everything it draws is clipped to its rectangle, and it only reacts to mouse
 input inside it (a drag that starts inside continues outside). Move or
 resize it by assigning `grid.rect`; assign `None` to make it fill the
 surface again. Resizing keeps the centre and scale, so more or less of the
-plane becomes visible. See `examples/embedded_rect.py`.
+plane becomes visible. [`examples/embedded.py`](../../examples/embedded.py) puts a
+plane beside a game.
 
 ## Several planes
 

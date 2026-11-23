@@ -89,6 +89,10 @@ middle of drawing. Derive variations with `dataclasses.replace`.
 
 ## Themes
 
+![The built-in dark theme, pgp.DARK](../images/examples/curves.png)
+
+*The built-in dark theme, pgp.DARK ([`examples/curves.py`](../../examples/curves.py))*
+
 `pgp.LIGHT` (the default) and `pgp.DARK` are ready-made. Themes are frozen
 dataclasses: derive variations with `dataclasses.replace`, and pass them to
 `Grid(theme=...)` or assign `grid.theme` at any time.

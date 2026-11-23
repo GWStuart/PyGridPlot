@@ -1,119 +1,55 @@
-"""Parametric curves ``(x(t), y(t))`` and polar curves ``r(θ)``.
+"""Curves: parametric and polar curves, on the dark theme.
 
-Press ``Space`` to switch between sets of curves:
-
-1. **Parametric**: a Lissajous figure whose phase drifts over time, a
-   spirograph (hypotrochoid), a cycloid with its sharp cusps, and
-   ``x = tan t``, whose poles break the curve instead of joining it up.
-2. **Polar**: a rose whose number of petals changes smoothly, a cardioid,
-   a lemniscate (undefined for half of the angles, so it ends exactly at the
-   origin) and an Archimedean spiral over many turns.
-
-Pan and zoom as usual: the curves are resampled every frame, so they stay
-smooth however far you zoom in. ``P`` pauses the animation.
+``parametric(x, y, t_range)`` draws the points ``(x(t), y(t))``, and
+``polar(r)`` draws ``r(θ)`` around the origin. Both sample more where the
+curve bends, so loops and cusps stay smooth at any zoom. Each curve moves
+with the time ``t``: plots are redrawn from scratch every frame, so
+animation needs nothing special.
 """
-
-from __future__ import annotations
-
-import math
-import time
-from collections.abc import Callable
 
 import numpy as np
 import pygame
 
 import pygridplot as pgp
-from pygridplot.render.fonts import bundled_font_path
-
-Drawing = Callable[[pgp.Grid, pygame.Surface, float], None]
-"""Draws one set of curves at time ``t`` (in seconds)."""
-
-
-def draw_parametric(grid: pgp.Grid, screen: pygame.Surface, t: float) -> None:
-    """Draw the parametric set."""
-    phase = 0.4 * t
-    grid.parametric(
-        screen,
-        lambda s: -5 + 2 * np.sin(3 * s + phase),
-        lambda s: 2.5 + 2 * np.sin(2 * s),
-        (0, 2 * math.pi),
-    )
-    big, small, pen = 2.5, 0.9, 1.6  # a hypotrochoid ("spirograph")
-    grid.parametric(
-        screen,
-        lambda s: (
-            2 + (big - small) * np.cos(s) + pen * np.cos((big - small) / small * s)
-        ),
-        lambda s: (
-            2 + (big - small) * np.sin(s) - pen * np.sin((big - small) / small * s)
-        ),
-        (0, 18 * math.pi),
-        width=1.8,
-    )
-    grid.parametric(  # a cycloid: a point on a rolling wheel
-        screen, lambda s: s - np.sin(s), lambda s: -4 + (1 - np.cos(s)), (-12, 12)
-    )
-    grid.parametric(screen, np.tan, lambda s: -1.5 + 0.4 * s, (-4, 4), width=2)
-
-
-def draw_polar(grid: pgp.Grid, screen: pygame.Surface, t: float) -> None:
-    """Draw the polar set."""
-    petals = 3 + 2 * math.sin(0.3 * t)  # k petals (2k when k is even)
-    grid.polar(screen, lambda a: 2.5 * np.cos(petals * a), (0, 4 * math.pi))
-    grid.polar(screen, lambda a: 1.5 * (1 + np.cos(a - 0.2 * t)))  # cardioid
-    grid.polar(screen, lambda a: 3 * np.sqrt(np.cos(2 * a)), width=2)  # lemniscate
-    grid.polar(screen, lambda a: 0.15 * a, (0, 12 * math.pi), width=1.2, opacity=0.7)
-
-
-SETS: list[tuple[str, Drawing]] = [
-    ("parametric curves (x(t), y(t))", draw_parametric),
-    ("polar curves r(θ)", draw_polar),
-]
-
-
-def draw_caption(screen: pygame.Surface, font: pygame.font.Font, title: str) -> None:
-    """Draw the set's title and the keys."""
-    text = font.render(f"{title}   (Space: next   P: pause)", True, (40, 40, 40))
-    panel = pygame.Surface(
-        (text.get_width() + 20, text.get_height() + 12), pygame.SRCALPHA
-    )
-    panel.fill((255, 255, 255, 225))
-    panel.blit(text, (10, 6))
-    screen.blit(panel, (12, 12))
 
 
 def main() -> None:
-    """Run the example."""
+    """Open a window and draw until it is closed."""
     pygame.init()
-    screen = pygame.display.set_mode((1100, 720), pygame.RESIZABLE)
-    pygame.display.set_caption("PyGridPlot: parametric and polar curves")
-    font = pygame.font.Font(bundled_font_path(), 14)
-    grid = pgp.Grid(x_range=(-9, 9))
+    screen = pygame.display.set_mode((960, 640), pygame.RESIZABLE)
+    pygame.display.set_caption("PyGridPlot: curves")
     clock = pygame.time.Clock()
-    current = 0
-    paused = False
-    elapsed = 0.0
-    last = time.perf_counter()
+    grid = pgp.Grid(x_range=(-12, 12), theme=pgp.DARK)
 
     running = True
     while running:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 running = False
-            elif event.type == pygame.KEYDOWN and event.key == pygame.K_SPACE:
-                current = (current + 1) % len(SETS)
-            elif event.type == pygame.KEYDOWN and event.key == pygame.K_p:
-                paused = not paused
             grid.handle_event(event)
 
-        now = time.perf_counter()
-        if not paused:
-            elapsed += now - last
-        last = now
-        title, draw = SETS[current]
+        t = pygame.time.get_ticks() / 1000  # seconds
         grid.draw(screen)
-        draw(grid, screen, elapsed)
-        draw_caption(screen, font, title)
+        # A Lissajous figure whose phase drifts.
+        grid.parametric(
+            screen,
+            lambda s: -7.5 + 3 * np.sin(3 * s + 0.4 * t),
+            lambda s: 3 * np.sin(2 * s),
+            (0, 2 * np.pi),
+            label="Lissajous figure",
+        )
+        # A rose with five petals, turning.
+        grid.polar(screen, lambda a: 3.5 * np.cos(5 * (a - 0.2 * t)), label="rose")
+        # A spirograph (hypotrochoid) whose pen moves in and out.
+        pen = 2.2 + 0.6 * np.sin(0.5 * t)
+        grid.parametric(
+            screen,
+            lambda s: 7.5 + 1.5 * np.cos(s) + pen * np.cos(0.6 * s),
+            lambda s: 1.5 * np.sin(s) - pen * np.sin(0.6 * s),
+            (0, 10 * np.pi),
+            label="spirograph",
+        )
+        grid.legend(screen)
         pygame.display.flip()
         clock.tick(60)
     pygame.quit()

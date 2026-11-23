@@ -16,6 +16,10 @@ axis) into straight lines.
 
 ## How log axes behave
 
+![Power laws are straight lines on log-log axes](../images/examples/log_axes.png)
+
+*Power laws are straight lines on log-log axes ([`examples/log_axes.py`](../../examples/log_axes.py))*
+
 - **Scale and centre.** The scale of a log axis is in pixels per decade
   (default 150), and its centre must be positive (default 1). Ranges must be
   positive too: `x_range=(0.01, 100)` is fine, `(0, 100)` raises
@@ -89,6 +93,6 @@ top three decades below the largest visible value. The equal-aspect setting
 follows the automatic rule (unless you chose one explicitly when creating
 the plane), and the new view becomes the home view.
 
-See `examples/log_axes.py` for log-log, semi-log and range-based planes
-(`X` and `Y` toggle the axes), and the `X`/`Y` keys of
-`examples/grid_playground.py`.
+See [`examples/log_axes.py`](../../examples/log_axes.py) for power laws on log-log
+axes. For working on PyGridPlot, `scripts/grid_playground.py` switches
+either axis between linear and logarithmic with `X` and `Y`.

@@ -94,7 +94,10 @@ package and runs the suite from the source archive; see
   `pygame`, `pgp`, `screen`, `surface` and `grid` predefined), and main
   loops end after a few frames. Use ```` ```py ```` for signature listings
   and fragments that are not meant to run;
-- every relative link and `#anchor` must resolve.
+- every relative link and `#anchor` must resolve (pictures included);
+- the [examples page](../user/examples.md) must match what
+  `scripts/render_examples.py --page` writes from the examples'
+  docstrings, and every example must be on it, with a picture.
 
 ## Visual and performance tools
 
@@ -109,6 +112,10 @@ Some qualities can only be judged by eye, or are about speed:
   change and compare; for refactors, the views must stay pixel-identical
   (see [comparing the gallery](#comparing-the-gallery-before-and-after)).
   `--only NAME ...` renders a subset.
+- `python scripts/render_examples.py` renders every example headless (time
+  comes from the frame count, so the pictures are the same on every run)
+  into `docs/images/examples/`, the README's montage, and the examples
+  page; `NAME ...` renders some, `--page` writes only the page.
 - `python scripts/benchmark.py` prints the median time of the main
   per-frame operations (grids, functions, curves, implicit curves,
   inequalities and areas, vector and slope fields, arrows, points, fills,
@@ -117,9 +124,9 @@ Some qualities can only be judged by eye, or are about speed:
   frames reused by the cache); `--only TEXT` selects cases and
   `--repeat N` steadies the numbers. Compare on the same machine, over a
   few runs.
-- `python examples/zoom_sweep.py --save-frames DIR` dumps frames of an
+- `python scripts/zoom_sweep.py --save-frames DIR` dumps frames of an
   automated zoom and pan, for checking smoothness frame by frame.
-- `python examples/grid_playground.py` toggles theme settings, log axes and
+- `python scripts/grid_playground.py` toggles theme settings, log axes and
   plot overlays live, and shows the scale, spacings and timings.
 
 ### Comparing the gallery before and after

@@ -84,8 +84,16 @@ def test_examples_have_a_main_function() -> None:
         assert callable(namespace.get("main")), path.name
 
 
+def test_examples_use_only_the_public_api() -> None:
+    # Examples are what users copy: `import pygridplot as pgp`, never the
+    # implementation's modules, which may change in any release.
+    for path in sorted((ROOT / "examples").glob("*.py")):
+        for name in imported_modules(path):
+            assert not name.startswith("pygridplot."), f"{path.name} imports {name}"
+
+
 def test_zoom_sweep_runs_headless(tmp_path: Path) -> None:
-    namespace = runpy.run_path(str(ROOT / "examples" / "zoom_sweep.py"), run_name="x")
+    namespace = runpy.run_path(str(ROOT / "scripts" / "zoom_sweep.py"), run_name="x")
     namespace["main"](["--save-frames", str(tmp_path), "--count", "3", "--every", "5"])
     assert len(list(tmp_path.glob("frame_*.png"))) == 3
 

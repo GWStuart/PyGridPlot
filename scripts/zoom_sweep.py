@@ -6,11 +6,11 @@ zooming about the cursor.
 
 Interactive use::
 
-    python examples/zoom_sweep.py            # Space pauses, Esc quits
+    python scripts/zoom_sweep.py            # Space pauses, Esc quits
 
 Headless frame dumps (for comparing frames one by one)::
 
-    python examples/zoom_sweep.py --save-frames frames/ --first 0 --count 120
+    python scripts/zoom_sweep.py --save-frames frames/ --first 0 --count 120
 
 Keys while running: ``Space`` pause/resume, ``T`` light/dark, ``F`` fade/snap.
 """

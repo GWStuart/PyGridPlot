@@ -82,6 +82,10 @@ jobs:
           ruff format --check .
       - name: mypy (strict, src/)
         run: mypy
+      # The examples too, as people copy them; NumPy's results are typed Any,
+      # which their plain float annotations need not repeat.
+      - name: mypy (the examples)
+        run: mypy --no-warn-return-any examples
 
   package:
     name: Build and check the package

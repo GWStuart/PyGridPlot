@@ -1,8 +1,8 @@
 """Smoke tests: every example runs headless for a few frames.
 
 Each example's ``main`` loop is driven by a fake event queue that presses a
-few of the keys the examples use (switching sets, toggling log axes, cycling
-plots, zooming) and then closes the window.
+few keys (Space, X, Y and P, which the grid playground uses), moves the
+mouse and scrolls, and then closes the window.
 """
 
 from __future__ import annotations
@@ -15,9 +15,10 @@ import pygame
 import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
-EXAMPLES = sorted(
-    path for path in (ROOT / "examples").glob("*.py") if path.stem != "zoom_sweep"
-)
+EXAMPLES = [
+    *sorted((ROOT / "examples").glob("*.py")),
+    ROOT / "scripts" / "grid_playground.py",  # a developer's tool, run the same way
+]
 
 
 def scripted_events() -> Iterator[list[pygame.event.Event]]:

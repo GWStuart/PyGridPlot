@@ -71,9 +71,13 @@ condition such as `x**2 + y**2 < 4` holds:
    (the right pixels, palette colours, rigidity when panning), and the
    cache in `tests/test_grid_cache.py` (add the call to its scene).
 5. **Document it**: run `python scripts/build_api_docs.py`, add a section to
-   [Plotting](../user/plotting.md) with runnable examples and its limits,
-   describe the method in [Plotting](plotting.md) for developers, add a
-   benchmark case and a gallery scene, and consider an example program.
+   the user guide's page for its topic ([functions](../user/functions.md),
+   [curves](../user/curves.md), [regions and fields](../user/regions-and-fields.md),
+   [data](../user/data.md) or [shapes and text](../user/shapes-and-text.md))
+   with runnable examples and its limits, add it to the method table in
+   [Plotting](../user/plotting.md#all-the-methods), describe the method in
+   [Plotting](plotting.md) for developers, add a benchmark case and a
+   gallery scene, and consider an example program (see below).
 
 ## A new kind of draggable point
 
@@ -189,10 +193,19 @@ leave it out. Run the script and commit `docs/user/reference.md`.
 
 ## Examples and gallery views
 
-- An **example** is a program in `examples/` with a module docstring that
-  explains what it shows and which keys it uses, and a `main()` function.
-  `tests/test_examples.py` runs every example automatically; list it in
-  [Recipes](../user/recipes.md#examples) and the README.
+- An **example** is one short program in `examples/` (about 40 to 70
+  lines) that shows one thing well, written the way a user's program would
+  be: only `import pygridplot as pgp` (never `pygridplot.core` or
+  `pygridplot.render`), the plain frame loop of the README, and no
+  switching between sets. Its module docstring's first line is
+  `Title: summary.`, and the rest says what it shows and what to try; it
+  has a `main()` function and passes `mypy --no-warn-return-any examples`.
+  `tests/test_examples.py` runs every example headless. Add it to
+  `SECTIONS` in `scripts/render_examples.py` and run that script: it
+  renders the example's picture (`docs/images/examples/`) and writes the
+  [examples page](../user/examples.md) from the docstrings (a docs test
+  fails if the page is out of date or an example is missing from it). If
+  the example changes over time, set the frame to capture in `FRAMES`.
 - A **gallery view** is one `GalleryView(...)` line in
   `scripts/render_gallery.py`, optionally with a scene function that draws
   plots. Add one for every visual case a change could break.

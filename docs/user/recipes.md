@@ -23,7 +23,7 @@ otherwise; `screen` is the display surface and `grid` your plane.
 ## Showing the mouse position
 
 Convert the mouse position to world coordinates and write them beside the
-cursor with [`grid.text`](plotting.md#text):
+cursor with [`grid.text`](shapes-and-text.md#text):
 
 ```python
 mx, my = pygame.mouse.get_pos()
@@ -59,7 +59,7 @@ units, so it grows as you zoom in.
 
 ## Shading the area under a curve
 
-Use [`fill_between`](plotting.md#areas-between-graphs), which shades down
+Use [`fill_between`](regions-and-fields.md#areas-between-graphs), which shades down
 to the x axis by default. Draw it before the curve, so the line stays on
 top:
 
@@ -76,7 +76,7 @@ fills to the bottom of the plane.
 
 Put a [draggable point](draggable-points.md) on the graph of `f` (a curve
 `(t, f(t))`) and draw the tangent line from the
-[derivative](plotting.md#derivatives) at the point. Create the point once,
+[derivative](functions.md#derivatives) at the point. Create the point once,
 before the loop:
 
 ```python
@@ -94,8 +94,8 @@ grid.draw_controls(screen)
 For a point moving along a parametric curve `(x(t), y(t))`, the velocity
 is `(x'(t), y'(t))` and the acceleration `(x''(t), y''(t))`. Put a
 draggable point on the curve and draw both as
-[arrows](plotting.md#arrows) from it, with the exact
-[derivatives](plotting.md#derivatives):
+[arrows](shapes-and-text.md#arrows) from it, with the exact
+[derivatives](functions.md#derivatives):
 
 ```python
 x = lambda t: 3 * np.cos(t)
@@ -137,7 +137,7 @@ Reading data from a file is ordinary NumPy, for example
 `data = np.loadtxt("measurements.csv", delimiter=",")`. Gaps in a polyline
 come from rows of NaN. Measurements with uncertainties take error bars,
 `grid.points(screen, data, y_error=errors)`; see
-[Plotting data](plotting.md#plotting-data) for scatter plots coloured by a
+[Plotting data](data.md#which-method-to-use) for scatter plots coloured by a
 value, step plots, bar charts and histograms.
 
 ### A histogram that fills in
@@ -196,12 +196,12 @@ grid.polar(screen, lambda a: 2 + 0.5 * np.sin(5 * a + t))
 
 The lambdas above use `t` straight away, inside the same frame, so late
 binding is not a problem here. It is when you create lambdas in a loop
-(see [Late binding](plotting.md#late-binding)). See `examples/animation.py`,
+(see [Late binding](functions.md#late-binding)). See `examples/animation.py`,
 `examples/curves.py` and `examples/implicit.py`.
 
 ## Adding a legend
 
-Give the plots a `label=` and draw the [legend](plotting.md#legends) after
+Give the plots a `label=` and draw the [legend](shapes-and-text.md#legends) after
 them:
 
 ```python
@@ -299,7 +299,7 @@ colour; give them explicit colours instead.
 
 **All my functions look the same.** Functions created in a loop need the
 loop variable bound as a default argument: `lambda x, k=k: x**k` (see
-[Late binding](plotting.md#late-binding)).
+[Late binding](functions.md#late-binding)).
 
 **A function draws nothing.** It may fail for every x (a wrong name, for
 example): failures are silently left out of the plot. Call it yourself once
@@ -318,27 +318,8 @@ the original `pygame` package is not (they share the import name).
 
 ## Examples
 
-The `examples/` folder has a runnable program for every topic:
-
-| Example | Shows |
-|---|---|
-| `basic_grid.py` | The smallest program: a plane in a window. |
-| `functions.py` | The function test set and hard cases (`Space` switches sets). |
-| `curves.py` | Animated parametric and polar curves (`Space` switches, `P` pauses). |
-| `derivatives.py` | Tangent lines, Taylor polynomials and the osculating circle at a draggable point (`Space` switches). |
-| `integrals.py` | The area between two draggable points with its antiderivative, Riemann sums with a slider (`R` switches the rule), improper integrals (`Space` switches). |
-| `series.py` | Fourier partial sums with a slider for the harmonics, and their spectrum in a second plane (`Space` switches the function). |
-| `sequences.py` | Sequences closing in on their limits, partial sums of series, and the logistic map with a slider (`Space` switches, `X` toggles a log x axis). |
-| `regions.py` | Inequalities, the area between two graphs between draggable bounds, and hard cases (`Space` switches, `P` pauses). |
-| `fields.py` | Vector and slope fields, a solution through a draggable point, and arrows for vector addition and motion (`Space` switches, `F` and `M` change the field, `P` pauses). |
-| `draggable.py` | Draggable points: a wave shaped by a free point and points locked to lines, points on curves (`Space` switches). |
-| `sliders.py` | Sliders: continuous, stepped, integer and geometric, in two corners, driving a wave and Lissajous figures (`Space` switches). |
-| `implicit.py` | Implicit curves, contour lines, poles and jumps (`Space` switches, `P` pauses). |
-| `shapes.py` | Points, polylines, polygons and fill rules. |
-| `log_axes.py` | Log-log, semi-log and range-based planes (`X`/`Y` toggle log). |
-| `animation.py` | Everything moving, every frame. |
-| `many_functions.py` | Many functions at once, for performance. |
-| `embedded_rect.py` | A plane in part of the window. |
-| `dark_theme.py` | The dark theme. |
-| `grid_playground.py` | Live theme toggles, log axes and timings (`F1` shows the keys). |
-| `zoom_sweep.py` | An automated zoom and pan, optionally saving frames. |
+The [examples page](examples.md) shows every program in the repository's
+`examples/` folder, with a picture and what it shows: functions and
+calculus, curves and regions, fields, points, sliders and shapes, data,
+log axes, animation and a plane inside a game. Each is one short file to
+copy and start from.

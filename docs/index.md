@@ -1,15 +1,15 @@
 # PyGridPlot documentation
 
-PyGridPlot is an interactive Cartesian plane for
-[pygame-ce](https://pyga.me/): an adaptive grid with clean tick labels,
-smooth panning and zooming, linear or logarithmic axes, and robust,
-antialiased plots of functions, parametric, polar and implicit curves,
-areas between graphs and inequalities, vector and slope fields,
-sequences, points, polylines, polygons and arrows, data (scatter plots
-coloured by a value, error bars, step plots, bar charts, histograms, box
-and violin plots), with axis titles, category names, legends, colour bars
-and text, and points and sliders the user can drag. Your program
-owns the main loop; the plane is an object you call every frame.
+PyGridPlot draws interactive, zoomable Cartesian planes in
+[pygame-ce](https://pyga.me/) windows: functions and curves, regions and
+fields, data, and points and sliders the user can drag, over a grid whose
+lines and labels adapt as you pan and zoom. Your program owns the main
+loop, and the plane, a `pgp.Grid`, is an object you call every frame.
+
+![PyGridPlot examples: a tangent and an area, the field of two charges, a scatter plot, curves, a triangle and its circumcircle, violin plots](images/montage.png)
+
+New to it? Start with [Getting started](user/getting-started.md), then
+look through the [examples](user/examples.md).
 
 The [philosophy](philosophy.md) explains the principles behind it: one way
 to do things, done well; Python first; a library, not a framework; and
@@ -23,9 +23,15 @@ topic you need:
 | Page | What it covers |
 |---|---|
 | [Getting started](user/getting-started.md) | Installing, the first program, the frame loop, quick mode. |
+| [Examples](user/examples.md) | Every example program, with a picture of it. |
 | [The plane](user/the-plane.md) | Creating a plane, setting up the view, coordinates, embedding, several planes. |
 | [Interaction](user/interaction.md) | The built-in controls, configuring them, moving the view from code. |
-| [Plotting](user/plotting.md) | Functions, their derivatives and integrals, Taylor polynomials and Fourier series, parametric, polar and implicit curves, areas and inequalities, vector and slope fields, sequences, points, polylines, polygons and arrows; data plots (error bars, steps, bars, histograms, box and violin plots, colour by value); text and legends. |
+| [Plotting](user/plotting.md) | Every plotting method at a glance, drawing order, reusing unchanged plots. |
+| [Functions and calculus](user/functions.md) | Functions, derivatives, integrals and antiderivatives, Taylor polynomials, Fourier series, sequences. |
+| [Curves](user/curves.md) | Parametric, polar and implicit curves, contour lines. |
+| [Regions and fields](user/regions-and-fields.md) | Areas between graphs, inequalities, vector and slope fields. |
+| [Data](user/data.md) | Scatter plots, error bars, lines and steps, bars, histograms, box and violin plots, colour by value. |
+| [Shapes, text and legends](user/shapes-and-text.md) | Polygons, arrows, text and legends. |
 | [Draggable points and sliders](user/draggable-points.md) | Points the user drags: free, locked to an axis, or on a curve; sliders for values. |
 | [Logarithmic axes](user/log-axes.md) | Log and semi-log planes, how their grid and labels behave. |
 | [Styles and themes](user/styles-and-themes.md) | Colours, reusable styles, the palette, themes and number formats. |

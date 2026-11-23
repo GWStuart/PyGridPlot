@@ -36,6 +36,10 @@ jumps, and it cannot be dragged out of the plane.
 
 ## Sliders
 
+![Three sliders shaping a wave; one is geometric](../images/examples/sliders.png)
+
+*Three sliders shaping a wave; one is geometric ([`examples/sliders.py`](../../examples/sliders.py))*
+
 ```py
 grid.slider(label, value_range, *, value=None, step=None, log=False,
              color=None, corner="bottom-left", enabled=True)
@@ -105,7 +109,7 @@ dragged until the next one, so leaving a slider out of `draw_controls`
 hides it and switches it off: a program with several scenes simply draws
 each scene's sliders, `grid.draw_controls(screen, *scene_sliders)`.
 `slider.remove()` takes a slider off the plane for good, and
-`grid.sliders` lists the plane's sliders. A [legend](plotting.md#legends)
+`grid.sliders` lists the plane's sliders. A [legend](shapes-and-text.md#legends)
 in the same corner as sliders goes beyond their panel, so the sliders stay
 where they are.
 
@@ -115,6 +119,10 @@ colour), so it suits light and dark themes alike.
 
 ## Four kinds of point
 
+![A point locked to the x axis moves the centre of a Taylor polynomial](../images/examples/taylor.png)
+
+*A point locked to the x axis moves the centre of a Taylor polynomial ([`examples/taylor.py`](../../examples/taylor.py))*
+
 | Kind | Created with | Moves |
 |---|---|---|
 | Free | `grid.draggable((x, y))` | Anywhere. |
@@ -123,7 +131,7 @@ colour), so it suits light and dark themes alike.
 | On a curve | `grid.draggable(curve=(x, y, t_range))` | Along the parametric curve `(x(t), y(t))`. |
 
 A point on a curve takes the curve's components exactly as
-[`parametric`](plotting.md#parametric-curves) does: functions of `t`
+[`parametric`](curves.md#parametric-curves) does: functions of `t`
 (NumPy or plain `math`) or numbers. It starts at `t` (default: the start of
 `t_range`), or at the point of the curve nearest a `position` you give:
 
@@ -199,7 +207,7 @@ On a [log axis](log-axes.md) a point can never be dragged to zero or below.
 
 ## How points look
 
-Draggable points are larger than plain [points](plotting.md#points), with
+Draggable points are larger than plain [points](data.md#points), with
 an outline in the theme's background colour that separates them from the
 curves they sit on. Each takes its own palette colour, in the order the
 points were created (so colours do not change with what else you draw).
@@ -266,6 +274,7 @@ on_circle.curve = (lambda t: radius * np.cos(t), lambda t: radius * np.sin(t),
   screen; on a part of the curve that is far off screen it follows a coarser
   version until that part comes into view.
 
-See `examples/draggable.py` for a sine wave shaped by a free point and two
-points locked to lines, and points running round a circle and a
-spirograph; `examples/sliders.py` for sliders of every kind.
+See [`examples/geometry.py`](../../examples/geometry.py) for free points (the corners
+of a triangle), [`examples/taylor.py`](../../examples/taylor.py) for a point locked to
+the x axis, [`examples/calculus.py`](../../examples/calculus.py) for a point on a
+curve, and [`examples/sliders.py`](../../examples/sliders.py) for sliders.

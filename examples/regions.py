@@ -1,174 +1,55 @@
-"""Inequalities and areas between graphs: shading regions of the plane.
+"""Regions: inequalities, and the area between two graphs.
 
-Press ``Space`` to switch between sets:
-
-1. **Inequalities**: a disc and an annulus, the region above a drifting
-   sine wave, and a feasible region (several conditions combined with
-   ``&``, as in linear programming) with its corners marked. A condition
-   is plain Python: ``lambda x, y: x**2 + y**2 < 4``.
-2. **The area between two graphs**, between two draggable bounds on the x
-   axis, with its value: drag the bounds, and the shading and the number
-   follow. Where the graphs cross, both parts are shaded (and the value
-   counts the part where ``g`` is above ``f`` as negative).
-3. **Hard cases**: regions that end at the asymptotes of ``tan``, steps of
-   ``floor``, a region that starts where ``sqrt`` becomes defined, and
-   areas that stop cleanly at poles and run off to the bottom of the plane.
-
-Regions and areas have no outline of their own: the boundaries are drawn
-with ``implicit`` and ``plot``. Pan and zoom as usual; ``P`` pauses the
-animation.
+``inequality(condition)`` shades the points where a condition holds.
+Conditions are plain Python, combined with ``&`` (and), ``|`` (or) and
+``~`` (not); brackets matter, as ``&`` binds more tightly than ``<``. Drag
+the point to move the ring. ``fill_between(f, g)`` shades between two
+graphs, and stops cleanly where they cross.
 """
-
-from __future__ import annotations
-
-import math
-import time
-from collections.abc import Callable
 
 import numpy as np
 import pygame
 
 import pygridplot as pgp
-from pygridplot.render.fonts import bundled_font_path
-
-Drawing = Callable[[pgp.Grid, pygame.Surface, float], str]
-"""Draws one set at time ``t`` (in seconds) and returns its caption."""
-
-BLUE = (40, 100, 200)
-RED = (200, 50, 60)
-GREEN = (40, 150, 90)
-ORANGE = (230, 140, 30)
-
-
-def draw_inequalities(grid: pgp.Grid, screen: pygame.Surface, t: float) -> str:
-    """Draw a few inequalities, alone and combined."""
-    # A disc, with its boundary circle drawn on top.
-    grid.inequality(screen, lambda x, y: (x + 5) ** 2 + (y - 2) ** 2 < 4, color=BLUE)
-    grid.implicit(screen, lambda x, y: (x + 5) ** 2 + (y - 2) ** 2, 4, color=BLUE)
-    # An annulus: two conditions at once. Brackets matter, as & binds
-    # more tightly than <.
-    grid.inequality(
-        screen,
-        lambda x, y: (
-            ((x + 5) ** 2 + (y + 3) ** 2 > 1) & ((x + 5) ** 2 + (y + 3) ** 2 < 4)
-        ),
-        color=GREEN,
-    )
-    # Above a drifting wave (and below y = 5).
-    phase = 0.6 * t
-    grid.inequality(
-        screen, lambda x, y: (y > np.sin(x - phase) + 3) & (y < 5), color=ORANGE
-    )
-    grid.plot(screen, lambda x: np.sin(x - phase) + 3, color=ORANGE, width=2)
-    # A feasible region: x >= 0, y >= 0, x + 2y <= 8, 3x + y <= 9.
-    grid.inequality(
-        screen,
-        lambda x, y: (x >= 0) & (y >= 0) & (x + 2 * y <= 8) & (3 * x + y <= 9),
-        color=RED,
-        opacity=0.3,
-    )
-    grid.points(screen, [(0, 0), (3, 0), (2, 3), (0, 4)], color=RED)
-    return "inequalities: x² + y² < 4, annulus, y > sin x, a feasible region"
-
-
-class Area:
-    """The area between two graphs, between two draggable bounds."""
-
-    def __init__(self, grid: pgp.Grid) -> None:
-        self.a = grid.draggable((-1.5, 0.0), lock="y", color=BLUE)
-        self.b = grid.draggable((2.5, 0.0), lock="y", color=BLUE)
-        self.points = (self.a, self.b)
-
-    @staticmethod
-    def f(x: np.ndarray) -> np.ndarray:
-        """The upper graph (mostly)."""
-        return np.sin(x) + 1.5
-
-    @staticmethod
-    def g(x: np.ndarray) -> np.ndarray:
-        """The lower graph (mostly)."""
-        return 0.25 * x**2
-
-    def draw(self, grid: pgp.Grid, screen: pygame.Surface, t: float) -> str:
-        """Draw the area and the graphs; return the caption."""
-        low, high = sorted((self.a.x, self.b.x))
-        if high > low:
-            grid.fill_between(screen, self.f, self.g, domain=(low, high), color=BLUE)
-        grid.plot(screen, self.f, color=BLUE)
-        grid.plot(screen, self.g, color=GREEN)
-        grid.draw_controls(screen, *self.points)
-        value = pgp.integral(lambda x: self.f(x) - self.g(x), low, high)
-        bounds = f"from {low:.2f} to {high:.2f}"
-        return f"area between sin x + 1.5 and x²/4 {bounds}: {value:.4f}"
-
-
-def draw_hard_cases(grid: pgp.Grid, screen: pygame.Surface, t: float) -> str:
-    """Draw regions and areas with poles, jumps and domain edges."""
-    # Below tan x, above y = 1: each region ends at an asymptote.
-    grid.inequality(screen, lambda x, y: (y < np.tan(x)) & (y > 1), color=RED)
-    grid.plot(screen, np.tan, color=RED, width=2)
-    # Below the steps of floor x (and above y = -5).
-    grid.inequality(
-        screen, lambda x, y: (y < np.floor(x) - 1) & (y > -5) & (x > 2), color=GREEN
-    )
-    # sqrt is undefined for x < -6: the region starts there.
-    grid.inequality(
-        screen, lambda x, y: (y < np.sqrt(x + 6) - 1) & (y > -4) & (x < -1), color=BLUE
-    )
-    # The area under 1/x, down to the bottom of the plane, stopping at the
-    # pole without joining its branches.
-    grid.fill_between(screen, lambda x: 1 / x, -math.inf, domain=(-1, 1), color=ORANGE)
-    grid.plot(screen, lambda x: 1 / x, color=ORANGE, width=2, domain=(-1, 1))
-    return "hard cases: asymptotes, jumps, domain edges, poles"
-
-
-def draw_caption(screen: pygame.Surface, font: pygame.font.Font, title: str) -> None:
-    """Draw the set's caption and the keys."""
-    text = font.render(f"{title}   (Space: next   P: pause)", True, (40, 40, 40))
-    panel = pygame.Surface(
-        (text.get_width() + 20, text.get_height() + 12), pygame.SRCALPHA
-    )
-    panel.fill((255, 255, 255, 225))
-    panel.blit(text, (10, 6))
-    screen.blit(panel, (12, 12))
 
 
 def main() -> None:
-    """Run the example."""
+    """Open a window and draw until it is closed."""
     pygame.init()
-    screen = pygame.display.set_mode((1100, 720), pygame.RESIZABLE)
-    pygame.display.set_caption("PyGridPlot: inequalities and areas")
-    font = pygame.font.Font(bundled_font_path(), 14)
-    grid = pgp.Grid(x_range=(-9, 9))
-    area = Area(grid)
-    sets: list[Drawing] = [draw_inequalities, area.draw, draw_hard_cases]
+    screen = pygame.display.set_mode((960, 640), pygame.RESIZABLE)
+    pygame.display.set_caption("PyGridPlot: regions")
     clock = pygame.time.Clock()
-    current = 0
-    paused = False
-    elapsed = 0.0
-    last = time.perf_counter()
+    grid = pgp.Grid(x_range=(-9.5, 9.5))
+    centre = grid.draggable((-5.0, 1.5))
+
+    def ring(x: float, y: float) -> bool:
+        """Whether (x, y) is between the two circles around the centre."""
+        r2 = (x - centre.x) ** 2 + (y - centre.y) ** 2
+        return (r2 > 2.25) & (r2 < 9)
+
+    def f(x: float) -> float:
+        """The upper graph."""
+        return 1.5 + np.cos(1.5 * x)
+
+    def g(x: float) -> float:
+        """The lower graph."""
+        return (x - 5) ** 2 / 3 - 3
 
     running = True
     while running:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 running = False
-            elif event.type == pygame.KEYDOWN and event.key == pygame.K_SPACE:
-                current = (current + 1) % len(sets)
-            elif event.type == pygame.KEYDOWN and event.key == pygame.K_p:
-                paused = not paused
             grid.handle_event(event)
-        # Only the area's bounds can be dragged, and only while they show.
-        for point in area.points:
-            point.enabled = sets[current] == area.draw
 
-        now = time.perf_counter()
-        if not paused:
-            elapsed += now - last
-        last = now
         grid.draw(screen)
-        caption = sets[current](grid, screen, elapsed)
-        draw_caption(screen, font, caption)
+        grid.inequality(screen, ring, label="1.5 < distance < 3")
+        grid.inequality(screen, lambda x, y: y < -x / 2 - 3.5, label="y < −x/2 − 3.5")
+        grid.fill_between(screen, f, g, domain=(1, 9), label="between f and g")
+        grid.plot(screen, f, domain=(1, 9), label="f(x) = 1.5 + cos 1.5x")
+        grid.plot(screen, g, domain=(1, 9), label="g(x) = (x − 5)²/3 − 3")
+        grid.draw_controls(screen)
+        grid.legend(screen)
         pygame.display.flip()
         clock.tick(60)
     pygame.quit()

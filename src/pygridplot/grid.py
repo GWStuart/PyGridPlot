@@ -739,7 +739,7 @@ class Grid:
         self,
         surface: pygame.Surface,
         func: XYFunction,
-        level: float | Sequence[float] = 0.0,
+        level: ArrayLike = 0.0,
         *,
         color: ColorLike | None = None,
         width: float | None = None,
@@ -769,7 +769,7 @@ class Grid:
                 return NaN where it is undefined.
             level: The value of ``func`` along the curve, so that
                 ``grid.implicit(screen, lambda x, y: x**2 + y**2, 9)``
-                draws the circle ``x² + y² = 9``. A sequence of values
+                draws the circle ``x² + y² = 9``. A sequence or array of values
                 draws a curve for each, all in one style (contour lines,
                 like the height lines of a map); this is much faster than
                 one call per value, as ``func`` is evaluated only once.
