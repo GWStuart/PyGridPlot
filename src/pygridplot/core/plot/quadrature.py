@@ -191,6 +191,30 @@ _ENDS_TO_POINTS: Final = np.column_stack(
 """``(2, 23)``: an interval's ends times this are its probes and its nodes."""
 
 
+def _place(
+    ends: NDArray[np.float64], weights: NDArray[np.float64]
+) -> NDArray[np.float64]:
+    """Return points placed in intervals: ``lo * weights[0] + hi * weights[1]``.
+
+    This is ``ends @ weights``, written out because a matrix product goes
+    through BLAS, whose kernels may or may not fuse the multiply and the add
+    (FMA) depending on the platform and the shapes: with Accelerate on
+    macOS arm64, a product with 21 columns and one with 23 rounded the same
+    node differently in the last bit. Two multiplies and an add round the
+    same way everywhere, so the nodes :func:`integrate` evaluates and the
+    ones :func:`nodes_of` returns are identical on every platform.
+
+    Args:
+        ends: ``(m, 2)``: the intervals' left and right ends.
+        weights: ``(2, k)``: the weights of the ends for each point.
+
+    Returns:
+        ``(m, k)``: the points.
+    """
+    points: NDArray[np.float64] = ends[:, :1] * weights[0] + ends[:, 1:] * weights[1]
+    return points
+
+
 def _tail() -> NDArray[np.float64]:
     """Return the weights giving the two highest Legendre coefficients.
 
@@ -520,7 +544,7 @@ def _evaluate(
         The intervals with their estimates. An interval with an undefined
         node or probe has value 0 and an infinite error.
     """
-    points = ends @ _ENDS_TO_POINTS
+    points = _place(ends, _ENDS_TO_POINTS)
     values = np.asarray(func(points.ravel()), dtype=np.float64).reshape(points.shape)
     f = values[:, 1:-1]
     probes = values[:, [0, -1]]
@@ -574,7 +598,7 @@ def nodes_of(lo: NDArray[np.float64], hi: NDArray[np.float64]) -> NDArray[np.flo
     Returns:
         ``(len(lo), 21)``: the nodes, matching :attr:`Quadrature.samples`.
     """
-    return np.column_stack([lo, hi]) @ _ENDS_TO_NODES
+    return _place(np.column_stack([lo, hi]), _ENDS_TO_NODES)
 
 
 def _graded(ends: NDArray[np.float64]) -> NDArray[np.float64]:
