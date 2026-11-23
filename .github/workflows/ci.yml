@@ -35,6 +35,12 @@ jobs:
           python-version: ${{ matrix.python }}
       - name: Install
         run: python -m pip install -e ".[dev]"
+      # Floating-point rounding can depend on the CPU (NumPy's SIMD routines,
+      # the BLAS kernels): record which this runner has.
+      - name: Show NumPy's SIMD features and BLAS kernels on this CPU
+        run: |
+          python -m pip install threadpoolctl
+          python -c "import numpy; numpy.show_runtime()"
       # Headless: the tests choose SDL's dummy drivers themselves.
       - name: Test
         run: python -m pytest -q
@@ -51,6 +57,12 @@ jobs:
         run: >-
           python -m pip install "numpy==1.26.*" "contourpy==1.2.*"
           "pygame-ce==2.5.7" -e ".[dev]"
+      # Floating-point rounding can depend on the CPU (NumPy's SIMD routines,
+      # the BLAS kernels): record which this runner has.
+      - name: Show NumPy's SIMD features and BLAS kernels on this CPU
+        run: |
+          python -m pip install threadpoolctl
+          python -c "import numpy; numpy.show_runtime()"
       - name: Test
         run: python -m pytest -q
 

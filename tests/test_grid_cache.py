@@ -259,9 +259,14 @@ def test_recorders_check_antiderivatives_through_their_integrand() -> None:
     recorder.func = pgp.antiderivative(lambda x: k[0] * np.cos(x))
     k[0] = 1.0 + 1e-15
     assert not recorder.unchanged()
-    recorder.func = np.sin  # no longer an antiderivative: its own values decide
+    # No longer an antiderivative: its own values decide. (Not np.sin: the
+    # quadrature of cos matches it to the last bit only on some CPUs.)
+    same = lambda x: np.interp(x, [0.5, 1.0, 2.0], values)  # noqa: E731  # exact there
+    recorder.func = same
     k[0] = 1.0
-    assert recorder.unchanged()  # the quadrature of cos is sin, to the last bit here
+    assert recorder.unchanged()
+    recorder.func = lambda x: np.nextafter(same(x), np.inf)  # one bit higher
+    assert not recorder.unchanged()
     recorder.func = np.cos
     assert not recorder.unchanged()
 
