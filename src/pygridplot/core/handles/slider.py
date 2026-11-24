@@ -22,6 +22,17 @@ slider's range, and is exact:
 * **on a log slider** (``log=True``), the track is geometric: equal
   distances along it multiply the value by equal factors, for parameters
   spanning several powers of ten.
+
+A slider made with ``play=`` has a **play button**, as in Desmos: pressed,
+the handle sweeps along the track by itself, one sweep taking
+:attr:`Slider.duration` seconds, until pressed again (:attr:`Slider.playing`
+from code). At the end of the track it starts again from the low end
+(``"loop"``), turns round (``"bounce"``) or stops (``"once"``). The sweep is
+even along the track (geometric on a log slider); a stepped slider goes
+from step to step, evenly in time, and one without a step moves smoothly
+(its value is not rounded to a pixel while it plays). The plane advances
+playing sliders at the start of each frame (:meth:`Slider.advance`), by the
+time since the previous one.
 """
 
 from __future__ import annotations
@@ -40,13 +51,28 @@ from pygridplot.core.primitives import LabelText, TextRun
 from pygridplot.core.transforms import AxisTransform
 
 Corner: TypeAlias = Literal["bottom-left", "bottom-right", "top-left", "top-right"]
-"""Where in the plane a slider's panel sits."""
+"""Where in the plane a slider's (or checkbox's) panel sits."""
 
 CORNERS: tuple[Corner, ...] = ("bottom-left", "bottom-right", "top-left", "top-right")
 """The allowed values of :attr:`Slider.corner`."""
 
 ValueT = TypeVar("ValueT", int, float)
 """The type of a slider's value: ``int`` for an integer slider, else ``float``."""
+
+PlayMode: TypeAlias = Literal["loop", "bounce", "once"]
+"""What a playing slider does when it reaches the end of its track.
+
+* ``"loop"``: start again from the low end.
+* ``"bounce"``: turn round, and sweep back and forth between the ends.
+* ``"once"``: stop at the high end (pressing play there starts again from
+  the low end).
+"""
+
+PLAY_MODES: tuple[PlayMode, ...] = ("loop", "bounce", "once")
+"""The allowed values of :attr:`Slider.play`."""
+
+DEFAULT_DURATION: Final = 5.0
+"""Seconds a playing slider takes to sweep its track, unless given."""
 
 WHEEL_FRACTION: Final = 0.01
 """How far along the track one notch of the wheel moves a slider without a step."""
@@ -74,17 +100,23 @@ class Slider(Generic[ValueT]):
             gives each slider its own palette colour, in the order the
             sliders were created.
         corner: Which corner of the plane the slider's panel is in.
-        enabled: Whether the slider can be dragged (a disabled slider is
-            drawn faded).
+        enabled: Whether the slider can be dragged, and its play button
+            pressed (a disabled slider is drawn faded).
+        play: What a playing slider does at the end of its track (see
+            :data:`PlayMode`), which gives it a play button; ``None`` (the
+            default) for none.
+        duration: How many seconds a playing slider takes to sweep the
+            whole track.
         on_remove: Called by :meth:`remove` (the plane forgets the slider).
 
     Raises:
-        TypeError: If the label is not a string, or the range, value or step
-            are not numbers.
+        TypeError: If the label is not a string, or the range, value, step
+            or duration are not numbers.
         ValueError: If the range is not two finite numbers in increasing
             order (positive for a log slider), the step is not positive or
             wider than the range, an integer step has ends that are not
-            whole numbers, the value is NaN, or the corner is unknown.
+            whole numbers, the value is NaN, the corner or play mode is
+            unknown, or the duration is not positive and finite.
     """
 
     def __init__(
@@ -98,6 +130,8 @@ class Slider(Generic[ValueT]):
         color: ColorLike | None = None,
         corner: Corner = "bottom-left",
         enabled: bool = True,
+        play: PlayMode | None = None,
+        duration: float = DEFAULT_DURATION,
         on_remove: Callable[[Slider[Any]], None] | None = None,
     ) -> None:
         if not isinstance(label, str):
@@ -114,7 +148,7 @@ class Slider(Generic[ValueT]):
         """The handle's colour, or ``None`` for the slider's palette colour."""
         self.corner = corner
         self.enabled = enabled
-        """Whether the slider can be dragged (it is drawn faded when not)."""
+        """Whether the slider can be dragged and played (it is drawn faded when not)."""
         self._on_remove = on_remove
         self._value = self._snap(low if value is None else _number("value", value))
         self._version = 0
@@ -122,6 +156,14 @@ class Slider(Generic[ValueT]):
         self._moved = False
         self._hovered = False
         self._dragging = False
+        self._play_hovered = False
+        self._playing = False
+        self.play = play
+        self.duration = duration
+        # Where a playing slider is along its track, unrounded (its value is
+        # on the step), and which way it is going (-1 coming back on a bounce).
+        self._position = self.fraction
+        self._direction = 1.0
         self.track_px = 0.0
         """The length of the track as last drawn, in pixels (0 before then)."""
 
@@ -140,6 +182,7 @@ class Slider(Generic[ValueT]):
     @value.setter
     def value(self, value: float) -> None:
         self._set(self._snap(_number("value", value)))
+        self._position = self.fraction
 
     @property
     def value_range(self) -> tuple[float, float]:
@@ -168,10 +211,95 @@ class Slider(Generic[ValueT]):
 
     @corner.setter
     def corner(self, corner: Corner) -> None:
-        if corner not in CORNERS:
-            msg = f"corner must be one of {CORNERS}, got {corner!r}"
+        self._corner = check_corner(corner)
+
+    @property
+    def play(self) -> PlayMode | None:
+        """What the slider does when playing reaches the end of the track.
+
+        ``"loop"``, ``"bounce"`` or ``"once"`` (see :data:`PlayMode`), or
+        ``None`` for a slider without a play button. Setting ``None`` stops
+        it playing.
+        """
+        return self._play
+
+    @play.setter
+    def play(self, mode: PlayMode | None) -> None:
+        if mode is not None and mode not in PLAY_MODES:
+            msg = f"play must be one of {PLAY_MODES} or None, got {mode!r}"
             raise ValueError(msg)
-        self._corner = corner
+        self._play = mode
+        if mode is None:
+            self._playing = False
+
+    @property
+    def duration(self) -> float:
+        """How many seconds playing takes to sweep the whole track."""
+        return self._duration
+
+    @duration.setter
+    def duration(self, seconds: float) -> None:
+        value = _number("duration", seconds)
+        if not (math.isfinite(value) and value > 0):
+            msg = f"the duration must be positive and finite, got {seconds!r}"
+            raise ValueError(msg)
+        self._duration = value
+
+    @property
+    def playing(self) -> bool:
+        """Whether the handle is sweeping along the track by itself.
+
+        The play button switches it; set it to start or stop playing from
+        code (a slider needs a :attr:`play` mode to play). Playing ``"once"``
+        stops by itself at the end of the track, and starting again there
+        goes back to the low end. Dragging the handle holds it where it is
+        dragged; it plays on from there when let go.
+
+        Raises:
+            ValueError: If set to ``True`` on a slider without a play mode.
+        """
+        return self._playing
+
+    @playing.setter
+    def playing(self, playing: bool) -> None:
+        if playing and self._play is None:
+            msg = "this slider cannot play: give it play='loop', 'bounce' or 'once'"
+            raise ValueError(msg)
+        start = bool(playing) and not self._playing
+        self._playing = bool(playing)
+        if start and self._play == "once" and self._position >= 1.0:
+            self._direction = 1.0
+            self._set(self._played_value(0.0))
+            self._position = 0.0
+
+    def advance(self, seconds: float) -> bool:
+        """Move a playing slider on by some time, as the plane does every frame.
+
+        Nothing happens if the slider is not playing, or is being dragged.
+
+        Args:
+            seconds: The time since the previous frame.
+
+        Returns:
+            Whether the value changed.
+        """
+        if not self._playing or self._dragging or not seconds > 0:
+            return False
+        travel = seconds / self._duration
+        if self._play == "loop":
+            position = (self._position + travel) % 1.0
+        elif self._play == "bounce":
+            # Unfold the back-and-forth into one direction, two tracks long.
+            unfolded = self._position if self._direction > 0 else 2.0 - self._position
+            unfolded = (unfolded + travel) % 2.0
+            self._direction = 1.0 if unfolded < 1.0 else -1.0
+            position = unfolded if unfolded <= 1.0 else 2.0 - unfolded
+        else:
+            position = min(self._position + travel, 1.0)
+            if position >= 1.0:
+                self._playing = False
+        self._position = position
+        return self._set(self._played_value(position))
 
     @property
     def fraction(self) -> float:
@@ -207,7 +335,9 @@ class Slider(Generic[ValueT]):
         Returns:
             Whether the value changed.
         """
-        return self._set(self.value_at(fraction))
+        changed = self._set(self.value_at(fraction))
+        self._position = self.fraction
+        return changed
 
     def nudge(self, notches: int) -> bool:
         """Move the value by whole steps, as the mouse wheel does.
@@ -220,8 +350,11 @@ class Slider(Generic[ValueT]):
             Whether the value changed.
         """
         if self._step is not None:
-            return self._set(self._snap(self._value + notches * self._step))
-        return self._set(self.value_at(self.fraction + notches * WHEEL_FRACTION))
+            changed = self._set(self._snap(self._value + notches * self._step))
+        else:
+            changed = self._set(self.value_at(self.fraction + notches * WHEEL_FRACTION))
+        self._position = self.fraction
+        return changed
 
     def text(self, fmt: NumberFormat) -> LabelText:
         """Return what the slider shows: ``label = value``.
@@ -275,15 +408,24 @@ class Slider(Generic[ValueT]):
         """Whether the cursor is over the slider's track (and it can be dragged)."""
         return self._hovered
 
-    def set_interaction(self, *, hovered: bool, dragging: bool) -> None:
+    @property
+    def play_hovered(self) -> bool:
+        """Whether the cursor is over the slider's play button."""
+        return self._play_hovered
+
+    def set_interaction(
+        self, *, hovered: bool, dragging: bool, play_hovered: bool = False
+    ) -> None:
         """Record whether the slider is hovered and dragged (by the plane).
 
         Args:
             hovered: Whether the cursor is over the track.
             dragging: Whether the handle is being dragged.
+            play_hovered: Whether the cursor is over the play button.
         """
         self._hovered = hovered
         self._dragging = dragging
+        self._play_hovered = play_hovered
 
     def begin_frame(self) -> None:
         """Start a new frame: update :attr:`moved`.
@@ -295,7 +437,8 @@ class Slider(Generic[ValueT]):
 
     def remove(self) -> None:
         """Remove the slider from its plane: it is no longer dragged or drawn."""
-        self._dragging = self._hovered = False
+        self._dragging = self._hovered = self._play_hovered = False
+        self._playing = False
         if self._on_remove is not None:
             callback, self._on_remove = self._on_remove, None
             callback(self)
@@ -339,6 +482,27 @@ class Slider(Generic[ValueT]):
         self._version += 1
         return True
 
+    def _played_value(self, position: float) -> float:
+        """The value at a point of the track while playing.
+
+        Without a step it is exact: unlike a drag's, it is not rounded to a
+        pixel of the track, so the sweep is smooth. With a step, each of the
+        allowed values takes an equal share of the sweep (rounding to the
+        nearest would give the two ends half as long as the others, so an
+        integer slider looping from 1 to 5 would seem to skip them); on a
+        log track, where the values are not evenly spread along it, the
+        value is the nearest step.
+        """
+        low, high = self._range
+        if self._log:
+            return self._snap(low * (high / low) ** position)
+        if self._step is None:
+            return self._snap(low + position * (high - low))
+        top = round((self._snap(high) - low) / self._step)
+        k = min(math.floor(position * (top + 1)), top)
+        base, step = Decimal(repr(low)), Decimal(repr(self._step))
+        return float(base + k * step)
+
     def _snap(self, value: float) -> float:
         """Keep a value within the range and on the step.
 
@@ -355,6 +519,24 @@ class Slider(Generic[ValueT]):
         if snapped > high:  # high is not on the step: the last step below it
             snapped = float(base + (k - 1) * step)
         return snapped
+
+
+def check_corner(corner: object) -> Corner:
+    """Validate the corner of a control's panel.
+
+    Args:
+        corner: The corner.
+
+    Returns:
+        The corner.
+
+    Raises:
+        ValueError: If it is not one of :data:`CORNERS`.
+    """
+    if corner not in CORNERS:
+        msg = f"corner must be one of {CORNERS}, got {corner!r}"
+        raise ValueError(msg)
+    return corner
 
 
 def _number(name: str, value: object) -> float:

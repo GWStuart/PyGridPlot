@@ -60,10 +60,11 @@ SECTIONS: list[tuple[str, str, list[str]]] = [
         ["color_map", "data_range"],
     ),
     (
-        "Draggable points and sliders",
-        "Points the user drags, created with `Grid.draggable`, and sliders, "
-        "created with `Grid.slider`.",
-        ["DraggablePoint", "Slider"],
+        "Draggable points, sliders and checkboxes",
+        "Points the user drags, created with `Grid.draggable`, sliders, "
+        "created with `Grid.slider`, and checkboxes, created with "
+        "`Grid.checkbox`.",
+        ["DraggablePoint", "Slider", "Checkbox"],
     ),
     (
         "Styles",

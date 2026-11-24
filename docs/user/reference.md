@@ -13,7 +13,7 @@ setting with its parameters and defaults.
 - The plane: [`Grid`](#grid), [`show`](#show)
 - Calculus: [`derivative`](#derivative), [`derivatives`](#derivatives), [`integral`](#integral), [`antiderivative`](#antiderivative), [`taylor`](#taylor), [`fourier`](#fourier)
 - Data: [`color_map`](#color_map), [`data_range`](#data_range)
-- Draggable points and sliders: [`DraggablePoint`](#draggablepoint), [`Slider`](#slider)
+- Draggable points, sliders and checkboxes: [`DraggablePoint`](#draggablepoint), [`Slider`](#slider), [`Checkbox`](#checkbox)
 - Styles: [`LineStyle`](#linestyle), [`PointStyle`](#pointstyle), [`PolygonStyle`](#polygonstyle), [`FillStyle`](#fillstyle), [`ArrowStyle`](#arrowstyle), [`SequenceStyle`](#sequencestyle), [`BarStyle`](#barstyle), [`TextStyle`](#textstyle)
 - Themes: [`GridTheme`](#gridtheme), [`LIGHT`](#light), [`DARK`](#dark), [`NumberFormat`](#numberformat)
 - Configuration: [`InteractionConfig`](#interactionconfig), [`KeyBindings`](#keybindings), [`FunctionSampling`](#functionsampling), [`CurveSampling`](#curvesampling), [`ImplicitSampling`](#implicitsampling), [`ViewLimits`](#viewlimits), [`CacheStats`](#cachestats)
@@ -166,9 +166,9 @@ The initial view can be given like a graphing calculator's window settings, `x_r
   grid.begin_frame()
   ```
 
-  Start a new frame for the palette, the legend, draggable points and sliders.
+  Start a new frame: the palette, the legend, points, sliders and checkboxes.
 
-  The next object drawn without a colour gets the first palette colour again, the legend starts with no entries, and each draggable point and slider updates its `moved` flag. `draw` calls this automatically. Call it yourself only if you draw plots without drawing the grid, so that every object keeps the same palette colour from frame to frame, and the legend shows only the frame's plots.
+  The next object drawn without a colour gets the first palette colour again, the legend starts with no entries, playing sliders move on by the time since the previous frame (by pygame's clock, `get_ticks`, at most a quarter of a second, so a stalled frame does not make them jump), and each draggable point, slider and checkbox updates its `moved` or `changed` flag. `draw` calls this automatically. Call it yourself only if you draw plots without drawing the grid, so that every object keeps the same palette colour from frame to frame, and the legend shows only the frame's plots.
 
 - **`grid.draw()`**
 
@@ -1172,6 +1172,8 @@ The initial view can be given like a graphing calculator's window settings, `x_r
       color: ColorLike | None = None,
       corner: Corner = 'bottom-left',
       enabled: bool = True,
+      play: PlayMode | None = None,
+      duration: float = 5.0,
   ) -> Slider[Any]
   ```
 
@@ -1189,7 +1191,14 @@ The initial view can be given like a graphing calculator's window settings, `x_r
   grid.draw_controls(screen)
   ```
 
-  Pressing the track moves the handle there; the mouse wheel over a slider moves it by a step. Sliders in the same corner are stacked in the order they are drawn.
+  Pressing the track moves the handle there; the mouse wheel over a slider moves it by a step. Sliders (and checkboxes) in the same corner are stacked in the order they are drawn.
+
+  With `play=`, the slider gets a play button, as in Desmos: pressed, the handle sweeps along the track by itself, taking `duration` seconds a sweep, until pressed again. Set `Slider.playing` to start or stop it from code:
+
+  ```py
+  t = grid.slider("t", (0, 2 * np.pi), play="loop", duration=4)
+  t.playing = True                                    # from the start
+  ```
 
   *Parameters:*
 
@@ -1200,18 +1209,65 @@ The initial view can be given like a graphing calculator's window settings, `x_r
   - `log`: Make the track geometric, for values spanning several powers of ten (`low` must be positive).
   - `color`: The handle's colour. The default gives each slider its own palette colour, in the order the sliders were created.
   - `corner`: `"bottom-left"` (the default), `"bottom-right"`, `"top-left"` or `"top-right"`: where the slider's panel is.
-  - `enabled`: Whether the slider can be dragged (a disabled slider is drawn faded).
+  - `enabled`: Whether the slider can be dragged and its play button pressed (a disabled slider is drawn faded).
+  - `play`: Give the slider a play button, and say what playing does at the end of the track: `"loop"` starts again from the low end, `"bounce"` turns round (back and forth), `"once"` stops. `None` (the default) for no play button.
+  - `duration`: How many seconds playing takes to sweep the whole track (default 5).
 
   *Returns:* The slider, registered with this plane until its `Slider.remove` is called.
 
   *Raises:*
 
   - `TypeError`: If the label is not a string, or a number is not a number.
-  - `ValueError`: If the range is not two finite numbers in increasing order (positive for a log slider), the step is not positive or wider than the range, an integer step has ends that are not whole numbers, or the corner is unknown.
+  - `ValueError`: If the range is not two finite numbers in increasing order (positive for a log slider), the step is not positive or wider than the range, an integer step has ends that are not whole numbers, the corner or play mode is unknown, or the duration is not positive.
+
+- **`grid.checkbox()`**
+
+  ```py
+  grid.checkbox(
+      label: str,
+      *,
+      value: bool = False,
+      color: ColorLike | None = None,
+      corner: Corner = 'bottom-left',
+      enabled: bool = True,
+  ) -> Checkbox
+  ```
+
+  Create a checkbox: a switch the user turns on and off with a click.
+
+  Create the checkbox once, before the main loop. It is drawn in a panel in a corner of the plane, with sliders in the same corner, and stays put while the plane is panned and zoomed. A click on the box or its label ticks or unticks it, your code reads its `Checkbox.value` every frame, and `draw_controls` draws it:
+
+  ```py
+  show = grid.checkbox("show the derivative")
+
+  grid.plot(screen, f)
+  if show.value:
+      grid.plot(screen, pgp.derivative(f))
+  grid.draw_controls(screen)
+  ```
+
+  *Parameters:*
+
+  - `label`: The text beside the box.
+  - `value`: Whether it starts ticked (default `False`).
+  - `color`: The colour of the ticked box. The default gives each control (slider or checkbox) its own palette colour, in the order they were created.
+  - `corner`: `"bottom-left"` (the default), `"bottom-right"`, `"top-left"` or `"top-right"`: where the checkbox's panel is.
+  - `enabled`: Whether it can be clicked (a disabled checkbox is drawn faded).
+
+  *Returns:* The checkbox, registered with this plane until its `Checkbox.remove` is called.
+
+  *Raises:*
+
+  - `TypeError`: If the label is not a string, or the value not a bool.
+  - `ValueError`: If the corner is unknown.
 
 - **`grid.sliders`** (`tuple[Slider[Any], ...]`, read only)
 
   The plane's sliders, in the order they were created.
+
+- **`grid.checkboxes`** (`tuple[Checkbox, ...]`, read only)
+
+  The plane's checkboxes, in the order they were created.
 
 - **`grid.draggables`** (`tuple[DraggablePoint, ...]`, read only)
 
@@ -1224,23 +1280,26 @@ The initial view can be given like a graphing calculator's window settings, `x_r
 - **`grid.draw_controls()`**
 
   ```py
-  grid.draw_controls(surface: pygame.Surface, *items: DraggablePoint | Slider[Any])
+  grid.draw_controls(
+      surface: pygame.Surface,
+      *items: DraggablePoint | Slider[Any] | Checkbox,
+  )
   ```
 
-  Draw draggable points and sliders, with their highlights and labels.
+  Draw draggable points, sliders and checkboxes, with their highlights.
 
-  Call it after the plots, so the points sit on top of the curves they control and the sliders' panels on top of everything. A hovered or dragged point gets a translucent ring, and its coordinates are shown as set by its `DraggablePoint.coordinates`; sliders are drawn in panels in the corners of the plane (see `slider`).
+  Call it after the plots, so the points sit on top of the curves they control and the panels of sliders and checkboxes on top of everything. A hovered or dragged point gets a translucent ring, and its coordinates are shown as set by its `DraggablePoint.coordinates`; sliders and checkboxes are drawn in panels in the corners of the plane (see `slider` and `checkbox`).
 
-  Only sliders drawn here can be dragged until the next frame, so leaving a slider out (`grid.draw_controls(screen, a, n)`) hides it and switches it off.
+  Only sliders and checkboxes drawn here can be used until the next frame, so leaving one out (`grid.draw_controls(screen, a, n)`) hides it and switches it off.
 
   *Parameters:*
 
   - `surface`: The surface to draw on.
-  - `*items`: The points and sliders to draw (default: all of this plane's points, then all its sliders, in creation order).
+  - `*items`: The points, sliders and checkboxes to draw (default: all of this plane's points, then all its sliders and checkboxes, in creation order).
 
   *Raises:*
 
-  - `ValueError`: If a point or slider does not belong to this plane.
+  - `ValueError`: If a point, slider or checkbox does not belong to this plane.
 
 - **`grid.to_world()`**
 
@@ -1619,9 +1678,9 @@ grid.set_view(y_range=pgp.data_range(heights, include=0))  # bars from 0
 
 - `ValueError`: If `values` or `include` are not numbers, or `margin` is negative or not finite.
 
-## Draggable points and sliders
+## Draggable points, sliders and checkboxes
 
-Points the user drags, created with `Grid.draggable`, and sliders, created with `Grid.slider`.
+Points the user drags, created with `Grid.draggable`, sliders, created with `Grid.slider`, and checkboxes, created with `Grid.checkbox`.
 
 ### DraggablePoint
 
@@ -1798,6 +1857,8 @@ pgp.Slider(
     color: ColorLike | None = None,
     corner: Corner = 'bottom-left',
     enabled: bool = True,
+    play: PlayMode | None = None,
+    duration: float = 5.0,
     on_remove: Callable[[Slider[Any]], None] | None = None,
 )
 ```
@@ -1815,13 +1876,15 @@ Create sliders with `Grid.slider`, which registers them with the plane so that `
 - `log`: Make the track geometric (`low` must then be positive).
 - `color`: The colour of the handle and of the track up to it; `None` gives each slider its own palette colour, in the order the sliders were created.
 - `corner`: Which corner of the plane the slider's panel is in.
-- `enabled`: Whether the slider can be dragged (a disabled slider is drawn faded).
+- `enabled`: Whether the slider can be dragged, and its play button pressed (a disabled slider is drawn faded).
+- `play`: What a playing slider does at the end of its track (see `PlayMode`), which gives it a play button; `None` (the default) for none.
+- `duration`: How many seconds a playing slider takes to sweep the whole track.
 - `on_remove`: Called by `remove` (the plane forgets the slider).
 
 *Raises:*
 
-- `TypeError`: If the label is not a string, or the range, value or step are not numbers.
-- `ValueError`: If the range is not two finite numbers in increasing order (positive for a log slider), the step is not positive or wider than the range, an integer step has ends that are not whole numbers, the value is NaN, or the corner is unknown.
+- `TypeError`: If the label is not a string, or the range, value, step or duration are not numbers.
+- `ValueError`: If the range is not two finite numbers in increasing order (positive for a log slider), the step is not positive or wider than the range, an integer step has ends that are not whole numbers, the value is NaN, the corner or play mode is unknown, or the duration is not positive and finite.
 
 #### Members of `Slider`
 
@@ -1850,6 +1913,42 @@ Create sliders with `Grid.slider`, which registers them with the plane so that `
 - **`slider.corner`** (`Corner`, read and write)
 
   Which corner of the plane the slider's panel is in.
+
+- **`slider.play`** (`PlayMode | None`, read and write)
+
+  What the slider does when playing reaches the end of the track.
+
+  `"loop"`, `"bounce"` or `"once"` (see `PlayMode`), or `None` for a slider without a play button. Setting `None` stops it playing.
+
+- **`slider.duration`** (`float`, read and write)
+
+  How many seconds playing takes to sweep the whole track.
+
+- **`slider.playing`** (`bool`, read and write)
+
+  Whether the handle is sweeping along the track by itself.
+
+  The play button switches it; set it to start or stop playing from code (a slider needs a `play` mode to play). Playing `"once"` stops by itself at the end of the track, and starting again there goes back to the low end. Dragging the handle holds it where it is dragged; it plays on from there when let go.
+
+  *Raises:*
+
+  - `ValueError`: If set to `True` on a slider without a play mode.
+
+- **`slider.advance()`**
+
+  ```py
+  slider.advance(seconds: float) -> bool
+  ```
+
+  Move a playing slider on by some time, as the plane does every frame.
+
+  Nothing happens if the slider is not playing, or is being dragged.
+
+  *Parameters:*
+
+  - `seconds`: The time since the previous frame.
+
+  *Returns:* Whether the value changed.
 
 - **`slider.fraction`** (`float`, read only)
 
@@ -1927,10 +2026,14 @@ Create sliders with `Grid.slider`, which registers them with the plane so that `
 
   Whether the cursor is over the slider's track (and it can be dragged).
 
+- **`slider.play_hovered`** (`bool`, read only)
+
+  Whether the cursor is over the slider's play button.
+
 - **`slider.set_interaction()`**
 
   ```py
-  slider.set_interaction(*, hovered: bool, dragging: bool)
+  slider.set_interaction(*, hovered: bool, dragging: bool, play_hovered: bool = False)
   ```
 
   Record whether the slider is hovered and dragged (by the plane).
@@ -1939,6 +2042,7 @@ Create sliders with `Grid.slider`, which registers them with the plane so that `
 
   - `hovered`: Whether the cursor is over the track.
   - `dragging`: Whether the handle is being dragged.
+  - `play_hovered`: Whether the cursor is over the play button.
 
 - **`slider.begin_frame()`**
 
@@ -1957,6 +2061,88 @@ Create sliders with `Grid.slider`, which registers them with the plane so that `
   ```
 
   Remove the slider from its plane: it is no longer dragged or drawn.
+
+### Checkbox
+
+```py
+pgp.Checkbox(
+    label: str,
+    *,
+    value: bool = False,
+    color: ColorLike | None = None,
+    corner: Corner = 'bottom-left',
+    enabled: bool = True,
+    on_remove: Callable[[Checkbox], None] | None = None,
+)
+```
+
+A switch, on or off, shown as a box to tick in a panel.
+
+Create checkboxes with `Grid.checkbox`, which registers them with the plane so that `Grid.handle_event` toggles them and `Grid.draw_controls` draws them.
+
+*Parameters:*
+
+- `label`: The text beside the box.
+- `value`: Whether it starts ticked.
+- `color`: The colour of the ticked box; `None` gives it a palette colour, in the order the plane's sliders and checkboxes were created.
+- `corner`: Which corner of the plane its panel is in.
+- `enabled`: Whether it can be clicked (a disabled checkbox is drawn faded).
+- `on_remove`: Called by `remove` (the plane forgets the checkbox).
+
+*Raises:*
+
+- `TypeError`: If the label is not a string, or the value not a bool.
+- `ValueError`: If the corner is unknown.
+
+#### Members of `Checkbox`
+
+- **`checkbox.value`** (`bool`, read and write)
+
+  Whether the box is ticked. Assign to tick or untick it.
+
+- **`checkbox.corner`** (`Corner`, read and write)
+
+  Which corner of the plane the checkbox's panel is in.
+
+- **`checkbox.changed`** (`bool`, read only)
+
+  Whether the value changed between the previous frame and this one.
+
+  Frames start at `Grid.draw` (or `Grid.begin_frame`), so this stays the same while you draw, like a slider's `Slider.moved`.
+
+- **`checkbox.hovered`** (`bool`, read only)
+
+  Whether the cursor is over the checkbox (and it can be clicked).
+
+- **`checkbox.set_interaction()`**
+
+  ```py
+  checkbox.set_interaction(*, hovered: bool)
+  ```
+
+  Record whether the checkbox is hovered (by the plane).
+
+  *Parameters:*
+
+  - `hovered`: Whether the cursor is over it.
+
+- **`checkbox.begin_frame()`**
+
+  ```py
+  checkbox.begin_frame()
+  ```
+
+  Start a new frame: update `changed`.
+
+  `Grid.begin_frame` calls this for every checkbox.
+
+- **`checkbox.remove()`**
+
+  ```py
+  checkbox.remove()
+  ```
+
+  Remove the checkbox from its plane: it is no longer clicked or drawn.
 
 ## Styles
 

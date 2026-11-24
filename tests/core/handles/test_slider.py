@@ -13,6 +13,7 @@ from pygridplot.core.coords import ScreenRect
 from pygridplot.core.grid.formatting import NumberFormat
 from pygridplot.core.grid.theme import DARK, LIGHT
 from pygridplot.core.handles import panel as panels
+from pygridplot.core.handles.checkbox import Checkbox
 from pygridplot.core.handles.panel import Panel, layout_panels, panel_primitives
 from pygridplot.core.handles.slider import WHEEL_FRACTION, Slider
 from pygridplot.core.primitives import Fill, LabelText, Markers, Stroke
@@ -205,8 +206,10 @@ def test_dragged_values_are_always_in_range_and_on_the_step(
 # --- Panels --------------------------------------------------------------------
 
 
-def layout(*sliders: Slider[Any], rect: ScreenRect = RECT) -> tuple[Panel, ...]:
-    return layout_panels(sliders, rect, LIGHT, FakeMeasurer())
+def layout(
+    *controls: Slider[Any] | Checkbox, rect: ScreenRect = RECT
+) -> tuple[Panel, ...]:
+    return layout_panels(controls, rect, LIGHT, FakeMeasurer())
 
 
 def test_panels_sit_in_their_corners_and_stack_in_order() -> None:
@@ -274,3 +277,208 @@ def test_disabled_sliders_are_faded_and_dark_themes_work() -> None:
     clear = LIGHT.__class__(background=None, label_halo_width=0)
     shapes, _ = panel_primitives(panel, clear, {slider: (200, 0, 0)})
     assert not any(isinstance(s, Fill) for s in shapes)  # transparent: no panel
+
+
+# --- Playing -------------------------------------------------------------------
+
+
+def played(slider: Slider[Any], seconds: float, frames: int) -> list[float]:
+    """The values after each of ``frames`` advances of ``seconds``."""
+    values = []
+    for _ in range(frames):
+        slider.advance(seconds)
+        values.append(slider.value)
+    return values
+
+
+def test_play_settings_are_validated() -> None:
+    with pytest.raises(ValueError, match="play"):
+        Slider("t", (0, 1), play="forever")  # type: ignore[arg-type]
+    for bad in (0, -1, math.inf, math.nan):
+        with pytest.raises(ValueError, match="duration"):
+            Slider("t", (0, 1), play="loop", duration=bad)
+    with pytest.raises(TypeError, match="duration"):
+        Slider("t", (0, 1), duration="2")  # type: ignore[arg-type]
+    still = Slider("t", (0, 1))
+    with pytest.raises(ValueError, match="cannot play"):
+        still.playing = True
+    still.playing = False  # stopping is always fine
+    assert not still.advance(1.0)
+
+
+def test_looping_starts_again_from_the_low_end() -> None:
+    t = Slider("t", (0, 10), play="loop", duration=2)
+    assert not t.playing
+    assert not t.advance(0.5)  # not playing yet
+    t.playing = True
+    assert played(t, 0.5, 5) == pytest.approx([2.5, 5.0, 7.5, 0.0, 2.5])
+    assert t.playing
+
+
+def test_bouncing_turns_round_at_both_ends() -> None:
+    t = Slider("t", (-1, 1), value=0, play="bounce", duration=1)
+    t.playing = True
+    values = played(t, 0.25, 10)
+    assert values == pytest.approx([0.5, 1.0, 0.5, 0.0, -0.5, -1.0, -0.5, 0, 0.5, 1])
+    # One long frame still lands where it should, however many turns: from
+    # the top, down the whole track and three quarters of the way back up.
+    t.advance(1.75)
+    assert t.value == pytest.approx(0.5)
+
+
+def test_playing_once_stops_at_the_end_and_restarts_from_the_start() -> None:
+    t = Slider("t", (0, 1), play="once", duration=1)
+    t.playing = True
+    assert played(t, 0.4, 3) == pytest.approx([0.4, 0.8, 1.0])
+    assert not t.playing
+    assert not t.advance(0.4)
+    t.playing = True  # at the end: back to the start
+    assert t.value == 0.0
+    t.value = 0.5
+    t.playing = False
+    t.playing = True  # not at the end: from where it is
+    assert t.value == 0.5
+
+
+def test_stepped_sliders_give_every_value_an_equal_share() -> None:
+    n = Slider("n", (1, 5), step=1, play="loop", duration=5)
+    n.playing = True
+    n.advance(0.05)  # sample half way between frames, never on a boundary
+    values = played(n, 0.1, 50)  # one sweep, five values, a second each
+    assert all(isinstance(v, int) for v in values)
+    assert [values.count(k) for k in range(1, 6)] == [10, 10, 10, 10, 10]
+    tenths = Slider("a", (0, 1), step=0.1, play="once", duration=1.1)
+    tenths.playing = True
+    assert played(tenths, 0.1, 11)[-3:] == [0.9, 1.0, 1.0]  # exact decimals
+
+
+def test_unstepped_and_log_sliders_sweep_smoothly_and_geometrically() -> None:
+    smooth = Slider("s", (0, 3), play="loop", duration=3)
+    smooth.track_px = 200  # drags would round to a pixel of this track
+    smooth.playing = True
+    smooth.advance(0.123456)
+    assert smooth.value == pytest.approx(0.123456)  # not rounded
+    r = Slider("r", (1, 1000), log=True, play="once", duration=3)
+    r.playing = True
+    assert played(r, 1.0, 3) == pytest.approx([10.0, 100.0, 1000.0])
+
+
+def test_dragging_holds_a_playing_slider_and_it_plays_on_from_there() -> None:
+    t = Slider("t", (0, 10), play="loop", duration=10)
+    t.playing = True
+    t.advance(1.0)
+    t.set_interaction(hovered=True, dragging=True)
+    t.drag_to(0.6)
+    assert not t.advance(1.0)  # held
+    assert t.value == 6.0
+    t.set_interaction(hovered=False, dragging=False)
+    t.advance(1.0)
+    assert t.value == pytest.approx(7.0)
+    t.value = 2.0  # set from code: plays on from there too
+    t.advance(1.0)
+    assert t.value == pytest.approx(3.0)
+    t.nudge(1)
+    t.advance(0.5)
+    assert t.value == pytest.approx(3.6, abs=1e-9)  # 1% of the track, then 0.5
+
+
+def test_playing_changes_count_as_moves_and_play_can_be_taken_away() -> None:
+    t = Slider("t", (0, 1), play="bounce")
+    t.playing = True
+    t.begin_frame()
+    t.advance(0.1)
+    t.begin_frame()
+    assert t.moved
+    t.play = None  # no play button any more: stops
+    assert not t.playing
+    t.play = "loop"
+    t.playing = True
+    t.remove()
+    assert not t.playing
+
+
+# --- Panels with play buttons and checkboxes ------------------------------------
+
+
+def test_play_buttons_sit_left_of_their_tracks_and_tracks_end_together() -> None:
+    a = Slider("a", (0, 1))
+    t = Slider("t", (0, 1), play="loop")
+    panel = layout(a, t)[0]
+    plain, playing = panel.rows
+    assert isinstance(plain, panels.SliderRow)
+    assert isinstance(playing, panels.SliderRow)
+    assert plain.button is None
+    assert playing.button is not None
+    bx, by = playing.button
+    assert by == playing.y
+    assert bx + panels.PLAY_RADIUS_PX < playing.start - panels.HANDLE_RADIUS_PX
+    assert plain.end == playing.end  # every track ends at the same place
+    assert playing.end - playing.start == panels.TRACK_PX
+    assert t.track_px == panels.TRACK_PX
+    assert a.track_px == plain.end - plain.start > panels.TRACK_PX
+    assert playing.on_button(bx + 3, by - 3)
+    assert not playing.on_button(playing.start, playing.y)
+    assert not plain.on_button(plain.start, plain.y)
+    # Panels without play buttons are as they were.
+    (alone,) = layout(Slider("b", (0, 1)))[0].rows
+    assert isinstance(alone, panels.SliderRow)
+    assert alone.end - alone.start == panels.TRACK_PX
+
+
+def test_checkboxes_take_rows_in_the_order_given() -> None:
+    a = Slider("a", (0, 1))
+    box = Checkbox("show it")
+    b = Slider("b", (0, 1))
+    panel = layout(a, box, b)[0]
+    assert [row.control for row in panel.rows] == [a, box, b]
+    row = panel.rows[1]
+    assert isinstance(row, panels.CheckboxRow)
+    left, top, right, bottom = row.box
+    assert right - left == bottom - top == panels.BOX_PX
+    assert row.text_left > right
+    assert row.contains((left + right) / 2, (top + bottom) / 2)  # the box
+    assert row.contains(row.text_left + 10, row.text_top + 4)  # the label
+    assert not row.contains(row.text_left + 10, panel.rows[0].y)
+    assert panel.rect.contains_point(row.text_left, row.text_top)
+    assert panel.rows[0].y < top < panel.rows[2].y
+
+
+def test_play_buttons_show_play_or_pause() -> None:
+    t = Slider("t", (0, 1), play="loop")
+    panel = layout(t)[0]
+    shapes, _ = panel_primitives(panel, LIGHT, {t: (0, 100, 200)})
+    signs = [s for s in shapes if isinstance(s, Fill)][1:]  # after the panel
+    assert [len(s.rings) for s in signs] == [1]  # a triangle
+    assert signs[0].rings[0].shape == (3, 2)
+    t.playing = True
+    shapes, _ = panel_primitives(layout(t)[0], LIGHT, {t: (0, 100, 200)})
+    signs = [s for s in shapes if isinstance(s, Fill)][1:]
+    assert [len(s.rings) for s in signs] == [2]  # two bars
+    t.set_interaction(hovered=False, dragging=False, play_hovered=True)
+    row = layout(t)[0].rows[0]
+    rings = [
+        s for s in panels.row_primitives(row, LIGHT, "red")[0] if isinstance(s, Markers)
+    ]
+    assert len(rings) == 3  # the handle, the button's ring and the button
+    assert panels.row_key(row, "red") != panels.row_key(
+        layout(Slider("t", (0, 1), play="loop"))[0].rows[0], "red"
+    )
+
+
+def test_checkboxes_are_outlined_or_ticked() -> None:
+    box = Checkbox("a")
+    row = layout(box)[0].rows[0]
+    shapes, text = panels.row_primitives(row, LIGHT, (200, 0, 0))
+    assert [type(s) for s in shapes] == [Stroke]  # an outline
+    assert text.text.plain == "a"
+    before = panels.row_key(row, (200, 0, 0))
+    box.value = True
+    box.set_interaction(hovered=True)
+    shapes, _ = panels.row_primitives(row, LIGHT, (200, 0, 0))
+    assert [type(s) for s in shapes] == [Fill, Fill, Stroke]  # ring, box, tick
+    assert shapes[1].color == (200, 0, 0)
+    assert panels.row_key(row, (200, 0, 0)) != before
+    box.enabled = False
+    shapes, text = panels.row_primitives(row, DARK, (200, 0, 0))
+    assert [type(s) for s in shapes] == [Fill, Stroke]  # no ring when disabled
+    assert text.opacity == panels.DISABLED_OPACITY

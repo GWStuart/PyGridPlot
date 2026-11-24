@@ -1,14 +1,16 @@
-# Draggable points and sliders
+# Draggable points, sliders and checkboxes
 
 Draggable points are points the user moves with the mouse: handles that
 reshape a curve, a point that runs round a circle, the bounds of an area.
 [Sliders](#sliders) set values that are not positions: an amplitude, a
-number of terms. They are the things on a plane that keep state between
-frames, so they work a little differently from the plotting methods. You
-**create** each one once, before the main loop; the plane **drags** it in
-`handle_event`; your code **reads** its position or value every frame and
-uses it like any number; and you **draw** them, usually last, with
-`draw_controls`.
+number of terms; a slider can also [play](#playing-a-slider), sweeping its
+value by itself. [Checkboxes](#checkboxes) are switches: show the
+derivative, shade the area. They are the things on a plane that keep state
+between frames, so they work a little differently from the plotting
+methods. You **create** each one once, before the main loop; the plane
+**drags** or **toggles** it in `handle_event`; your code **reads** its
+position or value every frame and uses it like any number; and you
+**draw** them, usually last, with `draw_controls`.
 
 ```python
 a = grid.draggable((1, 2))                                  # free
@@ -42,7 +44,8 @@ jumps, and it cannot be dragged out of the plane.
 
 ```py
 grid.slider(label, value_range, *, value=None, step=None, log=False,
-             color=None, corner="bottom-left", enabled=True)
+             color=None, corner="bottom-left", enabled=True,
+             play=None, duration=5.0)
 ```
 
 ```python
@@ -52,7 +55,7 @@ rate = grid.slider("r", (0.01, 100), value=1, log=True)     # a geometric track
 
 grid.plot(screen, lambda x: amplitude.value * np.sin(x))
 grid.plot(screen, pgp.taylor(np.cos, 0, terms.value))       # terms.value is an int
-grid.draw_controls(screen)                                  # points and sliders
+grid.draw_controls(screen)                                  # points, sliders, checkboxes
 ```
 
 A slider is a value the user sets by dragging a handle along a track. It
@@ -74,9 +77,11 @@ Read the value every frame from `slider.value`, or set it from code.
 | `value` | `low` | The starting value. |
 | `step` | `None` | The spacing of the allowed values, counted from `low`. An `int` (`step=1`) makes an integer slider, whose `value` is an `int`. |
 | `log` | `False` | Make the track geometric, for values over several powers of ten (`low` must be positive). |
-| `color` | a palette colour | The handle and the filled part of the track; each slider takes the next palette colour, in creation order. |
+| `color` | a palette colour | The handle and the filled part of the track; each slider (and checkbox) takes the next palette colour, in creation order. |
 | `corner` | `"bottom-left"` | `"bottom-left"`, `"bottom-right"`, `"top-left"` or `"top-right"`: which corner's panel the slider is in. |
-| `enabled` | `True` | A disabled slider is drawn faded and cannot be moved. |
+| `enabled` | `True` | A disabled slider is drawn faded and cannot be moved or played. |
+| `play` | `None` | `"loop"`, `"bounce"` or `"once"` gives the slider a [play button](#playing-a-slider), and says what playing does at the end of the track. |
+| `duration` | `5.0` | How many seconds playing takes to sweep the whole track. |
 
 Values are exact. With a step, the value is `low + k · step`, computed in
 decimal, so a step of 0.1 gives `0.3`, never `0.30000000000000004`, and an
@@ -98,12 +103,13 @@ if amplitude.moved:       # changed since the previous frame
 |---|---|
 | `value` | The value (an `int` for an integer slider). Assign to move the handle. |
 | `moved` | Whether the value changed since the previous frame (stable while you draw). |
-| `dragging`, `hovered` | Whether the slider is being dragged, or the cursor is over its track. |
-| `label`, `color`, `corner`, `enabled` | As created; assign to change them. |
+| `playing` | Whether it is playing. Assign to start or stop it. |
+| `dragging`, `hovered`, `play_hovered` | Whether the slider is being dragged, or the cursor is over its track or its play button. |
+| `label`, `color`, `corner`, `enabled`, `play`, `duration` | As created; assign to change them (`play = None` removes the button). |
 | `value_range`, `step`, `log`, `integer` | As created (read only). |
 
-Sliders in the same corner are stacked in the order they are drawn,
-which is the order they were created unless you pass them to
+Sliders and checkboxes in the same corner are stacked in the order they
+are drawn, which is the order they were created unless you pass them to
 `draw_controls` yourself. Only the sliders drawn in a frame can be
 dragged until the next one, so leaving a slider out of `draw_controls`
 hides it and switches it off: a program with several scenes simply draws
@@ -116,6 +122,97 @@ where they are.
 The panel takes its colours from the theme (its background, the major
 grid line colour for the border and the tracks, the label font and
 colour), so it suits light and dark themes alike.
+
+### Playing a slider
+
+![A slider that plays rolls a circle along; checkboxes show its parts](../images/examples/controls.png)
+
+*A slider that plays rolls a circle along; checkboxes show its parts ([`examples/controls.py`](../../examples/controls.py))*
+
+```python
+t = grid.slider("t", (0, 2 * np.pi), play="loop", duration=4)       # a play button
+n = grid.slider("n", (1, 12), step=1, play="bounce", duration=6)
+t.playing = True                                                    # playing from the start
+
+grid.plot(screen, lambda x: np.sin(x - t.value))
+grid.draw_controls(screen)
+```
+
+A slider made with `play=` has a play button left of its track, as in
+Desmos. Pressed, the handle sweeps along the track by itself, one sweep
+taking `duration` seconds, until the button is pressed again; set
+`slider.playing` to start or stop it from code. `play` says what happens
+at the end of the track:
+
+| `play` | At the end of the track |
+|---|---|
+| `"loop"` | Starts again from the low end. |
+| `"bounce"` | Turns round, and sweeps back and forth between the ends. |
+| `"once"` | Stops (pressing play there starts again from the low end). |
+
+A playing slider is an ordinary slider whose value changes by itself:
+your code reads `value` as usual, `moved` is true in each frame it moved,
+and dragging the handle holds it where you drag it, playing on from
+there when you let go. The sweep is even along the track (geometric on a
+log slider). A stepped slider goes from step to step, each value shown for
+the same time (an integer slider from 1 to 5 shows each number for a fifth
+of the sweep), and one without a step moves smoothly: its value is not
+rounded to a pixel of the track while it plays.
+
+Playing sliders move on when each frame starts (in `grid.draw`), by the
+time since the previous frame from pygame's clock
+(`pygame.time.get_ticks`), so they keep time whatever the frame rate; a
+stalled frame moves them by a quarter of a second at most, so they never
+jump. They need frames to move, as eased zooming does, and they play
+whether or not they are drawn. In a panel with play buttons, the tracks of
+the sliders without one start further left, so every track ends at the
+same place.
+
+## Checkboxes
+
+```py
+grid.checkbox(label, *, value=False, color=None, corner="bottom-left",
+               enabled=True)
+```
+
+```python
+show = grid.checkbox("show the derivative")                 # before the loop
+shade = grid.checkbox("shade the area", value=True)
+
+f = lambda x: x**3 / 6 - x
+if shade.value:
+    grid.fill_between(screen, f, 0)
+grid.plot(screen, f)
+if show.value:
+    grid.plot(screen, pgp.derivative(f))
+grid.draw_controls(screen)                                  # with the sliders
+```
+
+A checkbox is a switch, drawn as a box with its label beside it, in the
+same corner panels as sliders (stacked with them in creation order). A
+click on the box or on its label ticks or unticks it; your code reads
+`value`, `True` or `False`, every frame, and draws or computes something
+accordingly. Like a slider, it stays where it is while the plane is
+panned and zoomed, a press on it never pans the plane, and leaving it out
+of `draw_controls` hides it and switches it off.
+
+| Parameter | Default | Meaning |
+|---|---|---|
+| `label` | | The text beside the box. |
+| `value` | `False` | Whether it starts ticked. |
+| `color` | a palette colour | The ticked box's colour; each checkbox (and slider) takes the next palette colour, in creation order. Pass a plot's colour to match the plot it shows. |
+| `corner` | `"bottom-left"` | Which corner's panel it is in. |
+| `enabled` | `True` | A disabled checkbox is drawn faded and cannot be clicked. |
+
+| Attribute | Meaning |
+|---|---|
+| `value` | `True` when ticked. Assign to tick or untick it. |
+| `changed` | Whether the value changed since the previous frame (stable while you draw), like a slider's `moved`. |
+| `hovered` | Whether the cursor is over it. |
+| `label`, `color`, `corner`, `enabled` | As created; assign to change them. |
+
+`checkbox.remove()` takes it off the plane, and `grid.checkboxes` lists
+the plane's checkboxes.
 
 ## Four kinds of point
 
@@ -248,7 +345,7 @@ control dragging:
 |---|---|---|
 | `drag_button` | `1` | Mouse button that drags points. |
 | `grab_margin_px` | `6.0` | A point can be grabbed this many pixels beyond its marker. |
-| `hover_cursor` | `True` | Show the hand cursor over points. |
+| `hover_cursor` | `True` | Show the hand cursor over points, sliders and checkboxes. |
 
 ## Animated curves
 

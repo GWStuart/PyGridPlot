@@ -32,7 +32,7 @@ topic you need:
 | [Regions and fields](user/regions-and-fields.md) | Areas between graphs, inequalities, vector and slope fields. |
 | [Data](user/data.md) | Scatter plots, error bars, lines and steps, bars, histograms, box and violin plots, colour by value. |
 | [Shapes, text and legends](user/shapes-and-text.md) | Polygons, arrows, text and legends. |
-| [Draggable points and sliders](user/draggable-points.md) | Points the user drags: free, locked to an axis, or on a curve; sliders for values. |
+| [Draggable points, sliders and checkboxes](user/draggable-points.md) | Points the user drags: free, locked to an axis, or on a curve; sliders for values, which can play; checkboxes for switches. |
 | [Logarithmic axes](user/log-axes.md) | Log and semi-log planes, how their grid and labels behave. |
 | [Styles and themes](user/styles-and-themes.md) | Colours, reusable styles, dashed and dotted lines, the palette, themes and number formats. |
 | [Recipes](user/recipes.md) | Worked examples of common tasks, performance tips and troubleshooting. |
@@ -48,7 +48,7 @@ how to extend it:
 | [Architecture](dev/architecture.md) | Design principles, layers, the package map, what happens in a frame. |
 | [The grid](dev/grid.md) | Spacing, lines, labels, layout and log axes, step by step. |
 | [Plotting](dev/plotting.md) | Robust evaluation, the samplers, exact derivatives (Taylor arithmetic), adaptive quadrature, building primitives. |
-| [Draggable points and sliders](dev/dragging.md) | Events, constraints, following curves, labels, slider panels and the legend's. |
+| [Draggable points, sliders and checkboxes](dev/dragging.md) | Events, constraints, following curves, labels, the panels of sliders and checkboxes, playing, and the legend's panel. |
 | [Rendering](dev/rendering.md) | The renderer protocol, rasterising, compositing, text and performance. |
 | [Testing and tools](dev/testing.md) | How the code is tested, and the visual and benchmark tools. |
 | [Extending PyGridPlot](dev/extending.md) | Step-by-step recipes for new features, and the coding conventions. |

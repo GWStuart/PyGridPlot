@@ -25,21 +25,24 @@ grabbed point again to the last cursor position, so it stays under the
 cursor while the view eases (zooming with the wheel in the middle of a drag)
 or while its curve moves.
 
-For sliders, which live in panels in the corners of the plane (see
-:mod:`pygridplot.core.handles.panel`):
+For sliders and checkboxes, which live in panels in the corners of the
+plane (see :mod:`pygridplot.core.handles.panel`):
 
 * **Pressing** on a slider's track moves the handle there and starts
   dragging; pressing on the handle itself grabs it where it is, so it does
-  not jump. A press anywhere else in a panel is used up, so the plane never
-  pans from under a panel.
+  not jump. Pressing a slider's play button starts or stops it playing, and
+  pressing a checkbox (its box or its label) ticks or unticks it. A press
+  anywhere else in a panel is used up, so the plane never pans from under
+  a panel.
 * **Moving** the mouse drags the handle along the track (the value stays
   within the range, on the step).
-* **The wheel** over a slider moves it by a step (or 1% of the track),
-  instead of zooming; over the rest of a panel it does nothing.
-* Hovering a slider's track highlights its handle and shows the hand.
+* **The wheel** over a slider's track moves it by a step (or 1% of the
+  track), instead of zooming; over the rest of a panel it does nothing.
+* Hovering a slider's track highlights its handle, hovering a play button
+  or a checkbox highlights it, and each shows the hand.
 
 The panels' layout comes from the last frame's drawing: what the user sees
-is what a press hits, and a slider that was not drawn cannot be dragged.
+is what a press hits, and a control that was not drawn cannot be used.
 """
 
 from __future__ import annotations
@@ -51,7 +54,8 @@ from typing import Any
 
 import pygame
 
-from pygridplot.core.handles.panel import Panel, SliderRow
+from pygridplot.core.handles.checkbox import Checkbox
+from pygridplot.core.handles.panel import Control, Panel, Row, SliderRow
 from pygridplot.core.handles.point import DraggablePoint
 from pygridplot.core.handles.slider import Slider
 from pygridplot.core.view import View
@@ -259,14 +263,17 @@ class DragController:
         HAND_CURSOR.request(self, want)
 
 
-class SliderController:
-    """Lets the user drag a plane's sliders, and turn them with the mouse wheel.
+class PanelController:
+    """Lets the user use the controls in a plane's panels: sliders and checkboxes.
+
+    It drags sliders and turns them with the mouse wheel, presses their play
+    buttons, and ticks checkboxes.
 
     Args:
         config: The control settings (``drag_button``, ``hover_cursor``).
         panels: Returns the panels as last drawn.
         blocked: Returns whether another control owns the mouse (a pan or a
-            point being dragged), so no slider is hovered or grabbed meanwhile.
+            point being dragged), so no control is hovered or used meanwhile.
     """
 
     def __init__(
@@ -281,7 +288,8 @@ class SliderController:
         self._blocked = blocked
         self._mouse: tuple[int, int] | None = None
         self._dragged: Slider[Any] | None = None
-        self._hovered: Slider[Any] | None = None
+        self._hovered: Control | None = None
+        self._hovered_part = ""  # "track", "play" or "box"
         self._offset = 0.0
 
     @property
@@ -290,8 +298,8 @@ class SliderController:
         return self._dragged
 
     @property
-    def hovered(self) -> Slider[Any] | None:
-        """The slider under the cursor, if any."""
+    def hovered(self) -> Control | None:
+        """The slider or checkbox under the cursor, if any."""
         return self._hovered
 
     @property
@@ -303,13 +311,13 @@ class SliderController:
         return self._dragged is not None or self._panel_at(self._mouse) is not None
 
     def handle_event(self, event: pygame.event.Event) -> bool:
-        """Apply one pygame event to the sliders.
+        """Apply one pygame event to the panels' controls.
 
         Args:
             event: The event.
 
         Returns:
-            ``True`` if the event was for the sliders or their panels (the
+            ``True`` if the event was for the controls or their panels (the
             plane's other controls should then ignore it).
         """
         kind = event.type
@@ -325,7 +333,7 @@ class SliderController:
             if self._blocked() or self._panel_at(self._mouse) is None:
                 return False
             if event.button == self.config.drag_button:
-                self._grab()
+                self._press()
             return True  # a press on a panel never pans the plane
         if kind == pygame.MOUSEBUTTONUP:
             self._mouse = (int(event.pos[0]), int(event.pos[1]))
@@ -336,14 +344,14 @@ class SliderController:
         if kind == pygame.MOUSEWHEEL:
             if self._blocked() or self._panel_at(self._mouse) is None:
                 return False
-            row = self._row_at(self._mouse)
-            if row is not None and row.slider.enabled and event.y:
+            row, part = self._target_at(self._mouse)
+            if isinstance(row, SliderRow) and part == "track" and event.y:
                 row.slider.nudge(int(event.y))
             return True
         if kind in (pygame.WINDOWLEAVE, pygame.WINDOWFOCUSLOST):
             self.release()
             self._mouse = None
-            self._set_hovered(None)
+            self._set_hovered(None, "")
         return False
 
     def update(self) -> None:
@@ -361,20 +369,21 @@ class SliderController:
         """End any drag in progress."""
         slider, self._dragged = self._dragged, None
         if slider is not None:
-            slider.set_interaction(hovered=slider is self._hovered, dragging=False)
+            part = self._hovered_part if slider is self._hovered else ""
+            _show(slider, part, dragging=False)
             self._refresh_hover()
 
-    def forget(self, slider: Slider[Any]) -> None:
-        """Stop tracking a slider that was removed from the plane.
+    def forget(self, control: Control) -> None:
+        """Stop tracking a control that was removed from the plane.
 
         Args:
-            slider: The removed slider.
+            control: The removed slider or checkbox.
         """
-        if slider is self._dragged:
+        if control is self._dragged:
             self._dragged = None
-        if slider is self._hovered:
-            self._hovered = None
-        slider.set_interaction(hovered=False, dragging=False)
+        if control is self._hovered:
+            self._hovered, self._hovered_part = None, ""
+        _show(control, "", dragging=False)
         self._update_cursor()
 
     # ------------------------------------------------------------------
@@ -389,39 +398,57 @@ class SliderController:
                 return panel
         return None
 
-    def _row_at(self, mouse: tuple[int, int] | None) -> SliderRow | None:
-        """The row whose band is under a screen point, if any."""
+    def _target_at(self, mouse: tuple[int, int] | None) -> tuple[Row | None, str]:
+        """The usable control under a screen point, and which part of it.
+
+        Returns:
+            ``(row, part)``: ``part`` is ``"play"`` (a slider's play button),
+            ``"track"`` (its track) or ``"box"`` (a checkbox); ``(None, "")``
+            if no enabled control is there.
+        """
         if mouse is None:
-            return None
+            return None, ""
         for panel in self._panels():
             for row in panel.rows:
-                if row.contains(*mouse):
+                if not row.control.enabled:
+                    continue
+                if isinstance(row, SliderRow):
+                    if row.on_button(*mouse):
+                        return row, "play"
+                    if row.contains(*mouse):
+                        return row, "track"
+                elif row.contains(*mouse):
+                    return row, "box"
+        return None, ""
+
+    def _row_of(self, control: Control) -> Row | None:
+        """A control's row as last drawn, if it was drawn."""
+        for panel in self._panels():
+            for row in panel.rows:
+                if row.control is control:
                     return row
         return None
 
-    def _row_of(self, slider: Slider[Any]) -> SliderRow | None:
-        """A slider's row as last drawn, if it was drawn."""
-        for panel in self._panels():
-            for row in panel.rows:
-                if row.slider is slider:
-                    return row
-        return None
-
-    def _grab(self) -> None:
-        """Grab the slider under the cursor, if any, moving it there off the handle."""
+    def _press(self) -> None:
+        """Use the control under the cursor: grab a slider, play, or tick a box."""
         mouse = self._mouse
-        row = self._row_at(mouse)
-        if mouse is None or row is None or not row.slider.enabled:
+        row, part = self._target_at(mouse)
+        if mouse is None or row is None:
+            return
+        if not isinstance(row, SliderRow):
+            row.checkbox.value = not row.checkbox.value
             return
         slider = row.slider
+        if part == "play":
+            slider.playing = not slider.playing
+            return
         if row.on_handle(*mouse):
             self._offset = mouse[0] - row.handle_x
         else:
             self._offset = 0.0
             slider.drag_to(row.fraction_at(mouse[0]))
         self._dragged = slider
-        self._set_hovered(slider)
-        slider.set_interaction(hovered=True, dragging=True)
+        self._set_hovered(slider, "track")
 
     def _drag(self) -> None:
         """Drag the grabbed slider's handle to the cursor, less the grab offset."""
@@ -429,32 +456,43 @@ class SliderController:
         if slider is None or mouse is None:
             return
         row = self._row_of(slider)
-        if row is not None:
+        if isinstance(row, SliderRow):
             slider.drag_to(row.fraction_at(mouse[0] - self._offset))
 
     def _refresh_hover(self) -> None:
-        """Hover the slider under the cursor (none while another control drags)."""
-        row = None if self._blocked() else self._row_at(self._mouse)
-        self._set_hovered(
-            row.slider if row is not None and row.slider.enabled else None
-        )
+        """Hover the control under the cursor (none while another control drags)."""
+        if self._blocked():
+            self._set_hovered(None, "")
+            return
+        row, part = self._target_at(self._mouse)
+        self._set_hovered(row.control if row is not None else None, part)
 
-    def _set_hovered(self, slider: Slider[Any] | None) -> None:
-        """Change which slider is hovered, and the cursor with it."""
+    def _set_hovered(self, control: Control | None, part: str) -> None:
+        """Change which control (and which part of it) is hovered, and the cursor."""
         old = self._hovered
-        if old is not slider and old is not None:
-            old.set_interaction(hovered=False, dragging=old is self._dragged)
-        self._hovered = slider
-        if slider is not None:
-            slider.set_interaction(hovered=True, dragging=slider is self._dragged)
+        if old is not None and (old is not control or part != self._hovered_part):
+            _show(old, "", dragging=old is self._dragged)
+        self._hovered, self._hovered_part = control, part
+        if control is not None:
+            _show(control, part, dragging=control is self._dragged)
         self._update_cursor()
 
     def _update_cursor(self) -> None:
-        """Ask for the hand cursor while a slider is hovered or dragged."""
+        """Ask for the hand cursor while a control is hovered or a slider dragged."""
         want = self.config.hover_cursor and (
             self._hovered is not None or self._dragged is not None
         )
         HAND_CURSOR.request(self, want)
+
+
+def _show(control: Control, part: str, *, dragging: bool) -> None:
+    """Tell a control which part of it is hovered (``""`` for none)."""
+    if isinstance(control, Checkbox):
+        control.set_interaction(hovered=part == "box")
+    else:
+        control.set_interaction(
+            hovered=part == "track", dragging=dragging, play_hovered=part == "play"
+        )
 
 
 class HandCursor:

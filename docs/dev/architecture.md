@@ -85,7 +85,7 @@ src/pygridplot/
 ├── __init__.py          The public API: Grid, styles, themes, configs, View, show
 ├── grid.py              Grid: the façade tying view, theme, controls and renderer together
 ├── interaction.py       pygame events -> pan/zoom (anchored drag, eased wheel and keys)
-├── dragging.py          pygame events -> draggable points and sliders (hit test, drag, hover, cursor)
+├── dragging.py          pygame events -> draggable points, sliders, checkboxes (hit test, drag, hover, cursor)
 ├── quick.py             show(): a ready-made main loop
 ├── color_maps.py        color_map(): colours for values (resolves colour names with pygame)
 ├── _pygame_ce.py        On import: refuses the original pygame, with advice
@@ -139,8 +139,9 @@ src/pygridplot/
 │   │   └── builders.py      One function per kind of plot -> clipped primitives
 │   └── handles/         Draggable points, sliders and the legend: drawn over the plots
 │       ├── point.py         DraggablePoint: position, constraint, style, state
-│       ├── slider.py        Slider: a value on a track, exact steps, log tracks, state
-│       ├── panel.py         The corner panels of sliders: layout and primitives
+│       ├── slider.py        Slider: a value on a track, exact steps, log tracks, playing, state
+│       ├── checkbox.py      Checkbox: a switch, its value and state
+│       ├── panel.py         The corner panels of sliders and checkboxes: layout and primitives
 │       ├── legend.py        The legend: entries, its corner panel, swatches
 │       ├── color_bar.py     The colour bar: its corner panel, strip and ticks
 │       ├── constraints.py   Free, locked and on-curve movement, with bounds
@@ -169,9 +170,10 @@ docs/                    These pages (user/ and dev/)
 
 ### `grid.handle_event(event)`
 
-`dragging.SliderController` sees every event first: a press on a
-[slider](dragging.md#sliders) sets it, and a press or the wheel anywhere on
-a slider panel, or on the legend's panel, is used up. Then `dragging.DragController`: a press on a
+`dragging.PanelController` sees every event first: a press on a
+[slider](dragging.md#sliders) sets it (or on its play button plays it), a
+press on a checkbox ticks it, and a press or the wheel anywhere on a
+panel of controls, or on the legend's panel, is used up. Then `dragging.DragController`: a press on a
 [draggable point](dragging.md) grabs it and is used up, and motion then
 drags the point. Everything else goes on to
 `interaction.InteractionController`, which turns events into view changes:
@@ -191,8 +193,11 @@ drags the point. Everything else goes on to
 2. **Easing.** `InteractionController.update()` advances the springs by the
    real elapsed time (an exact, frame-rate-independent solution) and
    applies the change to the `View`, zooming about the anchor.
-3. **Frame.** `ColorCycle.reset()` restarts the palette, and the legend's
-   list of labelled calls starts empty.
+3. **Frame.** `ColorCycle.reset()` restarts the palette, the legend's
+   list of labelled calls starts empty, playing sliders move on by the time
+   since the previous frame (`Slider.advance`, by `pygame.time.get_ticks`,
+   at most 250 ms), and points, sliders and checkboxes update their `moved`
+   and `changed` flags.
 4. **Grid.** `core.grid.scene.build_grid(view, theme, renderer, state,
    x_title=..., y_title=...)` builds a `GridScene`; [The grid](grid.md)
    explains each step. An unchanged grid is reused, and an arrowhead that
@@ -256,7 +261,7 @@ the default view puts grid lines exactly on pixels.
 | Centre, scale, axis kinds | `View` | What is visible. |
 | Springs, drag anchor | `InteractionController` | Eased motion and anchored dragging. |
 | Draggable points | `DraggablePoint`, listed by the `Grid` | Positions the user changes; the grabbed point and hover in `DragController`. |
-| Sliders | `Slider`, listed by the `Grid`; the last frame's panels (`Grid._panels`) | Values the user changes; what a press hits is what was drawn; the dragged slider and hover in `SliderController`; the last primitives, for reusing their coverage. |
+| Sliders and checkboxes | `Slider` and `Checkbox`, listed by the `Grid` (`Grid._controls`, in creation order); the last frame's panels (`Grid._panels`); pygame's clock at the last frame (`Grid._last_tick`) | Values the user changes, and where a playing slider is; what a press hits is what was drawn; the dragged slider and hover in `PanelController`; the last primitives, for reusing their coverage. |
 | Home view, pending fits | `ViewFraming` | `reset_view`, and fitting ranges once the size is known. |
 | Snap levels | `GridState` | Hysteresis in `"snap"` mode only (fades are stateless). |
 | Palette position | `ColorCycle` | Colours in drawing order, restarted every frame. |

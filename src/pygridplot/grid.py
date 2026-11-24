@@ -47,7 +47,7 @@ import weakref
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import replace
 from functools import partial
-from typing import Any, Literal, overload
+from typing import Any, Final, Literal, overload
 
 import numpy as np
 import pygame
@@ -59,6 +59,7 @@ from pygridplot.core.framing import ViewFraming, aspect_choice, equal_aspect_for
 from pygridplot.core.grid.categories import Categories, check_categories
 from pygridplot.core.grid.scene import GridScene, GridState, build_grid
 from pygridplot.core.grid.theme import LIGHT, GridTheme
+from pygridplot.core.handles.checkbox import Checkbox
 from pygridplot.core.handles.color_bar import (
     ColorBarPanel,
     color_bar_primitives,
@@ -76,6 +77,7 @@ from pygridplot.core.handles.legend import (
     swatch_primitives,
 )
 from pygridplot.core.handles.panel import (
+    Control,
     Panel,
     background_primitives,
     layout_panels,
@@ -84,7 +86,13 @@ from pygridplot.core.handles.panel import (
     row_primitives,
 )
 from pygridplot.core.handles.point import Coordinates, CurveSpec, DraggablePoint
-from pygridplot.core.handles.slider import CORNERS, Corner, Slider
+from pygridplot.core.handles.slider import (
+    CORNERS,
+    DEFAULT_DURATION,
+    Corner,
+    PlayMode,
+    Slider,
+)
 from pygridplot.core.plot.builders import (
     Boundary,
     CurveComponent,
@@ -164,9 +172,16 @@ from pygridplot.core.primitives import (
     TextItem,
 )
 from pygridplot.core.view import View, ViewLimits, ViewState
-from pygridplot.dragging import DragController, SliderController
+from pygridplot.dragging import DragController, PanelController
 from pygridplot.interaction import InteractionConfig, InteractionController
 from pygridplot.render.pygame_renderer import PygameRenderer
+
+_MAX_PLAY_MS: Final = 250
+"""Longest time a playing slider moves on by in one frame, in milliseconds.
+
+So a stalled program (a dragged window, a breakpoint) does not make sliders
+jump, while one drawing as few as four frames a second plays in real time.
+"""
 
 _DEFAULT_LINE = LineStyle()
 _DEFAULT_POINT = PointStyle()
@@ -274,15 +289,18 @@ class Grid:
             self._view,
             self._controller.config,
             lambda: self._draggables,
-            blocked=lambda: self._controller.dragging or self._slide.owns_cursor,
+            blocked=lambda: self._controller.dragging or self._panel_input.owns_cursor,
         )
-        self._sliders: list[Slider[Any]] = []
-        self._slider_colors: dict[Slider[Any], int] = {}
-        self._sliders_created = 0
+        # The sliders and checkboxes, in creation order, and the palette colour
+        # each was given (they take palette colours in creation order).
+        self._controls: list[Control] = []
+        self._control_colors: dict[Control, int] = {}
+        self._controls_created = 0
+        self._last_tick: int | None = None  # pygame's clock at the last frame
         self._panels: tuple[Panel, ...] = ()  # as last drawn: what presses hit
         # The primitives last drawn for each panel and slider, with their keys.
-        self._slider_drawings: dict[object, tuple[object, Any]] = {}
-        self._slide = SliderController(
+        self._panel_drawings: dict[object, tuple[object, Any]] = {}
+        self._panel_input = PanelController(
             self._controller.config,
             self._overlays,
             blocked=lambda: self._controller.dragging or self._drag.dragged is not None,
@@ -290,7 +308,7 @@ class Grid:
         self._frame = 0  # counts begin_frame calls
         # The sliders' panels as last drawn, with the frame they were drawn in:
         # a legend in the same corner goes beyond them.
-        self._slider_layout: tuple[int, tuple[Panel, ...]] = (0, ())
+        self._panel_layout: tuple[int, tuple[Panel, ...]] = (0, ())
         self._legend_entries: list[LegendEntry] = []  # labelled calls this frame
         self._legend_panel: LegendPanel | None = None  # as drawn this frame
         # Where the legend was last drawn: a colour bar in its corner goes
@@ -421,7 +439,7 @@ class Grid:
     def interaction(self, config: InteractionConfig) -> None:
         self._controller.config = config
         self._drag.config = config
-        self._slide.config = config
+        self._panel_input.config = config
 
     @property
     def renderer(self) -> PygameRenderer:
@@ -455,7 +473,7 @@ class Grid:
             ``True`` if the plane used the event, so your code can skip
             handling it again.
         """
-        if self._slide.handle_event(event) or self._drag.handle_event(event):
+        if self._panel_input.handle_event(event) or self._drag.handle_event(event):
             if event.type == pygame.MOUSEMOTION and self.interactive:
                 # The pan/zoom controls still track the cursor, to zoom about it.
                 self._controller.handle_event(event)
@@ -476,16 +494,19 @@ class Grid:
         """
         changed = self._controller.update() if self.interactive else False
         self._drag.update()
-        self._slide.update()
+        self._panel_input.update()
         return changed
 
     def begin_frame(self) -> None:
-        """Start a new frame for the palette, the legend, draggable points and sliders.
+        """Start a new frame: the palette, the legend, points, sliders and checkboxes.
 
         The next object drawn without a colour gets the first palette colour
-        again, the legend starts with no entries, and each draggable point
-        and slider updates its ``moved`` flag. :meth:`draw` calls this
-        automatically. Call it yourself only if you draw plots without
+        again, the legend starts with no entries, playing sliders move on by
+        the time since the previous frame (by pygame's clock,
+        :func:`pygame.time.get_ticks`, at most a quarter of a second, so a
+        stalled frame does not make them jump), and each draggable point, slider and
+        checkbox updates its ``moved`` or ``changed`` flag. :meth:`draw`
+        calls this automatically. Call it yourself only if you draw plots without
         drawing the grid, so that every object keeps the same palette colour
         from frame to frame, and the legend shows only the frame's plots.
         """
@@ -497,9 +518,14 @@ class Grid:
         self._plots.begin_frame()
         for point in self._draggables:
             point.begin_frame()
-        for slider in self._sliders:
-            slider.begin_frame()
-        self._panels = ()  # until the sliders are drawn again
+        now = pygame.time.get_ticks()
+        last, self._last_tick = self._last_tick, now
+        seconds = 0.0 if last is None else min(max(now - last, 0), _MAX_PLAY_MS) / 1000
+        for control in self._controls:
+            if isinstance(control, Slider):
+                control.advance(seconds)
+            control.begin_frame()
+        self._panels = ()  # until the controls are drawn again
 
     def draw(
         self,
@@ -2143,7 +2169,7 @@ class Grid:
         if entry not in self._legend_entries:
             self._legend_entries.append(entry)
 
-    def _slider_panel_in(self, corner: Corner) -> ScreenRect | None:
+    def _controls_panel_in(self, corner: Corner) -> ScreenRect | None:
         """Return the sliders' panel in a corner, if drawn in this frame or the last.
 
         Args:
@@ -2152,16 +2178,16 @@ class Grid:
         Returns:
             Its rectangle, or ``None``.
         """
-        frame, panels = self._slider_layout
+        frame, panels = self._panel_layout
         if frame == 0 and self._frame <= 1:
             # The first frame, before the sliders are drawn: expect them all.
             panels = layout_panels(
-                self._sliders, self.rect, self._theme, self._renderer
+                self._controls, self.rect, self._theme, self._renderer
             )
         elif self._frame - frame > 1:
             return None  # the sliders are no longer drawn
         for panel in panels:
-            if panel.rows and panel.rows[0].slider.corner == corner:
+            if panel.rows and panel.rows[0].control.corner == corner:
                 return panel.rect
         return None
 
@@ -2177,7 +2203,7 @@ class Grid:
             The panels' bounding rectangle, or ``None`` if there are none.
         """
         rects = []
-        sliders = self._slider_panel_in(corner)
+        sliders = self._controls_panel_in(corner)
         if sliders is not None:
             rects.append(sliders)
         if legend and self._legend_layout is not None:
@@ -2308,6 +2334,8 @@ class Grid:
         color: ColorLike | None = None,
         corner: Corner = "bottom-left",
         enabled: bool = True,
+        play: PlayMode | None = None,
+        duration: float = DEFAULT_DURATION,
     ) -> Slider[int]: ...
     @overload
     def slider(
@@ -2321,6 +2349,8 @@ class Grid:
         color: ColorLike | None = None,
         corner: Corner = "bottom-left",
         enabled: bool = True,
+        play: PlayMode | None = None,
+        duration: float = DEFAULT_DURATION,
     ) -> Slider[float]: ...
     def slider(
         self,
@@ -2333,6 +2363,8 @@ class Grid:
         color: ColorLike | None = None,
         corner: Corner = "bottom-left",
         enabled: bool = True,
+        play: PlayMode | None = None,
+        duration: float = DEFAULT_DURATION,
     ) -> Slider[Any]:
         """Create a slider: a value the user sets by dragging a handle along a track.
 
@@ -2351,8 +2383,16 @@ class Grid:
             grid.draw_controls(screen)
 
         Pressing the track moves the handle there; the mouse wheel over a
-        slider moves it by a step. Sliders in the same corner are stacked
-        in the order they are drawn.
+        slider moves it by a step. Sliders (and checkboxes) in the same
+        corner are stacked in the order they are drawn.
+
+        With ``play=``, the slider gets a play button, as in Desmos: pressed,
+        the handle sweeps along the track by itself, taking ``duration``
+        seconds a sweep, until pressed again. Set
+        :attr:`~pygridplot.Slider.playing` to start or stop it from code::
+
+            t = grid.slider("t", (0, 2 * np.pi), play="loop", duration=4)
+            t.playing = True                                    # from the start
 
         Args:
             label: The name shown before the value (``"a"`` shows
@@ -2370,8 +2410,14 @@ class Grid:
                 palette colour, in the order the sliders were created.
             corner: ``"bottom-left"`` (the default), ``"bottom-right"``,
                 ``"top-left"`` or ``"top-right"``: where the slider's panel is.
-            enabled: Whether the slider can be dragged (a disabled slider is
-                drawn faded).
+            enabled: Whether the slider can be dragged and its play button
+                pressed (a disabled slider is drawn faded).
+            play: Give the slider a play button, and say what playing does at
+                the end of the track: ``"loop"`` starts again from the low
+                end, ``"bounce"`` turns round (back and forth), ``"once"``
+                stops. ``None`` (the default) for no play button.
+            duration: How many seconds playing takes to sweep the whole
+                track (default 5).
 
         Returns:
             The slider, registered with this plane until its
@@ -2383,15 +2429,9 @@ class Grid:
             ValueError: If the range is not two finite numbers in increasing
                 order (positive for a log slider), the step is not positive
                 or wider than the range, an integer step has ends that are
-                not whole numbers, or the corner is unknown.
+                not whole numbers, the corner or play mode is unknown, or the
+                duration is not positive.
         """
-        forget = weakref.WeakMethod(self._forget_slider)
-
-        def on_remove(removed: Slider[Any]) -> None:
-            method = forget()
-            if method is not None:
-                method(removed)
-
         slider: Slider[Any] = Slider(
             label,
             value_range,
@@ -2401,17 +2441,95 @@ class Grid:
             color=color,
             corner=corner,
             enabled=enabled,
-            on_remove=on_remove,
+            play=play,
+            duration=duration,
+            on_remove=self._removal(),
         )
-        self._sliders.append(slider)
-        self._slider_colors[slider] = self._sliders_created
-        self._sliders_created += 1
+        self._register(slider)
         return slider
+
+    def checkbox(
+        self,
+        label: str,
+        *,
+        value: bool = False,
+        color: ColorLike | None = None,
+        corner: Corner = "bottom-left",
+        enabled: bool = True,
+    ) -> Checkbox:
+        """Create a checkbox: a switch the user turns on and off with a click.
+
+        Create the checkbox once, before the main loop. It is drawn in a
+        panel in a corner of the plane, with sliders in the same corner, and
+        stays put while the plane is panned and zoomed. A click on the box or
+        its label ticks or unticks it, your code reads its
+        :attr:`~pygridplot.Checkbox.value` every frame, and
+        :meth:`draw_controls` draws it::
+
+            show = grid.checkbox("show the derivative")
+
+            grid.plot(screen, f)
+            if show.value:
+                grid.plot(screen, pgp.derivative(f))
+            grid.draw_controls(screen)
+
+        Args:
+            label: The text beside the box.
+            value: Whether it starts ticked (default ``False``).
+            color: The colour of the ticked box. The default gives each
+                control (slider or checkbox) its own palette colour, in the
+                order they were created.
+            corner: ``"bottom-left"`` (the default), ``"bottom-right"``,
+                ``"top-left"`` or ``"top-right"``: where the checkbox's panel
+                is.
+            enabled: Whether it can be clicked (a disabled checkbox is drawn
+                faded).
+
+        Returns:
+            The checkbox, registered with this plane until its
+            :meth:`~pygridplot.Checkbox.remove` is called.
+
+        Raises:
+            TypeError: If the label is not a string, or the value not a bool.
+            ValueError: If the corner is unknown.
+        """
+        box = Checkbox(
+            label,
+            value=value,
+            color=color,
+            corner=corner,
+            enabled=enabled,
+            on_remove=self._removal(),
+        )
+        self._register(box)
+        return box
+
+    def _removal(self) -> Callable[[Any], None]:
+        """Return what a control calls when removed (holding the plane weakly)."""
+        forget = weakref.WeakMethod(self._forget_control)
+
+        def on_remove(removed: Control) -> None:
+            method = forget()
+            if method is not None:
+                method(removed)
+
+        return on_remove
+
+    def _register(self, control: Control) -> None:
+        """Add a control to the plane, with the next palette colour."""
+        self._controls.append(control)
+        self._control_colors[control] = self._controls_created
+        self._controls_created += 1
 
     @property
     def sliders(self) -> tuple[Slider[Any], ...]:
         """The plane's sliders, in the order they were created."""
-        return tuple(self._sliders)
+        return tuple(c for c in self._controls if isinstance(c, Slider))
+
+    @property
+    def checkboxes(self) -> tuple[Checkbox, ...]:
+        """The plane's checkboxes, in the order they were created."""
+        return tuple(c for c in self._controls if isinstance(c, Checkbox))
 
     @property
     def draggables(self) -> tuple[DraggablePoint, ...]:
@@ -2424,41 +2542,50 @@ class Grid:
         return self._drag.dragged
 
     def draw_controls(
-        self, surface: pygame.Surface, *items: DraggablePoint | Slider[Any]
+        self,
+        surface: pygame.Surface,
+        *items: DraggablePoint | Slider[Any] | Checkbox,
     ) -> None:
-        """Draw draggable points and sliders, with their highlights and labels.
+        """Draw draggable points, sliders and checkboxes, with their highlights.
 
         Call it after the plots, so the points sit on top of the curves they
-        control and the sliders' panels on top of everything. A hovered or
-        dragged point gets a translucent ring, and its coordinates are shown
-        as set by its :attr:`~DraggablePoint.coordinates`; sliders are drawn
-        in panels in the corners of the plane (see :meth:`slider`).
+        control and the panels of sliders and checkboxes on top of
+        everything. A hovered or dragged point gets a translucent ring, and
+        its coordinates are shown as set by its
+        :attr:`~DraggablePoint.coordinates`; sliders and checkboxes are drawn
+        in panels in the corners of the plane (see :meth:`slider` and
+        :meth:`checkbox`).
 
-        Only sliders drawn here can be dragged until the next frame, so
-        leaving a slider out (``grid.draw_controls(screen, a, n)``) hides
-        it and switches it off.
+        Only sliders and checkboxes drawn here can be used until the next
+        frame, so leaving one out (``grid.draw_controls(screen, a, n)``)
+        hides it and switches it off.
 
         Args:
             surface: The surface to draw on.
-            *items: The points and sliders to draw (default: all of this
-                plane's points, then all its sliders, in creation order).
+            *items: The points, sliders and checkboxes to draw (default: all
+                of this plane's points, then all its sliders and checkboxes,
+                in creation order).
 
         Raises:
-            ValueError: If a point or slider does not belong to this plane.
+            ValueError: If a point, slider or checkbox does not belong to
+                this plane.
         """
         self._sync_rect(surface)
         if items:
             points = [item for item in items if isinstance(item, DraggablePoint)]
-            sliders = [item for item in items if isinstance(item, Slider)]
+            controls: list[Control] = [
+                item for item in items if not isinstance(item, DraggablePoint)
+            ]
         else:
-            points, sliders = list(self._draggables), list(self._sliders)
+            points, controls = list(self._draggables), list(self._controls)
         for point in points:
             if point not in self._draggable_colors:
                 msg = f"{point!r} is not a draggable point of this plane"
                 raise ValueError(msg)
-        for slider in sliders:
-            if slider not in self._slider_colors:
-                msg = f"{slider!r} is not a slider of this plane"
+        for control in controls:
+            if control not in self._control_colors:
+                kind = "slider" if isinstance(control, Slider) else "checkbox"
+                msg = f"{control!r} is not a {kind} of this plane"
                 raise ValueError(msg)
         theme = self._theme
         markers: list[Markers] = []
@@ -2473,25 +2600,24 @@ class Grid:
         texts = [label for label in labels if label is not None]
         if texts:
             self._draw_texts(surface, texts)
-        if sliders:
-            self._draw_sliders(surface, sliders)
+        if controls:
+            self._draw_panels(surface, controls)
 
-    def _draw_sliders(
-        self, surface: pygame.Surface, sliders: list[Slider[Any]]
-    ) -> None:
-        """Lay out and draw sliders, keeping the layout for the next events.
+    def _draw_panels(self, surface: pygame.Surface, controls: list[Control]) -> None:
+        """Lay out and draw sliders and checkboxes, keeping the layout for events.
 
         Args:
             surface: The surface to draw on.
-            sliders: The sliders, in order.
+            controls: The sliders and checkboxes, in order.
         """
         theme = self._theme
-        self._panels = layout_panels(sliders, self.rect, theme, self._renderer)
-        self._slider_layout = (self._frame, self._panels)
+        self._panels = layout_panels(controls, self.rect, theme, self._renderer)
+        self._panel_layout = (self._frame, self._panels)
         # The previous frame's primitives are drawn again when nothing about
         # them changed, so the renderer reuses their coverage: a panel at rest
-        # costs only blending, and a drag only redraws the dragged slider.
-        previous = self._slider_drawings
+        # costs only blending, and a drag only redraws the dragged slider (a
+        # playing slider redraws itself every frame).
+        previous = self._panel_drawings
         drawn: dict[object, tuple[object, Any]] = {}
         for panel in self._panels:
             key: tuple[object, ...] = (panel.rect, theme)
@@ -2504,24 +2630,24 @@ class Grid:
             shapes: list[Fill | Stroke | Markers] = list(background[0])
             texts: list[TextItem] = []
             for row in panel.rows:
-                slider = row.slider
-                color = slider.color
+                control = row.control
+                color = control.color
                 if color is None:
-                    index = self._slider_colors[slider]
+                    index = self._control_colors[control]
                     color = theme.palette[index % len(theme.palette)]
                 key = (row_key(row, color), theme)
-                old = previous.get(slider)
+                old = previous.get(control)
                 if old is not None and old[0] == key:
                     parts = old[1]
                 else:
                     row_shapes, text = row_primitives(row, theme, color)
                     parts = (row_shapes, [text])
-                drawn[slider] = (key, parts)
+                drawn[control] = (key, parts)
                 shapes.extend(parts[0])
                 texts.extend(parts[1])
             self._draw(surface, *shapes)
             self._draw_texts(surface, texts)
-        self._slider_drawings = drawn
+        self._panel_drawings = drawn
 
     def _draw_texts(self, surface: pygame.Surface, texts: Sequence[TextItem]) -> None:
         """Draw labels, clipped to the plane.
@@ -2536,23 +2662,23 @@ class Grid:
             for text in texts:
                 self._renderer.draw_text(surface, text)
 
-    def _forget_slider(self, slider: Slider[Any]) -> None:
-        """Unregister a removed slider (see :meth:`Slider.remove`).
+    def _forget_control(self, control: Control) -> None:
+        """Unregister a removed slider or checkbox (see :meth:`Slider.remove`).
 
         Args:
-            slider: The slider.
+            control: The slider or checkbox.
         """
-        if slider in self._slider_colors:
-            self._sliders.remove(slider)
-            del self._slider_colors[slider]
+        if control in self._control_colors:
+            self._controls.remove(control)
+            del self._control_colors[control]
             self._panels = tuple(
                 Panel(
                     panel.rect,
-                    tuple(row for row in panel.rows if row.slider is not slider),
+                    tuple(row for row in panel.rows if row.control is not control),
                 )
                 for panel in self._panels
             )
-            self._slide.forget(slider)
+            self._panel_input.forget(control)
 
     def _forget_draggable(self, point: DraggablePoint) -> None:
         """Unregister a removed point (see :meth:`DraggablePoint.remove`).

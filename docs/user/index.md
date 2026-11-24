@@ -26,8 +26,9 @@ library works the way it does.
      charts, histograms, box and violin plots, and colour by value;
    - [Shapes, text and legends](shapes-and-text.md): polygons, arrows,
      text and legends.
-6. [Draggable points and sliders](draggable-points.md): points the user
-   drags, freely, along one axis or along a curve, and sliders for values.
+6. [Draggable points, sliders and checkboxes](draggable-points.md): points
+   the user drags, freely, along one axis or along a curve, sliders for
+   values (which can play, as in Desmos), and checkboxes for switches.
 7. [Logarithmic axes](log-axes.md): log-log and semi-log planes.
 8. [Styles and themes](styles-and-themes.md): colours, reusable styles,
    dashed and dotted lines, the palette, themes and how numbers are written.

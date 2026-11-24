@@ -111,7 +111,8 @@ view options as `Grid` (`x_range`, `y_range`, `log_x`, `log_y`, `center`,
 - For log scales, see [Logarithmic axes](log-axes.md).
 - To change colours, line widths, dashes or the look of the grid, see
   [Styles and themes](styles-and-themes.md).
-- To let the user drag points or set values with sliders, see
-  [Draggable points and sliders](draggable-points.md).
+- To let the user drag points, set values with sliders or switch things
+  with checkboxes, see
+  [Draggable points, sliders and checkboxes](draggable-points.md).
 - For whole programs to start from, see the [examples](examples.md), and
   for worked answers to common tasks, [Recipes](recipes.md).

@@ -1,4 +1,4 @@
-# Draggable points and sliders
+# Draggable points, sliders and checkboxes
 
 Draggable points and [sliders](#sliders) are the only objects with state
 that lives between frames: their positions and values, which the user
@@ -144,9 +144,10 @@ world, so panning and zooming leave it alone.
 
 | Module | Role |
 |---|---|
-| `core/handles/slider.py` | `Slider`: the value, its range, step and log track, the mapping between the value and a point of the track, the text, flags (`dragging`, `hovered`, `moved`). Pure. |
-| `core/handles/panel.py` | `layout_panels`: one panel per corner, rows top to bottom; `SliderRow`: where a slider is drawn and what a press there means; the primitives. |
-| `dragging.py` | `SliderController`: presses, drags, the wheel, hover and the cursor. |
+| `core/handles/slider.py` | `Slider`: the value, its range, step and log track, the mapping between the value and a point of the track, playing (`advance`), the text, flags (`dragging`, `hovered`, `play_hovered`, `moved`). Pure. |
+| `core/handles/checkbox.py` | `Checkbox`: the value, flags (`hovered`, `changed`). Pure. |
+| `core/handles/panel.py` | `layout_panels`: one panel per corner, rows top to bottom; `SliderRow` and `CheckboxRow`: where a control is drawn and what a press there means; the primitives. |
+| `dragging.py` | `PanelController`: presses (on tracks, play buttons and checkboxes), drags, the wheel, hover and the cursor. |
 
 **Values.** With a step, values are `low + k · step` computed in `Decimal`
 (`repr` of the floats), so a step of 0.1 gives 0.3 exactly; a step that is
@@ -161,13 +162,45 @@ two beyond its first digit, for steps such as π/12), or one pixel resolves.
 draws (`layout_panels`, which sets each slider's `track_px`) and keeps the
 panels until the next frame: `begin_frame` clears them, so a slider not
 drawn in a frame cannot be dragged, which is how a program hides one. The
-`SliderController` sees events before the `DragController`: a press on a
-row's band grabs the slider (moving the handle to the press, unless the
+`PanelController` sees events before the `DragController`: a press on a
+play button starts or stops the slider playing, a press on a checkbox's
+row (box or label) toggles it, a press on a slider row's band grabs the slider (moving the handle to the press, unless the
 press is on the handle), a press or the wheel anywhere on a panel is used
 up (the plane never pans or zooms from under it), and the wheel over a
 row nudges the slider by a step. Its `owns_cursor` blocks points under a
 panel from being hovered or grabbed; a pan or a point's drag blocks the
 sliders in turn.
+
+**Playing.** A slider made with `play=` keeps a position along its track
+(`_position`, a fraction, unrounded) and a direction, apart from its value:
+`Grid.begin_frame` calls `Slider.advance(seconds)` with the time since the
+previous frame by `pygame.time.get_ticks` (capped at 250 ms, so a stalled
+program does not make sliders jump; the example pictures, which patch
+`get_ticks` to follow the frame count, stay the same every run), before
+updating `moved`, so `moved` is true in the frame whose value changed.
+`"loop"` wraps the position, `"bounce"` unfolds the back-and-forth into
+one direction two tracks long (so a long frame lands right however many
+turns it makes), `"once"` clamps and stops; starting `"once"` again at the
+end goes back to the low end. A drag, the wheel or a value set from code
+puts the position where the value is, and advancing does nothing while
+the slider is dragged. Played values without a step are exact (not
+rounded to a pixel, so the sweep is smooth); with a step on a linear
+track, each allowed value takes an equal share of the sweep (rounding to
+the nearest step gave the two ends half as long, so a looping integer
+slider seemed to skip them; on a bounce the ends then dwell for two
+shares, as the slider turns); on a log track, the nearest step. The play
+button is drawn left of the track, a disc with a triangle or two bars cut
+in the panel's colour; in a panel with play buttons the other sliders'
+tracks are as much longer, so all end together, and panels without any
+are laid out exactly as before.
+
+**Checkboxes.** A `Checkbox` is a value, `True` or `False`, in the same
+panels, created with `Grid.checkbox`; `changed` (not `moved`, as nothing
+moves) says it changed since the previous frame, counted like a slider's
+moves. Sliders and checkboxes are kept in one list in creation order
+(`Grid._controls`), which is the default order of the rows, and take
+palette colours in that order. A press anywhere on a checkbox's row ticks
+or unticks it; there is no drag.
 
 **Drawing fast.** A slider is a few strokes and markers, but rasterising
 them every frame costs about 1 ms per panel. The plane keeps the
@@ -183,7 +216,7 @@ only the dragged slider.
 The legend (`core/handles/legend.py`, drawn by `Grid.legend`) is a panel
 in a corner too, with the same look (`panel.background_primitives`), and it
 lives in the handles layer for that reason, although nothing in it moves.
-Its panel is added to what `SliderController` sees as panels (an empty
+Its panel is added to what `PanelController` sees as panels (an empty
 `Panel`, `Grid._overlays`), so presses and the wheel on it are used up and
 points under it cannot be grabbed, like the sliders' panels. When the two
 share a corner, the **sliders keep their place** and the legend goes

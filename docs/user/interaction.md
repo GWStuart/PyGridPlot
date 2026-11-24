@@ -48,7 +48,7 @@ grid.interaction = pgp.InteractionConfig(keyboard=False, smoothing=0.0)
 | `bindings` | `KeyBindings()` | Which keys do what (below). |
 | `drag_button` | `1` | Mouse button that drags [draggable points](draggable-points.md). |
 | `grab_margin_px` | `6.0` | How far beyond its marker a draggable point can be grabbed. |
-| `hover_cursor` | `True` | Show the hand cursor over draggable points. |
+| `hover_cursor` | `True` | Show the hand cursor over draggable points, sliders and checkboxes. |
 
 Use `smoothing=0` if your program only redraws when events arrive (eased
 motion needs frames to advance).
@@ -91,8 +91,8 @@ for event in pygame.event.get():
 
 To switch the pan and zoom controls off (for a fixed view, or while a
 dialog is open), set `grid.interactive = False`; `handle_event` then
-ignores everything except [draggable points and sliders](draggable-points.md),
-which still work (set their `enabled` to `False` to stop them too). To keep the mouse but not the keys, or the reverse, use
+ignores everything except [draggable points, sliders and
+checkboxes](draggable-points.md), which still work (set their `enabled` to `False` to stop them too). To keep the mouse but not the keys, or the reverse, use
 `InteractionConfig(keyboard=False)` or `InteractionConfig(wheel_zoom=False,
 pan_button=0)`.
 

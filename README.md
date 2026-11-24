@@ -73,8 +73,9 @@ no plot objects to create or update. For a quick look without a loop:
   floating, horizontal), histograms, box and violin plots, and names along
   an axis.
 - [**Interaction**](docs/user/draggable-points.md): points the user drags
-  (freely, along a line or along a curve), sliders for numbers, and smooth
-  [panning and zooming](docs/user/interaction.md).
+  (freely, along a line or along a curve), sliders for numbers (with a
+  play button that sweeps them, as in Desmos), checkboxes for switches,
+  and smooth [panning and zooming](docs/user/interaction.md).
 - [**Axes**](docs/user/the-plane.md): linear or
   [logarithmic](docs/user/log-axes.md), set up from ranges like a graphing
   calculator's window, with titles and arrowheads.
@@ -102,7 +103,7 @@ no plot objects to create or update. For a quick look without a loop:
 
 ## Examples
 
-The [`examples/`](examples/) folder has 22 short programs, from the first
+The [`examples/`](examples/) folder has 23 short programs, from the first
 program above to calculus with a draggable tangent, Fourier series with a
 slider, the field of two charges you can move, data plots, and a plane
 inside a game. The [examples page](docs/user/examples.md) shows each one.
@@ -116,8 +117,8 @@ python examples/calculus.py
 - [Getting started](docs/user/getting-started.md): installing, the first
   program, how a frame works.
 - The [user guide](docs/user/index.md): the plane, interaction, every kind
-  of plot, draggable points and sliders, logarithmic axes, styles and
-  themes, and recipes for common tasks.
+  of plot, draggable points, sliders and checkboxes, logarithmic axes,
+  styles and themes, and recipes for common tasks.
 - The [API reference](docs/user/reference.md): every class, method and
   setting.
 - The [philosophy](docs/philosophy.md) behind the design, and the

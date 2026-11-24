@@ -56,14 +56,18 @@ for pygame-ce, drawn from your own main loop.
   bins, as counts, densities or cumulative (`histogram`); and box and
   violin plots of groups of samples (`box_plot`, `violin_plot`).
 - **Interaction**: points the user drags, free, locked to an axis or kept
-  on a curve (`draggable`), and sliders, stepped, integer or geometric, in
-  panels in the corners (`slider`), drawn with `draw_controls`.
+  on a curve (`draggable`); sliders, stepped, integer or geometric, in
+  panels in the corners (`slider`), with an optional play button that
+  sweeps the value by itself, as in Desmos (`play="loop"`, `"bounce"` or
+  `"once"`, and `duration=`; `playing` from code); and checkboxes for
+  switches in the same panels (`checkbox`, `pgp.Checkbox`); all drawn with
+  `draw_controls`.
 - **Speed**: plots that have not changed since the previous frame are
   reused automatically and exactly, and so are their rasterised pixels.
 - **Quick mode**: `pgp.show(f, g, ...)` plots functions in a window of its
   own, without a loop.
 - **Documentation**: a user guide with a picture of every example, an API
-  reference generated from the code, and a developer guide; 22 short
+  reference generated from the code, and a developer guide; 23 short
   example programs.
 - Type annotations (`py.typed`), checked with strict mypy; an
   `ImportError` that says how to fix it when the original `pygame` is

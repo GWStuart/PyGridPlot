@@ -369,6 +369,40 @@ def scene_sliders(grid: pgp.Grid, surface: pygame.Surface) -> None:
     grid.draw_controls(surface)
 
 
+def scene_controls(grid: pgp.Grid, surface: pygame.Surface) -> None:
+    """Draw sliders with play buttons and checkboxes, in two corners.
+
+    In the bottom-left, a slider without a button, one paused (its button
+    hovered) and one playing share a panel with ticked, unticked (hovered)
+    and disabled checkboxes; a checkbox alone is in the top-right, and a
+    disabled slider that could play in the bottom-right.
+
+    Args:
+        grid: The plane.
+        surface: The surface to draw on.
+    """
+    a = grid.slider("a", (0.0, 3.0), value=1.5)
+    t = grid.slider("t", (0.0, 2 * math.pi), value=2.0, play="loop")
+    n = grid.slider("n", (1, 10), value=4, step=1, play="bounce")
+    show = grid.checkbox("show the derivative", value=True)
+    shade = grid.checkbox("shade the area")
+    grid.checkbox("disabled", value=True, enabled=False)
+    grid.checkbox("on its own", value=True, corner="top-right")
+    grid.slider(
+        "off", (0, 1), value=0.3, play="once", enabled=False, corner="bottom-right"
+    )
+    n.playing = True
+    t.set_interaction(hovered=False, dragging=False, play_hovered=True)
+    shade.set_interaction(hovered=True)
+    f = lambda x: a.value * np.sin(x - t.value)  # noqa: E731
+    if shade.value:
+        grid.fill_between(surface, f, 0)
+    grid.plot(surface, f)
+    if show.value:
+        grid.plot(surface, pgp.derivative(f), width=1.5)
+    grid.draw_controls(surface)
+
+
 def scene_annotations(grid: pgp.Grid, surface: pygame.Surface) -> None:
     """Draw labelled plots with a legend, and text marking points.
 
@@ -813,6 +847,7 @@ SCENES: dict[str, Scene] = {
     "sequences": scene_sequences,
     "sequences_log": scene_sequences_log,
     "sliders": scene_sliders,
+    "controls": scene_controls,
     "annotations": scene_annotations,
     "annotations_log": scene_annotations_log,
     "legend": scene_legend,
@@ -1081,6 +1116,8 @@ VIEWS: tuple[GalleryView, ...] = (
         y_range=(0.01, 1000.0),
         scene="dashes_log",
     ),
+    GalleryView("101_controls", scale=50.0, scene="controls"),
+    GalleryView("102_controls_dark", scale=50.0, theme="dark", scene="controls"),
 )
 
 

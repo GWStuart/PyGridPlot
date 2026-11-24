@@ -21,8 +21,9 @@ plane itself), the style classes (:class:`LineStyle`, :class:`PointStyle`,
 (:class:`InteractionConfig`, :class:`KeyBindings`, :class:`FunctionSampling`,
 :class:`CurveSampling`, :class:`ImplicitSampling`, :class:`ViewLimits`),
 the :class:`View` with its :class:`ViewState`, :class:`DraggablePoint`
-(made by :meth:`Grid.draggable`) and :class:`Slider` (made by
-:meth:`Grid.slider`), the calculus helpers :func:`derivative`
+(made by :meth:`Grid.draggable`), :class:`Slider` (made by
+:meth:`Grid.slider`) and :class:`Checkbox` (made by :meth:`Grid.checkbox`),
+the calculus helpers :func:`derivative`
 and :func:`derivatives` (exact derivatives of any order), :func:`integral`
 and :func:`antiderivative`, :func:`taylor` and :func:`fourier`, and
 :func:`color_map` (colours for values) and :func:`data_range` (ranges that
@@ -59,6 +60,7 @@ from pygridplot import _pygame_ce  # noqa: F401  # isort: skip
 from pygridplot.color_maps import color_map
 from pygridplot.core.grid.formatting import NumberFormat
 from pygridplot.core.grid.theme import DARK, LIGHT, GridTheme
+from pygridplot.core.handles.checkbox import Checkbox
 from pygridplot.core.handles.point import DraggablePoint
 from pygridplot.core.handles.slider import Slider
 from pygridplot.core.plot.curves import CurveSampling
@@ -92,6 +94,7 @@ __all__ = [
     "ArrowStyle",
     "BarStyle",
     "CacheStats",
+    "Checkbox",
     "CurveSampling",
     "DraggablePoint",
     "FillStyle",

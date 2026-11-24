@@ -58,8 +58,8 @@ plot follows panning and zooming, and the state of the picture is the
 state of your program, in your own variables, where you can see it.
 
 The plane keeps only what it must between frames, and keeps it explicit:
-the view (which the user pans and zooms), the draggable points and
-sliders (which the user moves), and caches that make frames fast without
+the view (which the user pans and zooms), the draggable points, sliders
+and checkboxes (which the user moves and ticks), and caches that make frames fast without
 changing what they show.
 
 ### 5. It just looks right

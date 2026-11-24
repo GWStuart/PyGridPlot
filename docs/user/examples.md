@@ -186,6 +186,19 @@ multiply the value by the same factor.
 
 `python examples/sliders.py` ([source](../../examples/sliders.py))
 
+### Controls
+
+A rolling circle driven by a slider that plays, and checkboxes.
+
+![Controls: a rolling circle driven by a slider that plays, and checkboxes](../images/examples/controls.png)
+
+The slider `t` plays by itself, in a loop: press its play button to stop
+and start it, or drag it. As the circle rolls along the x axis, a point on
+its rim traces a cycloid. The checkboxes show or hide the circle and the
+whole path; your code reads their `value` every frame.
+
+`python examples/controls.py` ([source](../../examples/controls.py))
+
 ### Geometry
 
 A triangle you can reshape, and its circumcircle.

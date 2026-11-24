@@ -138,6 +138,25 @@ def slider_case() -> Case:
     return grid.draw_controls
 
 
+def controls_case(*, playing: bool) -> Case:
+    """Draw three sliders with play buttons and three checkboxes in one panel.
+
+    With ``playing``, one slider plays, so its row is drawn afresh every
+    frame; else the panel is at rest and reused.
+    """
+    grid = grid_for(scale=60.0)
+    for k in range(3):
+        grid.slider(f"s{k}", (0.0, 1.0), value=k / 4, play="loop")
+        grid.checkbox(f"option {k}", value=k % 2 == 0)
+    grid.sliders[0].playing = playing
+
+    def run(surface: pygame.Surface) -> None:
+        grid.begin_frame()  # playing sliders move on here
+        grid.draw_controls(surface)
+
+    return run
+
+
 def titled_grid_case(**kwargs: object) -> Case:
     """Draw the grid with arrowheads on the axes and both axis titles."""
     grid = grid_for(theme=replace(pgp.LIGHT, show_arrows=True), **kwargs)
@@ -411,6 +430,8 @@ def cases() -> dict[str, Case]:
             center=(10000.0, 0.0),
         ),
         "draw 5 sliders": slider_case(),
+        "draw 3 sliders and 3 checkboxes": controls_case(playing=False),
+        "draw 3 sliders and 3 checkboxes, one playing": controls_case(playing=True),
         "grid with titles and arrows": titled_grid_case(),
         "grid log-log with titles and arrows": titled_grid_case(log_x=True, log_y=True),
         "text 20 labels": text_case(),

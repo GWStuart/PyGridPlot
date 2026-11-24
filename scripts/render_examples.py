@@ -46,6 +46,7 @@ FRAME_MS = 1000 / 60
 
 FRAMES: dict[str, int] = {
     "animation": 200,
+    "controls": 150,
     "curves": 50,
     "embedded": 420,
     "histogram": 360,
@@ -70,7 +71,7 @@ SECTIONS: list[tuple[str, list[str]]] = [
     ),
     ("Curves and regions", ["curves", "implicit", "regions"]),
     ("Fields", ["fields", "slope_field"]),
-    ("Points, sliders and shapes", ["sliders", "geometry", "sequences"]),
+    ("Points, sliders and shapes", ["sliders", "controls", "geometry", "sequences"]),
     ("Data", ["scatter", "histogram", "bars", "distributions"]),
     ("Axes", ["log_axes"]),
     ("Animation and games", ["animation", "embedded"]),
