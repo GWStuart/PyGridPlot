@@ -295,7 +295,7 @@ decade and its subdivisions fade in until it looks linear.
 
 `python examples/log_axes.py` ([source](../../examples/log_axes.py))
 
-## Animation and games
+## Animation, games and recording
 
 ### Animation
 
@@ -320,3 +320,17 @@ The left of the window is ordinary pygame drawing. The right is a
 it falls and bounces; `set_view` keeps the last ten seconds in view.
 
 `python examples/embedded.py` ([source](../../examples/embedded.py))
+
+### Recording
+
+Press S to save a picture, and R to start and stop a video.
+
+![Recording: press S to save a picture, and R to start and stop a video](../images/examples/recording.png)
+
+A Lissajous figure turns as its phase plays. S saves the plane as a PNG
+at twice the size (`grid.save`); R starts recording a video of it, and R
+again finishes it (`pgp.Recorder`, which needs ffmpeg: see the user
+guide's page on saving pictures and videos). The files go in the folder the
+program runs from.
+
+`python examples/recording.py` ([source](../../examples/recording.py))

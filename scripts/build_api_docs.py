@@ -67,6 +67,13 @@ SECTIONS: list[tuple[str, str, list[str]]] = [
         ["DraggablePoint", "Slider", "Checkbox"],
     ),
     (
+        "Pictures and videos",
+        "Recording a plane into a video (through ffmpeg) or numbered pictures; "
+        "`Grid.save` saves a single picture. See the guide's page Saving "
+        "pictures and videos.",
+        ["Recorder", "find_ffmpeg"],
+    ),
+    (
         "Styles",
         "Reusable looks for plotted objects. Keyword arguments of the plotting "
         "methods override their fields.",

@@ -43,10 +43,12 @@ user drags them to.
 from __future__ import annotations
 
 import math
+import os
 import weakref
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import replace
 from functools import partial
+from pathlib import Path
 from typing import Any, Final, Literal, overload
 
 import numpy as np
@@ -171,10 +173,15 @@ from pygridplot.core.primitives import (
     Stroke,
     TextItem,
 )
+from pygridplot.core.scaling import check_scale
 from pygridplot.core.view import View, ViewLimits, ViewState
 from pygridplot.dragging import DragController, PanelController
 from pygridplot.interaction import InteractionConfig, InteractionController
 from pygridplot.render.pygame_renderer import PygameRenderer
+from pygridplot.render.replay import Drawn, Replayer
+
+_PICTURE_TYPES: Final = (".png", ".jpg", ".jpeg", ".bmp", ".tga")
+"""The file types :meth:`Grid.save` writes (by extension)."""
 
 _MAX_PLAY_MS: Final = 250
 """Longest time a playing slider moves on by in one frame, in milliseconds.
@@ -296,7 +303,14 @@ class Grid:
         self._controls: list[Control] = []
         self._control_colors: dict[Control, int] = {}
         self._controls_created = 0
-        self._last_tick: int | None = None  # pygame's clock at the last frame
+        self._last_tick: float | None = None  # the play clock at the last frame
+        # The clock playing sliders follow, in milliseconds: pygame's, or a
+        # recorder's while the plane is recorded (see Recorder).
+        self._play_clock: Callable[[], float] | None = None
+        # What was drawn in this frame, for saving it (see save); and what
+        # draws it again, made when first needed.
+        self._drawing: list[Drawn] = []
+        self._replayer: Replayer | None = None
         self._panels: tuple[Panel, ...] = ()  # as last drawn: what presses hit
         # The primitives last drawn for each panel and slider, with their keys.
         self._panel_drawings: dict[object, tuple[object, Any]] = {}
@@ -518,7 +532,8 @@ class Grid:
         self._plots.begin_frame()
         for point in self._draggables:
             point.begin_frame()
-        now = pygame.time.get_ticks()
+        clock = self._play_clock
+        now = float(pygame.time.get_ticks()) if clock is None else clock()
         last, self._last_tick = self._last_tick, now
         seconds = 0.0 if last is None else min(max(now - last, 0), _MAX_PLAY_MS) / 1000
         for control in self._controls:
@@ -526,6 +541,7 @@ class Grid:
                 control.advance(seconds)
             control.begin_frame()
         self._panels = ()  # until the controls are drawn again
+        self._drawing = []
 
     def draw(
         self,
@@ -591,6 +607,7 @@ class Grid:
         self.begin_frame()
         scene = self._grid_scene(titles, names)
         self._renderer.draw_grid(surface, scene)
+        self._drawing.append(("scene", scene))
         self._last_scene = scene
 
     # ------------------------------------------------------------------
@@ -2656,6 +2673,7 @@ class Grid:
             surface: The surface to draw on.
             texts: The labels.
         """
+        self._drawing.append(("texts", tuple(texts)))
         with self._renderer.clipped(surface, self.rect) as visible:
             if visible is None:
                 return
@@ -2766,6 +2784,103 @@ class Grid:
         """
         self._framing.home = state if state is not None else self._view.state()
 
+    # ------------------------------------------------------------------
+    # Export
+    # ------------------------------------------------------------------
+    def save(self, path: str | os.PathLike[str], *, scale: float = 1.0) -> None:
+        """Save the plane, as drawn in this frame, to a picture file.
+
+        Call it after drawing the frame (the grid, the plots, the controls)
+        and before the next :meth:`draw`. The picture is the plane alone,
+        its rectangle and nothing outside it, drawn again at ``scale`` times
+        as many pixels along each side: ``scale=2`` gives a picture twice as
+        wide and twice as tall, with every line, point and letter twice the
+        size, so it looks the same, only sharper::
+
+            grid.draw(screen)
+            grid.plot(screen, np.sin)
+            grid.save("sine.png")                # as on screen
+            grid.save("sine@3x.png", scale=3)    # for a slide or for print
+
+        Only what the plane drew is in the picture: draw your own things
+        (captions, buttons) with pygame, and save the whole window with
+        :func:`pygame.image.save` instead. Curves are sampled for the
+        screen, to a quarter of a pixel, so they stay smooth up to about
+        ``scale=4``.
+
+        Args:
+            path: Where to save, with the file type as its extension:
+                ``.png`` (lossless; a plane without a background, see
+                :attr:`GridTheme.background`, is transparent), ``.jpg``,
+                ``.bmp`` or ``.tga``. Missing folders are created.
+            scale: How many times as many pixels along each side (``0.5``
+                for a smaller picture). The picture can be at most 16384
+                pixels on a side.
+
+        Raises:
+            ValueError: If nothing was drawn on the plane in this frame, the
+                extension is not one of those above, or the scale is not
+                positive or makes too large a picture.
+            TypeError: If the scale is not a number.
+        """
+        target = Path(path)
+        suffix = target.suffix.lower()
+        if suffix not in _PICTURE_TYPES:
+            msg = f"save a picture as {', '.join(_PICTURE_TYPES)}, got {str(path)!r}"
+            raise ValueError(msg)
+        picture = self._snapshot(scale, opaque=suffix != ".png")
+        target.parent.mkdir(parents=True, exist_ok=True)
+        pygame.image.save(picture, str(target))
+
+    def _snapshot(self, scale: float, *, opaque: bool) -> pygame.Surface:
+        """Draw this frame again onto a surface of its own (see :meth:`save`).
+
+        Args:
+            scale: How many times as many pixels along each side.
+            opaque: Fill it first with the plane's colour (its background,
+                or the label halo's colour where it has none), for videos and
+                picture types without transparency.
+
+        Returns:
+            The picture.
+
+        Raises:
+            ValueError: If nothing was drawn in this frame, or the picture
+                would be too large.
+        """
+        factor = check_scale(scale)
+        if not self._drawing:
+            msg = "nothing was drawn on the plane in this frame: draw it, then save"
+            raise ValueError(msg)
+        if self.rect.is_empty:
+            msg = "the plane has no area to save"
+            raise ValueError(msg)
+        if self._replayer is None:
+            self._replayer = Replayer()
+        # Transparent only where the plane drew no background of its own.
+        has_scene = any(kind == "scene" for kind, _ in self._drawing)
+        transparent = not opaque and (self._theme.background is None or not has_scene)
+        return self._replayer.render(
+            self._drawing,
+            self.rect,
+            self._renderer,
+            factor,
+            None if transparent else panel_color(self._theme),
+            transparent=transparent,
+        )
+
+    def _use_clock(self, clock: Callable[[], float] | None) -> None:
+        """Make playing sliders follow another clock (a recorder's), or pygame's.
+
+        The time between frames starts again from the new clock, so nothing
+        jumps when switching.
+
+        Args:
+            clock: Returns the time in milliseconds, or ``None`` for pygame's.
+        """
+        self._play_clock = clock
+        self._last_tick = None if clock is None else clock()
+
     def __repr__(self) -> str:
         return f"Grid(view={self._view!r})"
 
@@ -2869,6 +2984,7 @@ class Grid:
         shapes = [shape for shape in primitives if shape is not None]
         if not shapes:
             return
+        self._drawing.append(("shapes", tuple(shapes)))
         with self._renderer.clipped(surface, self.rect) as visible:
             if visible is None:
                 return

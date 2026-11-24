@@ -22,6 +22,10 @@ PyGridPlot needs Python 3.10 or newer; pip installs
 [pygame-ce](https://pyga.me/), NumPy and contourpy with it. pygame-ce, the
 community edition of pygame, installs under the same name as the original
 `pygame`, so uninstall that first if you have it (`pip uninstall pygame`).
+Recording videos also needs [ffmpeg](https://ffmpeg.org), a free program
+installed separately (or with `pip install imageio-ffmpeg`): see
+[Setting up ffmpeg](docs/user/export.md#setting-up-ffmpeg). Nothing else
+needs it.
 
 ## A first program
 
@@ -82,6 +86,9 @@ no plot objects to create or update. For a quick look without a loop:
 - [**Line styles**](docs/user/styles-and-themes.md#dashed-and-dotted-lines):
   dashed and dotted curves, polylines and outlines, whose dashes stay put
   while you pan.
+- [**Pictures and videos**](docs/user/export.md): save the plane as a
+  picture at any resolution, and record videos (MP4, WebM, GIF, through
+  ffmpeg) with a quick draft and a sharp final version from one program.
 
 ## Why PyGridPlot
 
@@ -103,7 +110,7 @@ no plot objects to create or update. For a quick look without a loop:
 
 ## Examples
 
-The [`examples/`](examples/) folder has 23 short programs, from the first
+The [`examples/`](examples/) folder has 24 short programs, from the first
 program above to calculus with a draggable tangent, Fourier series with a
 slider, the field of two charges you can move, data plots, and a plane
 inside a game. The [examples page](docs/user/examples.md) shows each one.
@@ -118,7 +125,8 @@ python examples/calculus.py
   program, how a frame works.
 - The [user guide](docs/user/index.md): the plane, interaction, every kind
   of plot, draggable points, sliders and checkboxes, logarithmic axes,
-  styles and themes, and recipes for common tasks.
+  styles and themes, saving pictures and videos, and recipes for common
+  tasks.
 - The [API reference](docs/user/reference.md): every class, method and
   setting.
 - The [philosophy](docs/philosophy.md) behind the design, and the

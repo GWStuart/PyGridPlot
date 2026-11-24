@@ -27,7 +27,8 @@ the calculus helpers :func:`derivative`
 and :func:`derivatives` (exact derivatives of any order), :func:`integral`
 and :func:`antiderivative`, :func:`taylor` and :func:`fourier`, and
 :func:`color_map` (colours for values) and :func:`data_range` (ranges that
-show data), and :func:`show`. The
+show data), :class:`Recorder` (videos and numbered pictures of a plane,
+with :func:`find_ffmpeg`), and :func:`show`. The
 subpackages (``pygridplot.core``, ``pygridplot.render``) are the
 implementation; see ``docs/dev/index.md``.
 
@@ -85,6 +86,7 @@ from pygridplot.core.view import View, ViewLimits, ViewState
 from pygridplot.grid import Grid
 from pygridplot.interaction import InteractionConfig, KeyBindings
 from pygridplot.quick import show
+from pygridplot.recording import Recorder, find_ffmpeg
 
 __version__ = "0.1.0.dev0"
 
@@ -108,6 +110,7 @@ __all__ = [
     "NumberFormat",
     "PointStyle",
     "PolygonStyle",
+    "Recorder",
     "SequenceStyle",
     "Slider",
     "TextStyle",
@@ -120,6 +123,7 @@ __all__ = [
     "data_range",
     "derivative",
     "derivatives",
+    "find_ffmpeg",
     "fourier",
     "integral",
     "show",

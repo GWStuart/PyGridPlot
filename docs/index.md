@@ -35,6 +35,7 @@ topic you need:
 | [Draggable points, sliders and checkboxes](user/draggable-points.md) | Points the user drags: free, locked to an axis, or on a curve; sliders for values, which can play; checkboxes for switches. |
 | [Logarithmic axes](user/log-axes.md) | Log and semi-log planes, how their grid and labels behave. |
 | [Styles and themes](user/styles-and-themes.md) | Colours, reusable styles, dashed and dotted lines, the palette, themes and number formats. |
+| [Saving pictures and videos](user/export.md) | Pictures at any resolution; videos (MP4, WebM, GIF) through ffmpeg, and how to set it up. |
 | [Recipes](user/recipes.md) | Worked examples of common tasks, performance tips and troubleshooting. |
 | [API reference](user/reference.md) | Every public class, function and setting, generated from the code. |
 

@@ -14,6 +14,7 @@ setting with its parameters and defaults.
 - Calculus: [`derivative`](#derivative), [`derivatives`](#derivatives), [`integral`](#integral), [`antiderivative`](#antiderivative), [`taylor`](#taylor), [`fourier`](#fourier)
 - Data: [`color_map`](#color_map), [`data_range`](#data_range)
 - Draggable points, sliders and checkboxes: [`DraggablePoint`](#draggablepoint), [`Slider`](#slider), [`Checkbox`](#checkbox)
+- Pictures and videos: [`Recorder`](#recorder), [`find_ffmpeg`](#find_ffmpeg)
 - Styles: [`LineStyle`](#linestyle), [`PointStyle`](#pointstyle), [`PolygonStyle`](#polygonstyle), [`FillStyle`](#fillstyle), [`ArrowStyle`](#arrowstyle), [`SequenceStyle`](#sequencestyle), [`BarStyle`](#barstyle), [`TextStyle`](#textstyle)
 - Themes: [`GridTheme`](#gridtheme), [`LIGHT`](#light), [`DARK`](#dark), [`NumberFormat`](#numberformat)
 - Configuration: [`InteractionConfig`](#interactionconfig), [`KeyBindings`](#keybindings), [`FunctionSampling`](#functionsampling), [`CurveSampling`](#curvesampling), [`ImplicitSampling`](#implicitsampling), [`ViewLimits`](#viewlimits), [`CacheStats`](#cachestats)
@@ -1373,6 +1374,35 @@ The initial view can be given like a graphing calculator's window settings, `x_r
 
   - `state`: The new home view, or `None` to use the current view.
 
+- **`grid.save()`**
+
+  ```py
+  grid.save(path: str | os.PathLike[str], *, scale: float = 1.0)
+  ```
+
+  Save the plane, as drawn in this frame, to a picture file.
+
+  Call it after drawing the frame (the grid, the plots, the controls) and before the next `draw`. The picture is the plane alone, its rectangle and nothing outside it, drawn again at `scale` times as many pixels along each side: `scale=2` gives a picture twice as wide and twice as tall, with every line, point and letter twice the size, so it looks the same, only sharper:
+
+  ```py
+  grid.draw(screen)
+  grid.plot(screen, np.sin)
+  grid.save("sine.png")                # as on screen
+  grid.save("sine@3x.png", scale=3)    # for a slide or for print
+  ```
+
+  Only what the plane drew is in the picture: draw your own things (captions, buttons) with pygame, and save the whole window with `save` instead. Curves are sampled for the screen, to a quarter of a pixel, so they stay smooth up to about `scale=4`.
+
+  *Parameters:*
+
+  - `path`: Where to save, with the file type as its extension: `.png` (lossless; a plane without a background, see `GridTheme.background`, is transparent), `.jpg`, `.bmp` or `.tga`. Missing folders are created.
+  - `scale`: How many times as many pixels along each side (`0.5` for a smaller picture). The picture can be at most 16384 pixels on a side.
+
+  *Raises:*
+
+  - `ValueError`: If nothing was drawn on the plane in this frame, the extension is not one of those above, or the scale is not positive or makes too large a picture.
+  - `TypeError`: If the scale is not a number.
+
 ### show
 
 ```py
@@ -2143,6 +2173,121 @@ Create checkboxes with `Grid.checkbox`, which registers them with the plane so t
   ```
 
   Remove the checkbox from its plane: it is no longer clicked or drawn.
+
+## Pictures and videos
+
+Recording a plane into a video (through ffmpeg) or numbered pictures; `Grid.save` saves a single picture. See the guide's page Saving pictures and videos.
+
+### Recorder
+
+```py
+pgp.Recorder(
+    path: str | os.PathLike[str],
+    *,
+    fps: float = 60.0,
+    scale: float = 1.0,
+    ffmpeg: str | os.PathLike[str] | None = None,
+)
+```
+
+Records frames into a video, through ffmpeg, or into numbered pictures.
+
+Create it before the frames, give it each frame with `add`, and close it at the end, best with a `with` block, which closes it however the block ends. The first frame sets the size of the video; later frames of another size (a window resized) are scaled to it.
+
+*Parameters:*
+
+- `path`: The file to write. Its extension says what: a video (`.mp4`, `.webm`, `.gif`, `.mov`, `.mkv`, or any other type ffmpeg writes) or numbered pictures (`.png`, `.jpg`, `.bmp`, `.tga`: `frames/wave.png` writes `frames/wave_00000.png`, ...). Missing folders are created.
+- `fps`: Frames per second of the video (and the time a frame moves the recorded planes' playing sliders on).
+- `scale`: How many times as many pixels along each side a plane is drawn with (`0.5` for a quick draft, `2` for a sharp video). A surface given to `add` is resized instead (smoothly, so it is blurred when made bigger).
+- `ffmpeg`: Where the ffmpeg program is, if it is not found by itself (see `find_ffmpeg`).
+
+*Raises:*
+
+- `TypeError`: If `fps` or `scale` is not a number.
+- `ValueError`: If `fps` or `scale` is not positive and finite.
+- `RuntimeError`: If the file is a video and ffmpeg cannot be found.
+
+#### Members of `Recorder`
+
+- **`recorder.path`** (`Path`, read only)
+
+  The file being written (for pictures, the name they are numbered from).
+
+- **`recorder.fps`** (`float`, read only)
+
+  Frames per second.
+
+- **`recorder.scale`** (`float`, read only)
+
+  How many times as many pixels along each side planes are drawn with.
+
+- **`recorder.frames`** (`int`, read only)
+
+  How many frames have been added.
+
+- **`recorder.time`** (`float`, read only)
+
+  The video's time at the next frame, in seconds: `frames / fps`.
+
+  Use it to animate your own things while recording, in place of the clock, so they move by exactly one frame's time per frame.
+
+- **`recorder.closed`** (`bool`, read only)
+
+  Whether `close` has been called.
+
+- **`recorder.add()`**
+
+  ```py
+  recorder.add(source: Grid | pygame.Surface)
+  ```
+
+  Add a frame: a plane as drawn in this frame, or a surface's pixels.
+
+  Call it once per frame, after drawing it. A plane (a `Grid`) is drawn again at the recorder's scale, the plane alone, as `Grid.save` does; from its first frame on, its playing sliders keep the video's time (one frame is `1 / fps` seconds). A surface, such as the window (`pygame.display.get_surface()`), is recorded as it is, with whatever you drew on it.
+
+  *Parameters:*
+
+  - `source`: The plane, or a surface.
+
+  *Raises:*
+
+  - `ValueError`: If the recorder is closed, or nothing was drawn on the plane in this frame.
+  - `TypeError`: If `source` is neither a plane nor a surface.
+  - `RuntimeError`: If ffmpeg stopped with an error (its message is included).
+
+- **`recorder.close()`**
+
+  ```py
+  recorder.close()
+  ```
+
+  Finish the video (or the pictures), and give the planes their clock back.
+
+  Closing twice does nothing. A recorder given no frames writes no file.
+
+  *Raises:*
+
+  - `RuntimeError`: If ffmpeg stopped with an error (its message is included).
+
+### find_ffmpeg
+
+```py
+pgp.find_ffmpeg(path: str | os.PathLike[str] | None = None) -> str
+```
+
+Return the ffmpeg program to record videos with.
+
+It is looked for, in order: at `path` if given; as `ffmpeg` on the system's `PATH` (installed with a package manager, or by hand); and in the `imageio-ffmpeg <https://pypi.org/project/imageio-ffmpeg/>`_ package, which brings a copy of its own (`pip install imageio-ffmpeg`), if it is installed.
+
+*Parameters:*
+
+- `path`: The program, if you know where it is.
+
+*Returns:* The program's path.
+
+*Raises:*
+
+- `RuntimeError`: If it cannot be found (the message says how to install it).
 
 ## Styles
 

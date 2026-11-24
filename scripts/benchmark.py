@@ -157,6 +157,35 @@ def controls_case(*, playing: bool) -> Case:
     return run
 
 
+def export_case(scale: float | None, *, changing: bool) -> Case:
+    """Draw a busy frame again at a scale, as saving or recording a video does.
+
+    The picture is made but not written, so this measures the drawing (and
+    ``scale=None`` the frame alone, for comparison). With ``changing``, a
+    curve changes every frame (an animation being recorded); else the frame
+    is the same each time, the plot cache is on, and the scaled copies (and
+    so their coverage) are reused.
+    """
+    grid = grid_for(scale=60.0, cache=not changing)  # unchanged plots: reused
+    grid.slider("a", (0.0, 1.0), value=0.5, play="loop")
+    tick = [0.0]
+
+    def run(surface: pygame.Surface) -> None:
+        tick[0] += 0.01 if changing else 0.0
+        shift = tick[0]
+        grid.draw(surface)
+        grid.fill_between(surface, np.sin, 0)
+        grid.plot(surface, lambda x: np.cos(x - shift), label="cos")
+        grid.plot(surface, np.sin, dash="dashed", label="sin")
+        grid.vector_field(surface, lambda x, y: (-y, x))
+        grid.legend(surface)
+        grid.draw_controls(surface)
+        if scale is not None:
+            grid._snapshot(scale, opaque=True)
+
+    return run
+
+
 def titled_grid_case(**kwargs: object) -> Case:
     """Draw the grid with arrowheads on the axes and both axis titles."""
     grid = grid_for(theme=replace(pgp.LIGHT, show_arrows=True), **kwargs)
@@ -520,6 +549,10 @@ def cases() -> dict[str, Case]:
             lambda p, s: p.violin_plot(s, groups10k), scale=60.0
         ),
         "grid with 100 category names": category_grid_case(names),
+        "export: busy frame, not saved": export_case(None, changing=True),
+        "export: busy frame, drawn again at 1x": export_case(1.0, changing=True),
+        "export: busy frame, drawn again at 2x": export_case(2.0, changing=True),
+        "export: still frame, drawn again at 2x": export_case(2.0, changing=False),
         "dashed: plot test set": plot_case(
             lambda p, s: [p.plot(s, f, dash="dashed") for f in test_set], scale=60.0
         ),

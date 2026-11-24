@@ -219,11 +219,19 @@ say), a labelled call that draws nothing still adds an entry: an empty
 
 ## Saving a screenshot
 
-Everything is drawn onto ordinary pygame surfaces, so saving is pygame's
-job. After drawing a frame:
+To save the plane, at the screen's resolution or a higher one, use
+`grid.save` after drawing a frame; [Saving pictures and videos](export.md)
+covers it, and recording videos:
 
 ```python
-pygame.image.save(screen, "plot.png")
+grid.save("plot.png", scale=2)    # the plane alone, twice the size
+```
+
+Everything is drawn onto ordinary pygame surfaces, so saving the whole
+window, with your own drawing on it, is pygame's job:
+
+```python
+pygame.image.save(screen, "window.png")
 ```
 
 To render an image without a window (on a server, say), set the

@@ -47,6 +47,7 @@ FRAME_MS = 1000 / 60
 FRAMES: dict[str, int] = {
     "animation": 200,
     "controls": 150,
+    "recording": 60,
     "curves": 50,
     "embedded": 420,
     "histogram": 360,
@@ -74,7 +75,7 @@ SECTIONS: list[tuple[str, list[str]]] = [
     ("Points, sliders and shapes", ["sliders", "controls", "geometry", "sequences"]),
     ("Data", ["scatter", "histogram", "bars", "distributions"]),
     ("Axes", ["log_axes"]),
-    ("Animation and games", ["animation", "embedded"]),
+    ("Animation, games and recording", ["animation", "embedded", "recording"]),
 ]
 """The examples page's sections, and the order of the examples in them."""
 

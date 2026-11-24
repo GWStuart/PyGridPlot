@@ -32,6 +32,8 @@ library works the way it does.
 7. [Logarithmic axes](log-axes.md): log-log and semi-log planes.
 8. [Styles and themes](styles-and-themes.md): colours, reusable styles,
    dashed and dotted lines, the palette, themes and how numbers are written.
-9. [Recipes](recipes.md): worked examples (mouse readouts, animation,
+9. [Saving pictures and videos](export.md): pictures at any resolution,
+   and videos (MP4, WebM, GIF) through ffmpeg, with how to set it up.
+10. [Recipes](recipes.md): worked examples (mouse readouts, animation,
    legends, screenshots, ...), performance tips and troubleshooting.
-10. [API reference](reference.md): everything `import pygridplot` provides.
+11. [API reference](reference.md): everything `import pygridplot` provides.

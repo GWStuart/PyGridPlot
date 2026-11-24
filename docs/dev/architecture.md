@@ -87,6 +87,7 @@ src/pygridplot/
 ├── interaction.py       pygame events -> pan/zoom (anchored drag, eased wheel and keys)
 ├── dragging.py          pygame events -> draggable points, sliders, checkboxes (hit test, drag, hover, cursor)
 ├── quick.py             show(): a ready-made main loop
+├── recording.py         Recorder: videos through ffmpeg, numbered pictures; find_ffmpeg()
 ├── color_maps.py        color_map(): colours for values (resolves colour names with pygame)
 ├── _pygame_ce.py        On import: refuses the original pygame, with advice
 ├── py.typed             Marks the package as typed (PEP 561)
@@ -98,6 +99,7 @@ src/pygridplot/
 │   ├── framing.py       ViewFraming: initial ranges, the home view, switching axis kinds
 │   ├── easing.py        Critically damped Spring for eased motion
 │   ├── primitives.py    The drawing primitives and the TextMeasurer protocol
+│   ├── scaling.py       Scaling primitives onto a picture with more or fewer pixels (export)
 │   ├── grid/            The adaptive grid
 │   │   ├── nice.py          NiceStep: exact 1-2-5 spacings as integer ladder levels
 │   │   ├── spacing.py       Choosing a spacing: cross-fades (fade) or hysteresis (snap)
@@ -157,7 +159,8 @@ src/pygridplot/
 │   ├── markers.py       Cached, sub-pixel marker stamps
 │   ├── text.py          Label typesetting (runs, superscripts, halos), cached
 │   ├── fonts.py         Font loading; the bundled DejaVu Sans
-│   └── colors.py        Colour resolution and paint-stack flattening
+│   ├── colors.py        Colour resolution and paint-stack flattening
+│   └── replay.py        Replayer: a frame's drawing again, at a scale (saving, recording)
 └── assets/fonts/        DejaVuSans.ttf and its licence
 
 tests/                   Mirrors the package (tests/core/grid, tests/core/plot, tests/render, ...)

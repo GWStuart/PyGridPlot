@@ -8,8 +8,11 @@ pip install pygridplot
 
 PyGridPlot needs Python 3.10 or newer, [pygame-ce](https://pyga.me/) 2.5.7 or
 newer, NumPy, and [contourpy](https://contourpy.readthedocs.io/) (for
-implicit curves); pip installs them all. To work on PyGridPlot itself,
-install it from a checkout of the repository instead:
+implicit curves); pip installs them all. Only recording videos needs
+anything more: [ffmpeg](https://ffmpeg.org), a free program installed
+separately, or with `pip install imageio-ffmpeg` (see
+[Setting up ffmpeg](export.md#setting-up-ffmpeg)). To work on PyGridPlot
+itself, install it from a checkout of the repository instead:
 
 ```bash
 pip install -e ".[dev]"     # the library, editable, and the tools for working on it
@@ -114,5 +117,7 @@ view options as `Grid` (`x_range`, `y_range`, `log_x`, `log_y`, `center`,
 - To let the user drag points, set values with sliders or switch things
   with checkboxes, see
   [Draggable points, sliders and checkboxes](draggable-points.md).
+- To save the plane as a picture, or record a video of it, see
+  [Saving pictures and videos](export.md).
 - For whole programs to start from, see the [examples](examples.md), and
   for worked answers to common tasks, [Recipes](recipes.md).

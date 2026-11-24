@@ -178,6 +178,53 @@ recently used entries go beyond `MAX_ENTRIES` (256) or `MAX_PIXELS`
 (two million covered pixels, about 30 MB). `clear_caches()` empties it with
 the other caches.
 
+## Saving and recording: `replay.py`
+
+Exporting a frame is drawing it again, not reading the screen: the plane
+keeps a list of what it drew since the frame began (`Grid._drawing`: the
+grid scene, then each call's primitives and texts, appended in `draw`,
+`_draw` and `_draw_texts`, cleared in `begin_frame`), and a `Replayer`
+draws that list onto a new surface, every primitive scaled by
+`core/scaling.py`. Positions are continuous pixel coordinates, so pixel
+*edges* scale (`x' = (x - left) k + (k - 1) / 2`): a 1 px grid line at
+pixel `p` becomes a `k` px line covering pixels `kp` to `kp + k - 1`, as
+crisp as before; widths, radii, outlines, font sizes and halos scale too
+(grid lines and halos to whole pixels, at least 1). Text keeps the centre
+of its box, because a font at `k` times the size is not exactly `k` times
+as wide (hinting), and tick labels must stay centred on their lines.
+
+At scale 1 the replay is the screen exactly when the plane is at the
+surface's origin (a test checks it); elsewhere, moving coordinates by
+whole pixels can change their last bits, so a pixel may differ by a level.
+That needed one care: translucent fills are blended by a pygame blit on
+surfaces without per-pixel alpha and by NumPy on surfaces with it, which
+round differently by a level, so a picture is drawn on a surface with
+alpha only when it must be transparent (a plane without a background,
+saved as PNG); otherwise on an opaque one, like the screen.
+
+The replayer has its own `PygameRenderer`, so exporting never pushes the
+screen's coverage or text out of their caches, and it keeps the previous
+frame's scaled copy of each primitive, matched by identity: unchanged
+plots are the same objects from frame to frame (the plot cache), so their
+scaled copies are too, and the export renderer reuses their coverage
+while a video records. Copies are dropped when the scale or the plane's
+place changes. A coverage larger than the cache's budget (`MAX_PIXELS`,
+2 million pixels) is never kept, so at 2× a fill covering much of the
+plane is rasterised again every frame; giving the replayer's renderer a
+bigger budget would save that, at up to about 30 MB per million pixels.
+
+`recording.Recorder` pipes RGB frames to an ffmpeg process (rawvideo on
+its input; settings per extension in `_SETTINGS`: H.264 at CRF 18 with
+`yuv420p` and even sides by padding, VP9, GIF with a palette per frame,
+since one palette for the whole video makes ffmpeg hold every frame),
+with ffmpeg's messages in a temporary file, read when it fails. Picture
+extensions write numbered pictures with pygame instead. ffmpeg is found
+by `find_ffmpeg`: an explicit path, the `PATH`, then the `imageio-ffmpeg`
+package's copy; it is never a dependency. A recorded plane follows the
+video's clock (`Grid._use_clock`, frames × 1000 / fps milliseconds), so
+playing sliders move one frame's time per frame however slowly frames
+are made; the clock is pygame's again when the recorder closes.
+
 ## Performance
 
 `scripts/benchmark.py` times the main cases. Typical numbers on a 1100×720

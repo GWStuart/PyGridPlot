@@ -62,12 +62,20 @@ for pygame-ce, drawn from your own main loop.
   `"once"`, and `duration=`; `playing` from code); and checkboxes for
   switches in the same panels (`checkbox`, `pgp.Checkbox`); all drawn with
   `draw_controls`.
+- **Pictures and videos**: `grid.save("plot.png", scale=2)` saves the
+  plane as drawn in the frame, drawn again at any resolution (exactly the
+  screen's pixels at scale 1; transparent PNGs for planes without a
+  background); `pgp.Recorder` records frames into a video through ffmpeg
+  (MP4, WebM, GIF, ...) or into numbered pictures, at a scale of its own
+  (a quick draft and a sharp version from one program), keeping the
+  video's time for playing sliders; `pgp.find_ffmpeg` finds ffmpeg (on
+  the `PATH`, or the `imageio-ffmpeg` package's copy).
 - **Speed**: plots that have not changed since the previous frame are
   reused automatically and exactly, and so are their rasterised pixels.
 - **Quick mode**: `pgp.show(f, g, ...)` plots functions in a window of its
   own, without a loop.
 - **Documentation**: a user guide with a picture of every example, an API
-  reference generated from the code, and a developer guide; 23 short
+  reference generated from the code, and a developer guide; 24 short
   example programs.
 - Type annotations (`py.typed`), checked with strict mypy; an
   `ImportError` that says how to fix it when the original `pygame` is
