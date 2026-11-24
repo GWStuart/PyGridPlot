@@ -78,12 +78,16 @@ no plot objects to create or update. For a quick look without a loop:
 - [**Axes**](docs/user/the-plane.md): linear or
   [logarithmic](docs/user/log-axes.md), set up from ranges like a graphing
   calculator's window, with titles and arrowheads.
+- [**Line styles**](docs/user/styles-and-themes.md#dashed-and-dotted-lines):
+  dashed and dotted curves, polylines and outlines, whose dashes stay put
+  while you pan.
 
 ## Why PyGridPlot
 
 - **It looks right without settings.** Grid lines are 1-2-5 steps that fade
   in and out as you zoom, labels are exact decimals that never overlap and
-  stay on screen, and logarithmic axes thin out and subdivide properly.
+  stay on screen, logarithmic axes thin out and subdivide properly, and
+  dashes stay fixed to their lines while you pan.
 - **It is hard to break.** Functions may raise errors, return NaN or
   infinity, or only take single numbers: the plot just has a gap. Poles and
   jumps are never joined up, and curves end exactly where they stop being
@@ -98,7 +102,7 @@ no plot objects to create or update. For a quick look without a loop:
 
 ## Examples
 
-The [`examples/`](examples/) folder has 21 short programs, from the first
+The [`examples/`](examples/) folder has 22 short programs, from the first
 program above to calculus with a draggable tangent, Fourier series with a
 slider, the field of two charges you can move, data plots, and a plane
 inside a game. The [examples page](docs/user/examples.md) shows each one.

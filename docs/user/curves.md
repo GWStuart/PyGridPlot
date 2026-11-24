@@ -15,7 +15,7 @@ On this page: [Parametric curves](#parametric-curves) · [Polar curves](#polar-c
 
 ```py
 grid.parametric(surface, x, y, t_range, *, color=None, width=None,
-                 opacity=None, style=None, sampling=None)
+                 opacity=None, dash=None, style=None, sampling=None)
 ```
 
 ```python
@@ -35,11 +35,20 @@ branches, each running off the edge of the plane.
 Curves are sampled adaptively *on screen*, so tight turns, cusps, loops and
 spirals stay smooth at every zoom level, on linear and log axes alike.
 
+Parametric, polar and implicit curves take the same `color`, `width`,
+`opacity` and `dash` as [`plot`](functions.md#functions), and a reusable
+`LineStyle`. A dashed curve starts and ends with a dash at the ends of its
+parameter range (see [Dashed and dotted lines](styles-and-themes.md#dashed-and-dotted-lines)):
+
+```python
+grid.parametric(screen, np.cos, np.sin, (0, np.pi / 2), dash="dashed")  # a dashed arc
+```
+
 ## Polar curves
 
 ```py
 grid.polar(surface, r, theta_range=(0, 2π), *, color=None, width=None,
-            opacity=None, style=None, sampling=None)
+            opacity=None, dash=None, style=None, sampling=None)
 ```
 
 ```python
@@ -82,7 +91,7 @@ turns, say) may need more `initial_samples`.
 
 ```py
 grid.implicit(surface, func, level=0, *, color=None, width=None,
-               opacity=None, style=None, sampling=None)
+               opacity=None, dash=None, style=None, sampling=None)
 ```
 
 ```python

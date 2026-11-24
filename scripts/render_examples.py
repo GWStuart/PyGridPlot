@@ -64,7 +64,10 @@ MONTAGE = [
 
 SECTIONS: list[tuple[str, list[str]]] = [
     ("Getting started", ["quickstart", "quick_look"]),
-    ("Functions and calculus", ["functions", "calculus", "taylor", "fourier"]),
+    (
+        "Functions and calculus",
+        ["functions", "calculus", "line_styles", "taylor", "fourier"],
+    ),
     ("Curves and regions", ["curves", "implicit", "regions"]),
     ("Fields", ["fields", "slope_field"]),
     ("Points, sliders and shapes", ["sliders", "geometry", "sequences"]),

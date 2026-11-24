@@ -134,6 +134,7 @@ src/pygridplot/
 │   │   ├── distributions.py Box plot statistics, violin densities (kernel density)
 │   │   ├── color_maps.py    Colour maps: values to colours, the built-in maps
 │   │   ├── geometry.py      Point input; clipping polylines and polygons
+│   │   ├── dashes.py        Dash patterns, anchored to the plane, cut and clipped
 │   │   ├── memo.py          PlotCache: reusing unchanged plots between frames, exactly
 │   │   └── builders.py      One function per kind of plot -> clipped primitives
 │   └── handles/         Draggable points, sliders and the legend: drawn over the plots

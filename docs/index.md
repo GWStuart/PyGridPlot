@@ -34,7 +34,7 @@ topic you need:
 | [Shapes, text and legends](user/shapes-and-text.md) | Polygons, arrows, text and legends. |
 | [Draggable points and sliders](user/draggable-points.md) | Points the user drags: free, locked to an axis, or on a curve; sliders for values. |
 | [Logarithmic axes](user/log-axes.md) | Log and semi-log planes, how their grid and labels behave. |
-| [Styles and themes](user/styles-and-themes.md) | Colours, reusable styles, the palette, themes and number formats. |
+| [Styles and themes](user/styles-and-themes.md) | Colours, reusable styles, dashed and dotted lines, the palette, themes and number formats. |
 | [Recipes](user/recipes.md) | Worked examples of common tasks, performance tips and troubleshooting. |
 | [API reference](user/reference.md) | Every public class, function and setting, generated from the code. |
 

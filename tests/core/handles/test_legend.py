@@ -145,8 +145,11 @@ def reach(shapes: list) -> tuple[float, float]:
     "style",
     [
         LineStyle(width=20),
+        LineStyle(width=20, dash="dashed"),
+        LineStyle(width=2, dash=(1, 3)),
         FillStyle(),
         PolygonStyle(width=10),
+        PolygonStyle(width=10, dash="dotted"),
         PointStyle(radius=30, edge_color="white"),
         SequenceStyle(width=12, radius=12),
         ArrowStyle(width=12, head_size=40),
@@ -157,6 +160,21 @@ def test_swatches_stay_in_their_box(style: object) -> None:
     low, high = reach(swatch(style))
     assert low >= 10.0 - 1e-9
     assert high <= 10.0 + SWATCH_WIDTH_PX + 1e-9
+
+
+def test_dashed_swatches_have_dashes_at_both_ends() -> None:
+    (line,) = swatch(LineStyle(dash="dashed"))
+    assert isinstance(line, Stroke)
+    segments = np.asarray(line.paths)
+    xs = segments[..., 0]
+    # From one end of the swatch to the other, with gaps.
+    assert xs.min() == pytest.approx(10.0 + 2.5 / 2)
+    assert xs.max() == pytest.approx(10.0 + SWATCH_WIDTH_PX - 2.5 / 2)
+    drawn = np.sum(xs[:, 1] - xs[:, 0])
+    assert drawn < SWATCH_WIDTH_PX - 2.5 - 4
+    _, outline = swatch(PolygonStyle(dash="dashed"))
+    assert isinstance(outline, Stroke)
+    assert len(np.asarray(outline.paths)) >= 8  # every side starts and ends a dash
 
 
 def test_swatches_look_like_their_plots() -> None:

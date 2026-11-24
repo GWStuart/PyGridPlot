@@ -28,6 +28,7 @@ are its building blocks.
 | `sequences.py` | Which terms of an infinite sequence to draw: every one, or thinned along powers of three with fading. |
 | `arrows.py` | Arrows as polygons (shaft and head as one ring), for many arrows at once. |
 | `geometry.py` | Normalising point input; clipping polylines (Liang–Barsky) and polygons (Sutherland–Hodgman). |
+| `dashes.py` | Dash patterns: anchoring them to the plane, fitting them between anchors, and cutting unclipped polylines into clipped dashes. |
 | `style.py` | `LineStyle`, `PointStyle`, `PolygonStyle`, `FillStyle`, `ArrowStyle`, `with_overrides`, and `ColorCycle` (the palette). |
 
 ## Robust evaluation: `evaluation.py`
@@ -874,6 +875,91 @@ clips exactly), and return a primitive, or `None` when nothing is visible.
   `±COORDINATE_LIMIT` (10⁹ px) before clipping, so edges towards zero run off
   the plane and nothing overflows.
 
+## Dashed and dotted lines: `dashes.py`
+
+A dashed line is a stroke whose paths are its dashes, one `(M, 2, 2)`
+array of short segments (consecutive segments of a dash join under the
+round pen, and a dot is a segment of no length), so the renderer needs
+nothing new. The builders that draw lines (`function_stroke`,
+`_curve_stroke`, `implicit_stroke`, `polyline_stroke`, `polygon_shapes`)
+hand their *unclipped* screen polylines to `dash_paths`, which cuts and
+clips them. The hard part is where the pattern starts.
+
+**The requirement is rigid panning.** Measured from the start of the
+visible part of a line, the pattern would crawl along it while panning;
+measured from the start of the whole line, it would need the whole line
+(a function graph has none), and while zooming a point far from the start
+would move by many periods per frame, so the dashes would seem to flicker.
+So the pattern is anchored locally, to the plane:
+
+1. **Anchor lines** (`dash_lattice`): vertical and horizontal lines at the
+   multiples of a power of two in transformed coordinates, 4 to 8 periods
+   apart on screen (`ANCHOR_PERIODS`), the one nearest the centre placed
+   with `View.multiples_to_screen`. Powers of two so that while zooming
+   the lines stay put within an octave, as the fields' lattices do.
+2. **Anchors** (`_crossings`): where a polyline crosses them; a segment
+   with `|dx| >= |dy|` counts the vertical lines, a steeper one the
+   horizontal lines. With both families everywhere, a curve near a
+   lattice corner or touching a line would cross two lines in quick
+   succession, making short, irregular stretches; with one family for
+   every slope, a straight line has evenly spaced anchors. A crossing
+   belongs to the segment it lies in or that ends on it, never to the one
+   starting there, so it counts once; positions within `1e-9` spacings of
+   a line are snapped onto it (`_snap`), and 45° is decided with the same
+   tolerance, because vertices often lie exactly on anchor lines (an
+   implicit curve's lattice includes them; a polygon's corners are whole
+   numbers) and a rounding error after a pan would otherwise move the
+   anchor to another segment, or another family, and make the pattern
+   jump. Fixed ends (a polyline's, a parametric curve's, a graph's at its
+   `domain`) and corners of polylines and polygons (turning by more than
+   `CORNER_DEGREES` between sides at least a period long, so dense data is
+   dashed like a curve) are anchors too: never the ends of what a sampler
+   happened to sample, nor its vertices.
+3. **Fitting** (`_layout`, `_fit`): every anchor is the middle of the
+   pattern's first dash, and each stretch between two anchors (or round a
+   closed path) gets a whole number of periods. A stretch `n + f` periods
+   long holds `n` periods, stretched, plus one growing in its middle,
+   inside a dash, from nothing at `f = 0.5 - FIT_WINDOW / 2` to a full
+   period at `0.5 + FIT_WINDOW / 2` (smoothstep). Rounding to the nearest
+   number of periods instead made about 7% of the dashes jump half a period
+   every frame of a smooth zoom; with the growing period the layout is
+   continuous in the stretch's length, and only a re-layout once per
+   octave (when the anchor lines double) remains. Outside the window every
+   period of a stretch is the same, at most `(1 - FIT_WINDOW) / 2` periods
+   longer or shorter in all. Before the first anchor of an open path and
+   after its last the pattern runs at its own length from the anchor. The
+   layout is a list of regions (`_Regions`), each a uniformly stretched
+   pattern; empty regions are dropped, so a rounding error cannot leave one
+   after the next region's start.
+4. **Cutting** (`_visible_parts`, `_pieces`): the segments are clipped to
+   the clip box first (Liang–Barsky, `clip_segments`), cut where regions
+   start, and intersected with the pattern's dashes in arc length, all
+   vectorised across every path; a stretch may run far off the plane (to a
+   pole), but only its dashes inside the box are made. A dot where two
+   parts meet belongs to the later one (with a tolerance), and an open
+   path's final part includes its end, so a dotted polyline ends with a dot.
+
+**Margins.** Each stretch's layout depends only on the curve between its
+two anchors, so panning is rigid if every stretch reaching the plane is
+sampled whole and the same way whatever the view. A stretch reaching the
+plane lies within one anchor-line spacing of it (except where a curve
+turns from shallow to steep, which can reach a little further), so the
+samplers look `dash_margin` pixels further (two spacings at most of the
+pattern's anchors, capped at 512): functions over a wider x span and y
+band, parametric curves with a wider refinement box, implicit curves over
+a wider region. Polylines and polygons are data, so nothing needs
+sampling. This is what makes dashed curves cost 10–30% more than solid
+ones; the dashing itself is about a millisecond per curve.
+
+**Tests.** `tests/core/plot/test_dashes.py` has the property test of rigid
+panning on random polylines (shifted lattices measured from different
+lines, closed and open, dashed and dotted; the slivers a rounding error
+long that can appear where a dash ends on a region boundary are inside the
+neighbouring dash's round end, so the comparison leaves them out), and a
+test that a growing stretch changes its dashes in proportion to its
+growth. `tests/test_grid_plotting.py` checks rigid panning in pixels for
+every kind of line.
+
 ## Styles and the palette: `style.py`
 
 Styles are frozen dataclasses validated in `__post_init__`, so a bad value
@@ -886,4 +972,5 @@ so colours follow drawing order. Text (`TextStyle`) never takes a palette
 colour: its default is the theme's label colour, so labelling a plot does
 not shift the colours of the plots after it. The marker and fill-rule vocabulary
 (`MarkerShape`, `FillRule`) lives in `core/primitives.py`, because the
-primitives and the rasteriser use it too.
+primitives and the rasteriser use it too; the dash vocabulary (`Dash`,
+`check_dash`) lives in `core/plot/dashes.py`, with the code that draws it.

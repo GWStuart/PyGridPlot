@@ -11,8 +11,9 @@ A colour of ``None`` means "take the next colour from the theme's palette"
 (see :attr:`pygridplot.core.grid.theme.GridTheme.palette`).
 
 Sizes are in screen pixels, so lines and points look the same at every zoom
-level. Polygons themselves are in world units and scale with the zoom; only
-their outline width is in pixels. Shaded areas (between graphs, or where an
+level, and so do dash patterns (see :data:`~pygridplot.core.plot.dashes.Dash`).
+Polygons themselves are in world units and scale with the zoom; only their
+outline width is in pixels. Shaded areas (between graphs, or where an
 inequality holds) have no outline: draw their boundaries with the curve
 methods.
 """
@@ -24,6 +25,7 @@ from dataclasses import dataclass, fields, replace
 from typing import Any, TypeVar
 
 from pygridplot.core.coords import ColorLike
+from pygridplot.core.plot.dashes import Dash, check_dash
 from pygridplot.core.primitives import (
     FILL_RULES,
     MARKER_SHAPES,
@@ -85,16 +87,22 @@ class LineStyle:
         width: Line thickness in pixels (fractional widths are fine; lines
             thinner than 1 pixel are drawn 1 pixel wide but fainter).
         opacity: Opacity in ``[0, 1]``.
+        dash: ``"solid"``, ``"dashed"``, ``"dotted"``, or the lengths of the
+            dashes and gaps in pixels, alternately: ``(12, 6)``; a dash of
+            ``0`` is a dot. Named patterns grow with the width. The pattern
+            is anchored to the plane, so the dashes stay put while panning.
     """
 
     color: ColorLike | None = None
     width: float = 2.5
     opacity: float = 1.0
+    dash: Dash = "solid"
 
     def __post_init__(self) -> None:
         """Validate the fields."""
         _check_size("width", self.width, allow_zero=False)
         _check_opacity("opacity", self.opacity)
+        object.__setattr__(self, "dash", check_dash(self.dash))
 
 
 @dataclass(frozen=True, slots=True)
@@ -152,6 +160,9 @@ class PolygonStyle:
         fill_color: Fill colour, or ``None`` to use ``color``.
         fill_opacity: Opacity of the fill in ``[0, 1]``.
         fill_rule: Which parts of a self-overlapping polygon are inside.
+        dash: How the outline is drawn: ``"solid"``, ``"dashed"``,
+            ``"dotted"``, or dash and gap lengths in pixels (as for
+            :attr:`LineStyle.dash`).
     """
 
     color: ColorLike | None = None
@@ -161,12 +172,14 @@ class PolygonStyle:
     fill_color: ColorLike | None = None
     fill_opacity: float = 0.25
     fill_rule: FillRule = "nonzero"
+    dash: Dash = "solid"
 
     def __post_init__(self) -> None:
         """Validate the fields."""
         _check_size("width", self.width, allow_zero=True)
         _check_opacity("opacity", self.opacity)
         _check_opacity("fill_opacity", self.fill_opacity)
+        object.__setattr__(self, "dash", check_dash(self.dash))
         if self.fill_rule not in FILL_RULES:
             msg = f"fill_rule must be one of {FILL_RULES}, got {self.fill_rule!r}"
             raise ValueError(msg)

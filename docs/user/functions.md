@@ -19,13 +19,14 @@ On this page: [Functions](#functions) · [Derivatives](#derivatives) · [Integra
 
 ```py
 grid.plot(surface, func, *, color=None, width=None, opacity=None,
-           domain=None, style=None, sampling=None)
+           dash=None, domain=None, style=None, sampling=None)
 ```
 
 ```python
 grid.plot(screen, np.sin)
 grid.plot(screen, lambda x: x**2 / 4, color="crimson", width=4)
 grid.plot(screen, np.sqrt, domain=(0, 4))             # only 0 <= x <= 4
+grid.plot(screen, np.cos, dash="dashed")              # or "dotted"
 grid.plot(screen, math.gamma)                         # scalar-only functions work too
 ```
 
@@ -55,6 +56,7 @@ The plot is also faithful where functions are hard to draw:
 | `color` | next palette colour | Line colour. |
 | `width` | `2.5` | Line width in pixels (fractional widths are fine). |
 | `opacity` | `1.0` | Line opacity, 0 to 1. |
+| `dash` | `"solid"` | `"dashed"`, `"dotted"`, or the lengths of the dashes and gaps in pixels, as `(12, 6)`; see [Dashed and dotted lines](styles-and-themes.md#dashed-and-dotted-lines). |
 | `domain` | `None` | Only plot where `domain[0] <= x <= domain[1]`. |
 | `style` | `None` | A reusable `LineStyle`; the keyword arguments override it. |
 | `sampling` | the plane's | A `FunctionSampling` for this call. |

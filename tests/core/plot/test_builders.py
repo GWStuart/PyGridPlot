@@ -759,3 +759,171 @@ def test_invisible_fields_give_nothing() -> None:
     assert slope_field_strokes(empty, lambda x, y: x, LINE, "r") == ()
     hidden = LineStyle(opacity=0.0)
     assert slope_field_strokes(make_view(), lambda x, y: x, hidden, "r") == ()
+
+
+# ----------------------------------------------------------------------
+# Dashed and dotted lines
+# ----------------------------------------------------------------------
+DASHED_LINE = LineStyle(width=2.5, dash="dashed")
+
+
+def dash_segments(stroke: object) -> np.ndarray:
+    """Return a dashed stroke's segments, shape ``(M, 2, 2)``."""
+    assert stroke is not None
+    paths = stroke.paths  # type: ignore[attr-defined]
+    assert isinstance(paths, np.ndarray)
+    assert paths.shape[1:] == (2, 2)
+    return paths
+
+
+def all_found(points: np.ndarray, among: np.ndarray, tolerance: float = 1e-5) -> bool:
+    """Whether every point is within ``tolerance`` pixels of one of ``among``."""
+    distances = np.linalg.norm(points[:, None, :] - among[None, :, :], axis=2)
+    return bool(np.all(distances.min(axis=1) < tolerance))
+
+
+def drawn_length(segments: np.ndarray) -> float:
+    """The total centre-line length of the dashes."""
+    return float(np.linalg.norm(segments[:, 1] - segments[:, 0], axis=1).sum())
+
+
+def test_every_line_builder_draws_dashes() -> None:
+    view = make_view()
+    strokes = {
+        "plot": function_stroke(view, np.sin, DASHED_LINE, "r"),
+        "parametric": parametric_stroke(
+            view, np.cos, np.sin, (0, 2 * math.pi), DASHED_LINE, "r"
+        ),
+        "polar": polar_stroke(view, 2.0, (0, 2 * math.pi), DASHED_LINE, "r"),
+        "implicit": implicit_stroke(
+            view, lambda x, y: x**2 + y**2, DASHED_LINE, "r", level=4
+        ),
+        "polyline": polyline_stroke(view, [(-3, -2), (3, 2)], DASHED_LINE, "r"),
+        "polygon": polygon_shapes(
+            view, [(-2, -1), (2, -1), (0, 2)], PolygonStyle(dash="dashed"), "r"
+        )[1],
+    }
+    solid = {
+        "plot": function_stroke(view, np.sin, LINE, "r"),
+        "polyline": polyline_stroke(view, [(-3, -2), (3, 2)], LINE, "r"),
+    }
+    for name, stroke in strokes.items():
+        segments = dash_segments(stroke)
+        assert inside_margin(segments.reshape(-1, 2), 1.25 + 2.0 + 1e-6), name
+    for name, stroke in solid.items():
+        assert stroke is not None
+        full = sum(
+            np.linalg.norm(np.diff(p, axis=0), axis=1).sum() for p in stroke.paths
+        )
+        dashed = drawn_length(dash_segments(strokes[name]))
+        # 7 px of centre line in every 16.5 px period (give or take the fitting).
+        assert dashed == pytest.approx(full * 7.0 / 16.5, rel=0.08), name
+
+
+def test_dashed_functions_move_rigidly_when_panning() -> None:
+    for func in (np.sin, lambda x: x**2 - 2, np.tan):
+        view = make_view(center=(0.31, -0.17))
+        before = dash_segments(function_stroke(view, func, DASHED_LINE, "r"))
+        view.pan_pixels(37, -12)
+        after = dash_segments(function_stroke(view, func, DASHED_LINE, "r"))
+        inner = before.reshape(-1, 2) + np.array([37.0, -12.0])
+        keep = (inner[:, 0] > 60) & (inner[:, 0] < 740) & (inner[:, 1] > 60)
+        keep &= inner[:, 1] < 540
+        assert all_found(inner[keep], after.reshape(-1, 2))
+
+
+def test_dashed_implicit_curves_and_curves_move_rigidly_when_panning() -> None:
+    def build(view: View) -> list[np.ndarray]:
+        return [
+            dash_segments(
+                implicit_stroke(
+                    view, lambda x, y: x**2 + 2 * y**2, DASHED_LINE, "r", level=6
+                )
+            ),
+            dash_segments(
+                parametric_stroke(
+                    view,
+                    lambda t: 3 * np.cos(t),
+                    lambda t: np.sin(2 * t),
+                    (0, 7),
+                    DASHED_LINE,
+                    "r",
+                )
+            ),
+        ]
+
+    view = make_view(center=(0.37, -0.21))
+    before = build(view)
+    view.pan_pixels(13, 9)
+    for old, new in zip(before, build(view), strict=True):
+        moved = old.reshape(-1, 2) + np.array([13.0, 9.0])
+        assert all_found(moved, new.reshape(-1, 2))
+        assert all_found(new.reshape(-1, 2), moved)
+
+
+def test_dashed_curves_on_log_axes() -> None:
+    view = log_view()
+    stroke = function_stroke(view, lambda x: x**2, DASHED_LINE, "r")
+    segments = dash_segments(stroke)
+    # A power law is a straight line on log-log axes, and so are its dashes.
+    points = segments.reshape(-1, 2)
+    assert straightness(points) < 0.05
+    assert len(segments) > 10
+
+
+def test_dashed_functions_start_with_a_dash_at_their_domain() -> None:
+    view = make_view()
+    stroke = function_stroke(view, np.sin, DASHED_LINE, "r", domain=(-1.0, 2.0))
+    segments = dash_segments(stroke)
+    xs = view.to_world_x(segments[..., 0])
+    assert xs.min() == pytest.approx(-1.0, abs=1e-9)
+    assert xs.max() == pytest.approx(2.0, abs=1e-9)
+
+
+def test_dashed_parametric_curves_start_and_end_with_a_dash() -> None:
+    view = make_view()
+    stroke = parametric_stroke(
+        view, lambda t: t, lambda t: t / 2, (-2.0, 3.0), DASHED_LINE, "r"
+    )
+    xs = view.to_world_x(dash_segments(stroke)[..., 0])
+    assert xs.min() == pytest.approx(-2.0, abs=1e-9)
+    assert xs.max() == pytest.approx(3.0, abs=1e-9)
+
+
+def test_dashed_polylines_break_at_nan_and_close() -> None:
+    view = make_view()
+    broken = polyline_stroke(
+        view, [(-3, 0), (-1, 0), (np.nan, 0), (1, 0), (3, 0)], DASHED_LINE, "r"
+    )
+    xs = view.to_world_x(dash_segments(broken)[..., 0])
+    assert not np.any((xs > -1.0 + 1e-9) & (xs < 1.0 - 1e-9))  # the gap
+    for end in (-3.0, -1.0, 1.0, 3.0):  # every run starts and ends with a dash
+        assert np.min(np.abs(xs - end)) < 1e-9
+    square = [(0, 0), (2, 0), (2, 2), (0, 2)]
+    closed = dash_segments(polyline_stroke(view, square, DASHED_LINE, "r", closed=True))
+    ring = dash_segments(
+        polygon_shapes(view, square, PolygonStyle(dash="dashed", fill=False), "r")[1]
+    )
+    np.testing.assert_allclose(closed, ring)
+    # Each corner is in the middle of a dash bent round it.
+    for corner in square:
+        px = np.array(view.to_screen(*corner))
+        assert np.sum(np.linalg.norm(closed.reshape(-1, 2) - px, axis=1) < 1e-6) == 2
+
+
+def test_dashed_lines_of_broken_functions_never_fail() -> None:
+    view = make_view()
+
+    def broken(x: np.ndarray) -> np.ndarray:
+        raise RuntimeError("no")
+
+    assert function_stroke(view, broken, DASHED_LINE, "r") is None
+    stroke = function_stroke(view, lambda x: np.sqrt(x) * np.log(x), DASHED_LINE, "r")
+    assert np.isfinite(dash_segments(stroke)).all()
+    dots = dash_segments(
+        function_stroke(view, lambda x: 1 / x, LineStyle(dash="dotted"), "r")
+    )
+    # Dots, but for stretches between anchors too short for a gap, drawn whole.
+    sizes = np.linalg.norm(dots[:, 1] - dots[:, 0], axis=1)
+    assert np.mean(sizes == 0) > 0.9
+    assert sizes.max() < 0.35 * 7.25

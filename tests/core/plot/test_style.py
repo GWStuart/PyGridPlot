@@ -62,6 +62,10 @@ def test_default_styles_are_valid() -> None:
         lambda: BarStyle(opacity=1.5),
         lambda: BarStyle(edge_width=-1),
         lambda: BarStyle(edge_width=float("nan")),
+        lambda: LineStyle(dash="dash"),  # type: ignore[arg-type]
+        lambda: LineStyle(dash=(4,)),
+        lambda: LineStyle(dash=(4, 0)),
+        lambda: PolygonStyle(dash=(4, -1)),
     ],
 )
 def test_invalid_styles_are_rejected(make: object) -> None:
@@ -82,6 +86,19 @@ def test_with_overrides_ignores_none_and_validates() -> None:
         with_overrides(base, width=-2)
     with pytest.raises(TypeError, match="radius"):
         with_overrides(base, radius=3)
+
+
+def test_dashes_are_kept_as_names_or_tuples_and_can_be_overridden() -> None:
+    assert LineStyle().dash == "solid"
+    assert PolygonStyle().dash == "solid"
+    listed = LineStyle(dash=[10, 4])  # type: ignore[arg-type]
+    assert listed.dash == (10.0, 4.0)
+    assert listed == LineStyle(dash=(10, 4))
+    assert hash(listed) == hash(LineStyle(dash=(10, 4)))  # usable as a cache key
+    dashed = with_overrides(LineStyle(), dash="dashed")
+    assert dashed.dash == "dashed"
+    assert with_overrides(dashed, dash="solid").dash == "solid"
+    assert with_overrides(dashed, dash=None) is dashed
 
 
 def test_color_cycle_order_wrap_and_reset() -> None:

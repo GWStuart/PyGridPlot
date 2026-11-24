@@ -109,7 +109,7 @@ view options as `Grid` (`x_range`, `y_range`, `log_x`, `log_y`, `center`,
   [axis titles](the-plane.md#axis-titles-and-arrowheads),
   [legends](shapes-and-text.md#legends) and [text](shapes-and-text.md#text).
 - For log scales, see [Logarithmic axes](log-axes.md).
-- To change colours, line widths or the look of the grid, see
+- To change colours, line widths, dashes or the look of the grid, see
   [Styles and themes](styles-and-themes.md).
 - To let the user drag points or set values with sliders, see
   [Draggable points and sliders](draggable-points.md).

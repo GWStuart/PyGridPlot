@@ -110,6 +110,7 @@ from pygridplot.core.plot.builders import (
 )
 from pygridplot.core.plot.color_maps import check_range
 from pygridplot.core.plot.curves import DEFAULT_CURVE_SAMPLING, CurveSampling
+from pygridplot.core.plot.dashes import Dash
 from pygridplot.core.plot.data import (
     Step,
     as_bars,
@@ -577,6 +578,7 @@ class Grid:
         color: ColorLike | None = None,
         width: float | None = None,
         opacity: float | None = None,
+        dash: Dash | None = None,
         domain: tuple[float, float] | None = None,
         style: LineStyle | None = None,
         sampling: FunctionSampling | None = None,
@@ -595,6 +597,9 @@ class Grid:
             color: Line colour (default: the next palette colour).
             width: Line width in pixels (default 2.5).
             opacity: Line opacity in ``[0, 1]``.
+            dash: ``"dashed"``, ``"dotted"``, ``"solid"`` (default), or the
+                lengths of the dashes and gaps in pixels, alternately, as
+                ``(12, 6)``. The dashes stay put while panning.
             domain: Only plot where ``domain[0] <= x <= domain[1]``.
             style: A reusable :class:`~pygridplot.LineStyle`. The other
                 keyword arguments override its fields.
@@ -609,7 +614,11 @@ class Grid:
         """
         self._sync_rect(surface)
         line = with_overrides(
-            style or _DEFAULT_LINE, color=color, width=width, opacity=opacity
+            style or _DEFAULT_LINE,
+            color=color,
+            width=width,
+            opacity=opacity,
+            dash=dash,
         )
         color_ = self._colors.resolve(line.color)
         self._add_entry(label, line, color_)
@@ -635,6 +644,7 @@ class Grid:
         color: ColorLike | None = None,
         width: float | None = None,
         opacity: float | None = None,
+        dash: Dash | None = None,
         style: LineStyle | None = None,
         sampling: CurveSampling | None = None,
         label: str | None = None,
@@ -655,6 +665,9 @@ class Grid:
             color: Line colour (default: the next palette colour).
             width: Line width in pixels (default 2.5).
             opacity: Line opacity in ``[0, 1]``.
+            dash: ``"dashed"``, ``"dotted"``, ``"solid"`` (default), or the
+                lengths of the dashes and gaps in pixels, alternately, as
+                ``(12, 6)``. The dashes stay put while panning.
             style: A reusable :class:`~pygridplot.LineStyle`. The other
                 keyword arguments override its fields.
             sampling: How the curve is sampled (see
@@ -667,7 +680,11 @@ class Grid:
         """
         self._sync_rect(surface)
         line = with_overrides(
-            style or _DEFAULT_LINE, color=color, width=width, opacity=opacity
+            style or _DEFAULT_LINE,
+            color=color,
+            width=width,
+            opacity=opacity,
+            dash=dash,
         )
         color_ = self._colors.resolve(line.color)
         self._add_entry(label, line, color_)
@@ -691,6 +708,7 @@ class Grid:
         color: ColorLike | None = None,
         width: float | None = None,
         opacity: float | None = None,
+        dash: Dash | None = None,
         style: LineStyle | None = None,
         sampling: CurveSampling | None = None,
         label: str | None = None,
@@ -709,6 +727,9 @@ class Grid:
             color: Line colour (default: the next palette colour).
             width: Line width in pixels (default 2.5).
             opacity: Line opacity in ``[0, 1]``.
+            dash: ``"dashed"``, ``"dotted"``, ``"solid"`` (default), or the
+                lengths of the dashes and gaps in pixels, alternately, as
+                ``(12, 6)``. The dashes stay put while panning.
             style: A reusable :class:`~pygridplot.LineStyle`. The other
                 keyword arguments override its fields.
             sampling: How the curve is sampled (see
@@ -720,7 +741,11 @@ class Grid:
         """
         self._sync_rect(surface)
         line = with_overrides(
-            style or _DEFAULT_LINE, color=color, width=width, opacity=opacity
+            style or _DEFAULT_LINE,
+            color=color,
+            width=width,
+            opacity=opacity,
+            dash=dash,
         )
         color_ = self._colors.resolve(line.color)
         self._add_entry(label, line, color_)
@@ -744,6 +769,7 @@ class Grid:
         color: ColorLike | None = None,
         width: float | None = None,
         opacity: float | None = None,
+        dash: Dash | None = None,
         style: LineStyle | None = None,
         sampling: ImplicitSampling | None = None,
         label: str | None = None,
@@ -776,6 +802,9 @@ class Grid:
             color: Line colour (default: the next palette colour).
             width: Line width in pixels (default 2.5).
             opacity: Line opacity in ``[0, 1]``.
+            dash: ``"dashed"``, ``"dotted"``, ``"solid"`` (default), or the
+                lengths of the dashes and gaps in pixels, alternately, as
+                ``(12, 6)``. The dashes stay put while panning.
             style: A reusable :class:`~pygridplot.LineStyle`. The other
                 keyword arguments override its fields.
             sampling: How the curve is searched for (see
@@ -787,7 +816,11 @@ class Grid:
         """
         self._sync_rect(surface)
         line = with_overrides(
-            style or _DEFAULT_LINE, color=color, width=width, opacity=opacity
+            style or _DEFAULT_LINE,
+            color=color,
+            width=width,
+            opacity=opacity,
+            dash=dash,
         )
         color_ = self._colors.resolve(line.color)
         self._add_entry(label, line, color_)
@@ -1127,12 +1160,16 @@ class Grid:
             label: A name for this plot in the legend (see :meth:`legend`).
 
         Raises:
-            ValueError: If ``spacing`` is not valid.
+            ValueError: If ``spacing`` is not valid, or ``style`` is dashed
+                (the segments are too short for a pattern).
         """
         self._sync_rect(surface)
         line = with_overrides(
             style or _DEFAULT_SLOPE, color=color, width=width, opacity=opacity
         )
+        if line.dash != "solid":
+            msg = f"slope fields are drawn solid, got a style with dash={line.dash!r}"
+            raise ValueError(msg)
         color_ = self._colors.resolve(line.color)
         self._add_entry(label, line, color_)
         gap = float(spacing) if spacing is not None else DEFAULT_SPACING
@@ -1363,6 +1400,7 @@ class Grid:
         color: ColorLike | None = None,
         width: float | None = None,
         opacity: float | None = None,
+        dash: Dash | None = None,
         closed: bool = False,
         step: Step | None = None,
         style: LineStyle | None = None,
@@ -1385,6 +1423,9 @@ class Grid:
             color: Line colour (default: the next palette colour).
             width: Line width in pixels (default 2.5).
             opacity: Line opacity in ``[0, 1]``.
+            dash: ``"dashed"``, ``"dotted"``, ``"solid"`` (default), or the
+                lengths of the dashes and gaps in pixels, alternately, as
+                ``(12, 6)``. The dashes stay put while panning.
             closed: Connect the last vertex back to the first.
             step: ``None`` for straight lines (default), or steps:
                 ``"post"`` (each value holds from its x until the next),
@@ -1399,7 +1440,11 @@ class Grid:
         """
         self._sync_rect(surface)
         line = with_overrides(
-            style or _DEFAULT_LINE, color=color, width=width, opacity=opacity
+            style or _DEFAULT_LINE,
+            color=color,
+            width=width,
+            opacity=opacity,
+            dash=dash,
         )
         color_ = self._colors.resolve(line.color)
         self._add_entry(label, line, color_)
@@ -1430,6 +1475,7 @@ class Grid:
         fill_color: ColorLike | None = None,
         fill_opacity: float | None = None,
         fill_rule: FillRule | None = None,
+        dash: Dash | None = None,
         style: PolygonStyle | None = None,
         label: str | None = None,
     ) -> None:
@@ -1450,6 +1496,9 @@ class Grid:
             fill_opacity: Fill opacity in ``[0, 1]`` (default 0.25).
             fill_rule: ``"nonzero"`` (default) or ``"evenodd"``, for polygons
                 whose edges cross.
+            dash: How the outline is drawn: ``"dashed"``, ``"dotted"``,
+                ``"solid"`` (default), or dash and gap lengths in pixels (as
+                for :meth:`plot`).
             style: A reusable :class:`~pygridplot.PolygonStyle`. The other
                 keyword arguments override its fields.
             label: A name for this plot in the legend (see :meth:`legend`).
@@ -1464,6 +1513,7 @@ class Grid:
             fill_color=fill_color,
             fill_opacity=fill_opacity,
             fill_rule=fill_rule,
+            dash=dash,
         )
         color_ = self._colors.resolve(shape.color)
         self._add_entry(label, shape, color_)

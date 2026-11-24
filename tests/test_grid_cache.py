@@ -60,6 +60,10 @@ class Scene:
         grid.arrow(surface, self.data[0], self.data[1:])
         grid.polyline(surface, self.data)  # the same array, changed in place
         grid.polygon(surface, self.data - np.array([0.0, 2.0]))
+        # Dashed lines: one changing with the shift, two not.
+        grid.plot(surface, lambda x: np.cos(x) / 2 - shift, dash="dashed")
+        grid.polygon(surface, self.data + np.array([0.0, 1.0]), dash="dotted")
+        grid.implicit(surface, lambda x, y: x**2 + y**2, 4, dash=(8, 3, 0, 3))
         grid.points(surface, self.data)
         # Data plots: their data are compared, like the points'.
         grid.points(
@@ -153,14 +157,15 @@ def test_unchanged_frames_are_reused() -> None:
     cached, _, surface, _ = grids()
     scene = Scene()
     scene.draw(cached, surface)
-    assert cached.cache_stats == pgp.CacheStats(hits=0, misses=26)
+    assert cached.cache_stats == pgp.CacheStats(hits=0, misses=29)
     scene.draw(cached, surface)
-    assert cached.cache_stats == pgp.CacheStats(hits=26, misses=26)
-    # Twelve plots change with the shift. The derivative of x³/9 - shift does
-    # not: its values are the same, so it is reused, which is exactly right.
+    assert cached.cache_stats == pgp.CacheStats(hits=29, misses=29)
+    # Thirteen plots change with the shift. The derivative of x³/9 - shift
+    # does not: its values are the same, so it is reused, which is exactly
+    # right.
     scene.shift += 1.0
     scene.draw(cached, surface)
-    assert cached.cache_stats == pgp.CacheStats(hits=40, misses=38)
+    assert cached.cache_stats == pgp.CacheStats(hits=45, misses=42)
 
 
 def test_antiderivatives_are_reused_through_their_integrand() -> None:

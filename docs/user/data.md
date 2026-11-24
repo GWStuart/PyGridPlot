@@ -128,7 +128,7 @@ reaching zero or below runs off the plane, without a cap there.
 
 ```py
 grid.polyline(surface, points, *, color=None, width=None, opacity=None,
-               closed=False, step=None, style=None)
+               dash=None, closed=False, step=None, style=None)
 ```
 
 ```python
@@ -141,7 +141,13 @@ The vertices are joined in order by straight lines, with round joins and
 ends, antialiased at any width. A vertex with a NaN coordinate breaks the
 line, like lifting the pen. `closed=True` joins the last vertex back to the
 first. Vertices are in world units, so a polyline grows and shrinks with the
-zoom; only the width is in pixels. Takes the `LineStyle` fields.
+zoom; only the width is in pixels. Takes the `LineStyle` fields, so
+`dash="dashed"` dashes it: a dashed polyline starts and ends with a dash,
+and its corners are in the middle of a dash (see [Dashed and dotted lines](styles-and-themes.md#dashed-and-dotted-lines)).
+
+```python
+grid.polyline(screen, [(1, -5), (1, 5)], dash="dashed", color="gray")   # an asymptote
+```
 
 `step=` joins the vertices by steps instead, across and then up or down:
 

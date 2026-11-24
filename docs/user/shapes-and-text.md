@@ -15,12 +15,13 @@ On this page: [Polygons](#polygons) · [Arrows](#arrows) · [Text](#text) · [Le
 ```py
 grid.polygon(surface, points, *, color=None, width=None, opacity=None,
               fill=None, fill_color=None, fill_opacity=None, fill_rule=None,
-              style=None)
+              dash=None, style=None)
 ```
 
 ```python
 grid.polygon(screen, [(-3, -1), (-1, -1), (-2, 1)])                 # translucent triangle
 grid.polygon(screen, [(0, 0), (2, 0), (2, 1), (0, 1)], fill_opacity=0.6, width=0)
+grid.polygon(screen, [(3, 0), (5, 0), (4, 2)], fill=False, dash="dashed")  # a dashed outline
 ```
 
 A polygon is a translucent fill with an outline; it closes itself.
@@ -34,6 +35,7 @@ A polygon is a translucent fill with an outline; it closes itself.
 | `fill_color` | same as `color` | Fill colour. |
 | `fill_opacity` | `0.25` | Fill opacity. |
 | `fill_rule` | `"nonzero"` | For outlines that cross themselves: `"nonzero"` fills everything enclosed, `"evenodd"` leaves doubly enclosed areas (such as a star's centre) empty. |
+| `dash` | `"solid"` | How the outline is drawn: `"dashed"`, `"dotted"`, or dash and gap lengths in pixels; each corner is in the middle of a dash. See [Dashed and dotted lines](styles-and-themes.md#dashed-and-dotted-lines). |
 | `style` | `None` | A reusable `PolygonStyle`. |
 
 To shade the area under a curve, or between two curves, use

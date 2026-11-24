@@ -38,6 +38,7 @@ so that a legend that grows never moves a slider from under the cursor.
 
 from __future__ import annotations
 
+import itertools
 from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Final, TypeAlias
@@ -54,6 +55,7 @@ from pygridplot.core.handles.panel import (
 )
 from pygridplot.core.handles.slider import Corner
 from pygridplot.core.plot.arrows import arrow_rings, head_shape
+from pygridplot.core.plot.dashes import dash_pattern, swatch_dashes
 from pygridplot.core.plot.style import (
     ArrowStyle,
     BarStyle,
@@ -309,8 +311,12 @@ def swatch_primitives(
     middle = (left + right) / 2
     if isinstance(style, LineStyle):
         width = min(style.width, MAX_LINE_PX)
-        path = np.array([[left + width / 2, center_y], [right - width / 2, center_y]])
-        return [Stroke((path,), color, width, style.opacity)]
+        start, end = (left + width / 2, center_y), (right - width / 2, center_y)
+        pattern = dash_pattern(style.dash, width)
+        if pattern is not None:
+            dashes = swatch_dashes(start, end, pattern)
+            return [Stroke(dashes, color, width, style.opacity)]
+        return [Stroke((np.array([start, end]),), color, width, style.opacity)]
     if isinstance(style, FillStyle):
         return [Fill((_box(left, right, center_y),), color, style.opacity)]
     if isinstance(style, PolygonStyle):
@@ -324,7 +330,16 @@ def swatch_primitives(
             width = min(style.width, MAX_OUTLINE_PX)
             ring = _box(left + width / 2, right - width / 2, center_y, width / 2)
             outline = np.vstack([ring, ring[:1]])
-            shapes.append(Stroke((outline,), color, width, style.opacity))
+            pattern = dash_pattern(style.dash, width)
+            if pattern is not None:
+                # Each side starts and ends with a dash, so the corners are drawn.
+                sides = [
+                    swatch_dashes(a, b, pattern) for a, b in itertools.pairwise(outline)
+                ]
+                stroke = Stroke(np.concatenate(sides), color, width, style.opacity)
+            else:
+                stroke = Stroke((outline,), color, width, style.opacity)
+            shapes.append(stroke)
         return shapes
     if isinstance(style, BarStyle):
         shapes = []

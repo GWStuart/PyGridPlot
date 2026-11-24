@@ -36,6 +36,12 @@ coordinates cannot be shown at all and are treated like NaN.
 * :func:`violin_primitives`: violin plots of groups of samples.
 * :func:`sequence_primitives`: the stems and markers of a sequence's terms.
 * :func:`text_items`: text anchored to a point.
+
+Curves, polylines and polygon outlines can be dashed or dotted (``dash=`` in
+their style). Their dashes are anchored to the plane, so they stay put while
+panning (see :mod:`pygridplot.core.plot.dashes`); samplers then look a little
+further beyond the plane, so that every stretch of curve the pattern is
+fitted to is found whole.
 """
 
 from __future__ import annotations
@@ -55,7 +61,14 @@ from pygridplot.core.plot.arrows import arrow_rings, head_shape
 from pygridplot.core.plot.curves import (
     DEFAULT_CURVE_SAMPLING,
     CurveSampling,
-    sample_curve,
+    sample_curve_pieces,
+)
+from pygridplot.core.plot.dashes import (
+    DashPattern,
+    dash_lattice,
+    dash_margin,
+    dash_paths,
+    dash_pattern,
 )
 from pygridplot.core.plot.data import (
     AUTO_BAR_FRACTION,
@@ -200,18 +213,27 @@ def function_stroke(
     if view.rect.is_empty:
         return None
     margin = style.width / 2 + CLIP_MARGIN_PX
-    span = _x_span(view, margin, domain)
+    pattern = dash_pattern(style.dash, style.width)
+    reach = margin + _dash_reach(pattern)
+    span = _x_span(view, reach, domain)
     if span is None:
         return None
-    band = _y_band(view, margin)
+    band = _y_band(view, reach)
     target = transformed_function(func, view.transform_x, view.transform_y)
     scale = (view.scale_x, view.scale_y)
     polylines = sample_function(target, span, scale, band, sampling)
+    screen = [_transformed_to_screen(view, line) for line in polylines]
+    # A piece starting or ending at a limit of the domain ends there in the
+    # world, so the pattern can start with a dash there.
+    seen = _x_span(view, reach, None)
+    assert seen is not None
+    cut = (span[0] > seen[0], span[1] < seen[1])
+    ends = [
+        (cut[0] and line[0, 0] == span[0], cut[1] and line[-1, 0] == span[1])
+        for line in polylines
+    ]
     box = _clip_box(view, margin)
-    paths = clip_paths([_transformed_to_screen(view, line) for line in polylines], box)
-    if not paths:
-        return None
-    return Stroke(tuple(paths), color, style.width, style.opacity)
+    return _line_stroke(view, screen, style, color, box, pattern, ends=ends)
 
 
 def transformed_function(
@@ -359,10 +381,12 @@ def implicit_stroke(
     if view.rect.is_empty:
         return None
     margin = style.width / 2 + CLIP_MARGIN_PX
+    pattern = dash_pattern(style.dash, style.width)
+    reach = margin + _dash_reach(pattern)
     sx, sy = view.scale_x, view.scale_y
     bounds = view.transformed_bounds
-    u_range = (bounds.x_min - margin / sx, bounds.x_max + margin / sx)
-    w_range = (bounds.y_min - margin / sy, bounds.y_max + margin / sy)
+    u_range = (bounds.x_min - reach / sx, bounds.x_max + reach / sx)
+    w_range = (bounds.y_min - reach / sy, bounds.y_max + reach / sy)
     step = (sampling.resolution_px / sx, sampling.resolution_px / sy)
     x_transform, y_transform = view.transform_x, view.transform_y
 
@@ -377,10 +401,7 @@ def implicit_stroke(
     if contours is None:
         return None
     screen = _grid_to_screen(view, contours.origin, contours.step, contours.lines)
-    paths = clip_paths(screen, _clip_box(view, margin))
-    if not paths:
-        return None
-    return Stroke(tuple(paths), color, style.width, style.opacity)
+    return _line_stroke(view, screen, style, color, _clip_box(view, margin), pattern)
 
 
 def area_fill(
@@ -708,6 +729,19 @@ def polyline_stroke(
         )
         with np.errstate(invalid="ignore"):
             screen = np.column_stack(view.transformed_to_screen(u, w))
+    pattern = dash_pattern(style.dash, style.width)
+    if pattern is not None:
+        runs = _runs(screen, closed=closed)
+        return _dashed_stroke(
+            view,
+            runs,
+            pattern,
+            box,
+            color,
+            style,
+            ends=[(True, True)] * len(runs),
+            corners=True,
+        )
     paths = clip_path(screen, box, closed=closed)
     if not paths:
         return None
@@ -746,9 +780,23 @@ def polygon_shapes(
     outline = None
     if style.width > 0 and style.opacity > 0:
         box = _clip_box(view, style.width / 2 + CLIP_MARGIN_PX)
-        paths = clip_path(screen, box, closed=True)
-        if paths:
-            outline = Stroke(tuple(paths), color, style.width, style.opacity)
+        pattern = dash_pattern(style.dash, style.width)
+        if pattern is not None:
+            runs = _runs(screen, closed=True)
+            outline = _dashed_stroke(
+                view,
+                runs,
+                pattern,
+                box,
+                color,
+                style,
+                ends=[(True, True)] * len(runs),
+                corners=True,
+            )
+        else:
+            paths = clip_path(screen, box, closed=True)
+            if paths:
+                outline = Stroke(tuple(paths), color, style.width, style.opacity)
     return (fill, outline)
 
 
@@ -1639,11 +1687,116 @@ def _curve_stroke(
         xs, ys = world(t)
         return view.to_screen(xs, ys)
 
-    box = _clip_box(view, style.width / 2 + CLIP_MARGIN_PX)
-    paths = clip_paths(sample_curve(screen, t_range, box, sampling), box)
-    if not paths:
+    margin = style.width / 2 + CLIP_MARGIN_PX
+    pattern = dash_pattern(style.dash, style.width)
+    box = _clip_box(view, margin)
+    near = _clip_box(view, margin + _dash_reach(pattern))
+    pieces = sample_curve_pieces(screen, t_range, near, sampling)
+    lines = [points for points, _ in pieces]
+    # The curve's two ends are fixed in the world (unlike its breaks, found
+    # only as finely as the view needs).
+    ends = [(t[0] == t_range[0], t[-1] == t_range[1]) for _, t in pieces]
+    return _line_stroke(view, lines, style, color, box, pattern, ends=ends)
+
+
+def _line_stroke(
+    view: View,
+    paths: list[NDArray[np.float64]],
+    style: LineStyle,
+    color: ColorLike,
+    box: Box,
+    pattern: DashPattern | None,
+    *,
+    ends: list[tuple[bool, bool]] | None = None,
+) -> Stroke | None:
+    """Return the stroke of curves sampled in screen pixels, solid or dashed.
+
+    Args:
+        view: The view being drawn.
+        paths: The curves' polylines in screen pixels, not clipped.
+        style: Line width and opacity.
+        color: The resolved line colour.
+        box: The clip box.
+        pattern: The dash pattern, or ``None`` for a solid line.
+        ends: Which ends of each polyline are fixed in the world (see
+            :func:`~pygridplot.core.plot.dashes.dash_paths`), or ``None``
+            for none.
+
+    Returns:
+        The stroke, or ``None`` if nothing is visible.
+    """
+    if pattern is not None:
+        return _dashed_stroke(view, paths, pattern, box, color, style, ends=ends)
+    clipped = clip_paths(paths, box)
+    if not clipped:
         return None
-    return Stroke(tuple(paths), color, style.width, style.opacity)
+    return Stroke(tuple(clipped), color, style.width, style.opacity)
+
+
+def _dashed_stroke(
+    view: View,
+    paths: list[NDArray[np.float64]],
+    pattern: DashPattern,
+    box: Box,
+    color: ColorLike,
+    style: LineStyle | PolygonStyle,
+    *,
+    ends: list[tuple[bool, bool]] | None = None,
+    corners: bool = False,
+) -> Stroke | None:
+    """Return the dashes of polylines, anchored to the view's dash lattice.
+
+    Args:
+        view: The view being drawn.
+        paths: Finite polylines in screen pixels, not clipped (a closed one
+            ends where it starts).
+        pattern: The dash pattern.
+        box: The clip box.
+        color: The resolved line colour.
+        style: Line width and opacity.
+        ends: Which ends of each polyline are fixed in the world, or
+            ``None`` for none.
+        corners: Whether the polylines' corners are anchors: for the
+            vertices of polylines and polygons, which are fixed in the world.
+
+    Returns:
+        The stroke (one array of short segments), or ``None`` if no dash is
+        visible.
+    """
+    lattice = dash_lattice(view, pattern)
+    segments = dash_paths(paths, pattern, lattice, box, ends=ends, corners=corners)
+    if segments is None:
+        return None
+    return Stroke(segments, color, style.width, style.opacity)
+
+
+def _dash_reach(pattern: DashPattern | None) -> float:
+    """Return how much further than usual to sample a curve drawn with a pattern."""
+    return 0.0 if pattern is None else dash_margin(pattern)
+
+
+def _runs(points: NDArray[np.float64], *, closed: bool) -> list[NDArray[np.float64]]:
+    """Split vertices into the runs between undefined ones (NaN breaks a line).
+
+    Args:
+        points: Vertices in screen pixels, shape ``(N, 2)``.
+        closed: Whether the last vertex connects back to the first. A closed
+            ring with no breaks ends where it starts; one with breaks joins
+            its last run to its first.
+
+    Returns:
+        The runs, each with at least one vertex (one vertex is a dot).
+    """
+    finite = np.isfinite(points).all(axis=1)
+    if closed and points.shape[0] > 1 and finite.all():
+        return [np.vstack((points, points[:1]))]
+    breaks = np.flatnonzero(~finite)
+    runs = [run for run in np.split(points, breaks) if run.shape[0]]
+    runs = [run[np.isfinite(run).all(axis=1)] for run in runs]
+    runs = [run for run in runs if run.shape[0]]
+    if closed and len(runs) > 1 and finite[0] and finite[-1]:
+        runs = [np.vstack((runs[-1], runs[0])), *runs[1:-1]]
+    return runs
 
 
 def world_curve(x: CurveComponent, y: CurveComponent) -> WorldCurve:

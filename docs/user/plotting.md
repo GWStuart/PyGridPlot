@@ -52,7 +52,10 @@ plots](#reusing-unchanged-plots) and [log axes](#log-axes).
 | [`legend(surface)`](shapes-and-text.md#legends) | A legend naming the plots drawn with a `label=`. |
 
 All of them accept `color`, `opacity` and a reusable `style`; see
-[Styles and themes](styles-and-themes.md). Objects drawn without a colour
+[Styles and themes](styles-and-themes.md). Lines (`plot`, `parametric`,
+`polar`, `implicit`, `polyline`, and the outlines of polygons) can also be
+[dashed or dotted](styles-and-themes.md#dashed-and-dotted-lines) with
+`dash=`. Objects drawn without a colour
 take the theme's [palette](styles-and-themes.md#the-palette) colours in
 order. Every plotting method also takes a `label=`, the plot's name in the
 [legend](shapes-and-text.md#legends). Everything is clipped to the plane's

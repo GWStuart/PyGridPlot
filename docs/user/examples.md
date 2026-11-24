@@ -62,6 +62,18 @@ derivative, `pgp.derivative(f)`, and the shaded area and its value from
 
 `python examples/calculus.py` ([source](../../examples/calculus.py))
 
+### Line styles
+
+Dashed asymptotes and a dashed tangent, with dotted guides.
+
+![Line styles: dashed asymptotes and a dashed tangent, with dotted guides](../images/examples/line_styles.png)
+
+Drag the point along the curve. Its tangent is dashed, and dotted lines
+drop from it to the axes; the curve's two asymptotes are dashed too. Pan
+the plane: the dashes are fixed to it, so they move with the lines.
+
+`python examples/line_styles.py` ([source](../../examples/line_styles.py))
+
 ### Taylor polynomials
 
 Approximating sin x.

@@ -29,8 +29,8 @@ library works the way it does.
 6. [Draggable points and sliders](draggable-points.md): points the user
    drags, freely, along one axis or along a curve, and sliders for values.
 7. [Logarithmic axes](log-axes.md): log-log and semi-log planes.
-8. [Styles and themes](styles-and-themes.md): colours, reusable styles, the
-   palette, themes and how numbers are written.
+8. [Styles and themes](styles-and-themes.md): colours, reusable styles,
+   dashed and dotted lines, the palette, themes and how numbers are written.
 9. [Recipes](recipes.md): worked examples (mouse readouts, animation,
    legends, screenshots, ...), performance tips and troubleshooting.
 10. [API reference](reference.md): everything `import pygridplot` provides.

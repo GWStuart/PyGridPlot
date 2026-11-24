@@ -499,6 +499,36 @@ def cases() -> dict[str, Case]:
             lambda p, s: p.violin_plot(s, groups10k), scale=60.0
         ),
         "grid with 100 category names": category_grid_case(names),
+        "dashed: plot test set": plot_case(
+            lambda p, s: [p.plot(s, f, dash="dashed") for f in test_set], scale=60.0
+        ),
+        "dashed: plot thick parabola": plot_case(
+            lambda p, s: p.plot(s, lambda x: x**2 / 4, width=8, dash="dashed")
+        ),
+        "dashed: curve spiral 12 turns, dotted": plot_case(
+            lambda p, s: p.polar(
+                s, lambda a: 0.15 * a, (0, 24 * math.pi), dash="dotted"
+            ),
+            scale=60.0,
+        ),
+        "dashed: implicit circle": plot_case(
+            lambda p, s: p.implicit(s, lambda x, y: x**2 + y**2, 16, dash="dashed"),
+            scale=60.0,
+        ),
+        "dashed: implicit busy sin*sin": plot_case(
+            lambda p, s: p.implicit(
+                s, lambda x, y: np.sin(3 * x) * np.sin(3 * y), 0.2, dash="dashed"
+            ),
+            scale=60.0,
+        ),
+        "dashed: polyline 2000 steps": plot_case(
+            lambda p, s: p.polyline(
+                s, np.column_stack((xs, np.sin(xs))), step="post", dash="dashed"
+            )
+        ),
+        "dashed: polygon big fill": plot_case(
+            lambda p, s: p.polygon(s, ellipse, dash="dashed"), scale=55.0
+        ),
     }
 
 

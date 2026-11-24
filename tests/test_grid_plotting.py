@@ -1033,3 +1033,80 @@ def test_axes_name_categories() -> None:
     assert [i.text.plain for i in grid.last_scene.axis_labels.x] == ["a", "z"]
     with pytest.raises(TypeError, match="strings"):
         grid.draw(surface, y_labels=[1, 2])  # type: ignore[list-item]
+
+
+# ----------------------------------------------------------------------
+# Dashed and dotted lines
+# ----------------------------------------------------------------------
+def draw_dashed(grid: pgp.Grid, surface: pygame.Surface, dash: object) -> None:
+    """Draw one of every kind of line, dashed."""
+    grid.plot(surface, lambda x: np.sin(2 * x) + 0.2 * x, color=BLACK, dash=dash)
+    grid.parametric(
+        surface, np.cos, lambda t: np.sin(2 * t), (0, 2 * np.pi), color=BLACK, dash=dash
+    )
+    grid.polar(surface, 1.5, color=BLACK, dash=dash)
+    grid.implicit(surface, lambda x, y: x * y, 1, color=BLACK, dash=dash)
+    grid.polyline(surface, [(-3, 1), (-2, 2), (-1, 1.5)], color=BLACK, dash=dash)
+    grid.polygon(surface, [(1, -2), (3, -2.5), (2, -1)], color=BLACK, dash=dash)
+
+
+@pytest.mark.parametrize(("dx", "dy"), [(13, 0), (0, -9), (-21, 17)])
+@pytest.mark.parametrize("dash", ["dashed", "dotted", (9, 3, 0, 3)])
+def test_dashes_move_rigidly_when_panning(dx: int, dy: int, dash: object) -> None:
+    """Panning by whole pixels moves every dash with its line."""
+    grid, _ = blank_grid(center=(0.31, -0.17), scale=37.0)
+    before = capture(grid, lambda s: draw_dashed(grid, s, dash))
+    grid.view.pan_pixels(dx, dy)
+    after = capture(grid, lambda s: draw_dashed(grid, s, dash))
+    m = 30
+    old = before[m - dy : SIZE[1] - m - dy, m - dx : SIZE[0] - m - dx]
+    new = after[m : SIZE[1] - m, m : SIZE[0] - m]
+    np.testing.assert_allclose(new, old, atol=2 / 255)
+
+
+def test_dashed_lines_have_gaps() -> None:
+    grid, _ = blank_grid()
+    for kind in ("plot", "polyline", "polygon"):
+
+        def draw(surface: pygame.Surface, dash: str, kind: str = kind) -> None:
+            if kind == "plot":
+                grid.plot(surface, lambda x: 0 * x + 1, color=BLACK, dash=dash)
+            elif kind == "polyline":
+                grid.polyline(surface, [(-2, 1), (2, 1)], color=BLACK, dash=dash)
+            else:
+                square = [(-1, -1), (1, -1), (1, 1), (-1, 1)]
+                grid.polygon(surface, square, color=BLACK, fill=False, dash=dash)
+
+        solid = capture(grid, lambda s: draw(s, "solid")).sum()
+        dashed = capture(grid, lambda s: draw(s, "dashed")).sum()
+        dotted = capture(grid, lambda s: draw(s, "dotted")).sum()
+        assert 0.45 * solid < dashed < 0.75 * solid, kind
+        assert 0.2 * solid < dotted < 0.5 * solid, kind
+
+
+def test_a_dashed_style_can_be_drawn_solid_per_call() -> None:
+    grid, _ = blank_grid()
+    style = pgp.LineStyle(dash="dashed", color=BLACK)
+    solid = capture(grid, lambda s: grid.plot(s, np.sin, color=BLACK)).sum()
+    reused = capture(grid, lambda s: grid.plot(s, np.sin, style=style, dash="solid"))
+    assert reused.sum() == pytest.approx(solid)
+
+
+def test_slope_fields_cannot_be_dashed() -> None:
+    grid, surface = blank_grid()
+    with pytest.raises(ValueError, match="solid"):
+        grid.slope_field(surface, lambda x, y: x, style=pgp.LineStyle(dash="dashed"))
+
+
+def test_dashed_plots_have_dashed_legend_swatches() -> None:
+    grid, _ = blank_grid()
+
+    def legend(dash: str) -> np.ndarray:
+        def draw(surface: pygame.Surface) -> None:
+            grid.plot(surface, np.sin, color=BLACK, dash=dash, label="sine")
+            grid.legend(surface)
+
+        return capture(grid, draw)
+
+    corner = (slice(0, 40), slice(SIZE[0] - 120, SIZE[0]))
+    assert legend("dashed")[corner].sum() < legend("solid")[corner].sum()

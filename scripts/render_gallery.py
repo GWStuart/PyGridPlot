@@ -752,6 +752,51 @@ def scene_categories(grid: pgp.Grid, surface: pygame.Surface) -> None:
 CATEGORY_NAMES = [f"item {k}" for k in range(60)]
 """Names for the categories scene."""
 
+
+def scene_dashes(grid: pgp.Grid, surface: pygame.Surface) -> None:
+    """Draw every kind of line dashed or dotted, with a legend.
+
+    Args:
+        grid: The plane.
+        surface: The surface to draw on.
+    """
+    grid.plot(surface, np.sin, dash="dashed", label="dashed")
+    grid.plot(surface, lambda x: 1 / (x - 1), dash="dotted", label="dotted, a pole")
+    grid.plot(surface, np.sqrt, dash="dashed", width=5, domain=(0, 4), label="thick")
+    grid.parametric(
+        surface,
+        lambda t: 2 * np.cos(t) - 3.5,
+        lambda t: np.sin(3 * t) + 2,
+        (0, 2 * np.pi),
+        dash=(14, 5, 0, 5),
+        label="dash-dot",
+    )
+    grid.implicit(
+        surface, lambda x, y: x**2 + y**2, [4.0, 9.0], dash="dashed", width=1.5
+    )
+    grid.polygon(
+        surface, [(3, 2), (6, 2.5), (4.5, 4.2)], dash="dashed", label="outline"
+    )
+    grid.polyline(
+        surface, [(-6, -3), (-5, -2), (-4, -3), (-3, -2)], step="post", dash="dotted"
+    )
+    grid.polyline(surface, [(1, -10), (1, 10)], dash=(4, 4), width=1.0, color="gray")
+    grid.legend(surface)
+
+
+def scene_dashes_log(grid: pgp.Grid, surface: pygame.Surface) -> None:
+    """Draw dashed lines on log-log axes: power laws are straight.
+
+    Args:
+        grid: The plane.
+        surface: The surface to draw on.
+    """
+    for k in (-1, 0.5, 1, 2):
+        grid.plot(surface, lambda x, k=k: x**k, dash="dashed", label=f"x^{k}")
+    grid.polyline(surface, [(1, 0.01), (1, 1000)], dash="dotted", color="gray")
+    grid.legend(surface, corner="bottom-right")
+
+
 SCENES: dict[str, Scene] = {
     "test_set": scene_test_set,
     "hard": scene_hard,
@@ -786,6 +831,8 @@ SCENES: dict[str, Scene] = {
     "boxes": scene_boxes,
     "boxes_log": scene_boxes_log,
     "categories": scene_categories,
+    "dashes": scene_dashes,
+    "dashes_log": scene_dashes_log,
 }
 
 
@@ -1015,6 +1062,24 @@ VIEWS: tuple[GalleryView, ...] = (
         y_range=(-1.0, 6.0),
         scene="categories",
         names=(CATEGORY_NAMES, None),
+    ),
+    GalleryView("97_dashes", center=(0.0, 0.5), scale=60.0, scene="dashes"),
+    GalleryView(
+        "98_dashes_dark", center=(0.0, 0.5), scale=60.0, theme="dark", scene="dashes"
+    ),
+    GalleryView(  # zoomed in on sin x far from the origin: anchors placed precisely
+        "99_dashes_far",
+        center=(1000.2, math.sin(1000.2)),
+        scale=4000.0,
+        scene="dashes",
+    ),
+    GalleryView(
+        "100_dashes_log",
+        log_x=True,
+        log_y=True,
+        x_range=(0.01, 100.0),
+        y_range=(0.01, 1000.0),
+        scene="dashes_log",
     ),
 )
 

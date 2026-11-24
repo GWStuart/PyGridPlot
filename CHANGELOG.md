@@ -33,6 +33,13 @@ for pygame-ce, drawn from your own main loop.
   polynomials (`pgp.taylor`) and Fourier series (`pgp.fourier`).
 - **Curves**: parametric (`parametric`), polar (`polar`) and implicit
   (`implicit`, `F(x, y) = c`, with several levels for contour maps).
+- **Dashed and dotted lines**: `dash="dashed"`, `"dotted"` or a pattern of
+  lengths such as `(12, 4, 0, 4)` on `plot`, `parametric`, `polar`,
+  `implicit`, `polyline` and `polygon` (and in `LineStyle` and
+  `PolygonStyle`). The pattern is anchored to the plane, so the dashes move
+  exactly with their lines while panning, and fitted between anchors so
+  that zooming changes them smoothly; polylines start and end with a dash
+  and bend one round each corner. Legends show the pattern.
 - **Regions and fields**: the area between two graphs (`fill_between`),
   regions where conditions hold (`inequality`, combined with `&`, `|` and
   `~`), and vector and slope fields (`vector_field`, `slope_field`) on
@@ -56,7 +63,7 @@ for pygame-ce, drawn from your own main loop.
 - **Quick mode**: `pgp.show(f, g, ...)` plots functions in a window of its
   own, without a loop.
 - **Documentation**: a user guide with a picture of every example, an API
-  reference generated from the code, and a developer guide; 21 short
+  reference generated from the code, and a developer guide; 22 short
   example programs.
 - Type annotations (`py.typed`), checked with strict mypy; an
   `ImportError` that says how to fix it when the original `pygame` is

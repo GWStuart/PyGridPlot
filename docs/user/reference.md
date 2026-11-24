@@ -228,6 +228,7 @@ The initial view can be given like a graphing calculator's window settings, `x_r
       color: ColorLike | None = None,
       width: float | None = None,
       opacity: float | None = None,
+      dash: Dash | None = None,
       domain: tuple[float, float] | None = None,
       style: LineStyle | None = None,
       sampling: FunctionSampling | None = None,
@@ -246,6 +247,7 @@ The initial view can be given like a graphing calculator's window settings, `x_r
   - `color`: Line colour (default: the next palette colour).
   - `width`: Line width in pixels (default 2.5).
   - `opacity`: Line opacity in `[0, 1]`.
+  - `dash`: `"dashed"`, `"dotted"`, `"solid"` (default), or the lengths of the dashes and gaps in pixels, alternately, as `(12, 6)`. The dashes stay put while panning.
   - `domain`: Only plot where `domain[0] <= x <= domain[1]`.
   - `style`: A reusable `LineStyle`. The other keyword arguments override its fields.
   - `sampling`: Override the plane's sampling settings for this call.
@@ -265,6 +267,7 @@ The initial view can be given like a graphing calculator's window settings, `x_r
       color: ColorLike | None = None,
       width: float | None = None,
       opacity: float | None = None,
+      dash: Dash | None = None,
       style: LineStyle | None = None,
       sampling: CurveSampling | None = None,
       label: str | None = None,
@@ -284,6 +287,7 @@ The initial view can be given like a graphing calculator's window settings, `x_r
   - `color`: Line colour (default: the next palette colour).
   - `width`: Line width in pixels (default 2.5).
   - `opacity`: Line opacity in `[0, 1]`.
+  - `dash`: `"dashed"`, `"dotted"`, `"solid"` (default), or the lengths of the dashes and gaps in pixels, alternately, as `(12, 6)`. The dashes stay put while panning.
   - `style`: A reusable `LineStyle`. The other keyword arguments override its fields.
   - `sampling`: How the curve is sampled (see `CurveSampling`; the defaults suit almost every curve).
   - `label`: A name for this plot in the legend (see `legend`).
@@ -303,6 +307,7 @@ The initial view can be given like a graphing calculator's window settings, `x_r
       color: ColorLike | None = None,
       width: float | None = None,
       opacity: float | None = None,
+      dash: Dash | None = None,
       style: LineStyle | None = None,
       sampling: CurveSampling | None = None,
       label: str | None = None,
@@ -321,6 +326,7 @@ The initial view can be given like a graphing calculator's window settings, `x_r
   - `color`: Line colour (default: the next palette colour).
   - `width`: Line width in pixels (default 2.5).
   - `opacity`: Line opacity in `[0, 1]`.
+  - `dash`: `"dashed"`, `"dotted"`, `"solid"` (default), or the lengths of the dashes and gaps in pixels, alternately, as `(12, 6)`. The dashes stay put while panning.
   - `style`: A reusable `LineStyle`. The other keyword arguments override its fields.
   - `sampling`: How the curve is sampled (see `CurveSampling`).
   - `label`: A name for this plot in the legend (see `legend`).
@@ -340,6 +346,7 @@ The initial view can be given like a graphing calculator's window settings, `x_r
       color: ColorLike | None = None,
       width: float | None = None,
       opacity: float | None = None,
+      dash: Dash | None = None,
       style: LineStyle | None = None,
       sampling: ImplicitSampling | None = None,
       label: str | None = None,
@@ -360,6 +367,7 @@ The initial view can be given like a graphing calculator's window settings, `x_r
   - `color`: Line colour (default: the next palette colour).
   - `width`: Line width in pixels (default 2.5).
   - `opacity`: Line opacity in `[0, 1]`.
+  - `dash`: `"dashed"`, `"dotted"`, `"solid"` (default), or the lengths of the dashes and gaps in pixels, alternately, as `(12, 6)`. The dashes stay put while panning.
   - `style`: A reusable `LineStyle`. The other keyword arguments override its fields.
   - `sampling`: How the curve is searched for (see `ImplicitSampling`).
   - `label`: A name for this plot in the legend (see `legend`).
@@ -593,7 +601,7 @@ The initial view can be given like a graphing calculator's window settings, `x_r
 
   *Raises:*
 
-  - `ValueError`: If `spacing` is not valid.
+  - `ValueError`: If `spacing` is not valid, or `style` is dashed (the segments are too short for a pattern).
 
 - **`grid.sequence()`**
 
@@ -711,6 +719,7 @@ The initial view can be given like a graphing calculator's window settings, `x_r
       color: ColorLike | None = None,
       width: float | None = None,
       opacity: float | None = None,
+      dash: Dash | None = None,
       closed: bool = False,
       step: Step | None = None,
       style: LineStyle | None = None,
@@ -734,6 +743,7 @@ The initial view can be given like a graphing calculator's window settings, `x_r
   - `color`: Line colour (default: the next palette colour).
   - `width`: Line width in pixels (default 2.5).
   - `opacity`: Line opacity in `[0, 1]`.
+  - `dash`: `"dashed"`, `"dotted"`, `"solid"` (default), or the lengths of the dashes and gaps in pixels, alternately, as `(12, 6)`. The dashes stay put while panning.
   - `closed`: Connect the last vertex back to the first.
   - `step`: `None` for straight lines (default), or steps: `"post"` (each value holds from its x until the next), `"pre"` (from the previous x up to its own) or `"mid"` (the steps half way between the xs).
   - `style`: A reusable `LineStyle`. The other keyword arguments override its fields.
@@ -757,6 +767,7 @@ The initial view can be given like a graphing calculator's window settings, `x_r
       fill_color: ColorLike | None = None,
       fill_opacity: float | None = None,
       fill_rule: FillRule | None = None,
+      dash: Dash | None = None,
       style: PolygonStyle | None = None,
       label: str | None = None,
   )
@@ -777,6 +788,7 @@ The initial view can be given like a graphing calculator's window settings, `x_r
   - `fill_color`: Fill colour (default: the outline colour).
   - `fill_opacity`: Fill opacity in `[0, 1]` (default 0.25).
   - `fill_rule`: `"nonzero"` (default) or `"evenodd"`, for polygons whose edges cross.
+  - `dash`: How the outline is drawn: `"dashed"`, `"dotted"`, `"solid"` (default), or dash and gap lengths in pixels (as for `plot`).
   - `style`: A reusable `PolygonStyle`. The other keyword arguments override its fields.
   - `label`: A name for this plot in the legend (see `legend`).
 
@@ -1953,7 +1965,12 @@ Reusable looks for plotted objects. Keyword arguments of the plotting methods ov
 ### LineStyle
 
 ```py
-pgp.LineStyle(color: ColorLike | None = None, width: float = 2.5, opacity: float = 1.0)
+pgp.LineStyle(
+    color: ColorLike | None = None,
+    width: float = 2.5,
+    opacity: float = 1.0,
+    dash: Dash = 'solid',
+)
 ```
 
 How a curve or polyline is drawn.
@@ -1963,6 +1980,7 @@ How a curve or polyline is drawn.
 - `color`: Line colour, or `None` for the next palette colour.
 - `width`: Line thickness in pixels (fractional widths are fine; lines thinner than 1 pixel are drawn 1 pixel wide but fainter).
 - `opacity`: Opacity in `[0, 1]`.
+- `dash`: `"solid"`, `"dashed"`, `"dotted"`, or the lengths of the dashes and gaps in pixels, alternately: `(12, 6)`; a dash of `0` is a dot. Named patterns grow with the width. The pattern is anchored to the plane, so the dashes stay put while panning.
 
 ### PointStyle
 
@@ -2003,6 +2021,7 @@ pgp.PolygonStyle(
     fill_color: ColorLike | None = None,
     fill_opacity: float = 0.25,
     fill_rule: FillRule = 'nonzero',
+    dash: Dash = 'solid',
 )
 ```
 
@@ -2017,6 +2036,7 @@ How a polygon is drawn: a translucent fill and an outline.
 - `fill_color`: Fill colour, or `None` to use `color`.
 - `fill_opacity`: Opacity of the fill in `[0, 1]`.
 - `fill_rule`: Which parts of a self-overlapping polygon are inside.
+- `dash`: How the outline is drawn: `"solid"`, `"dashed"`, `"dotted"`, or dash and gap lengths in pixels (as for `LineStyle.dash`).
 
 ### FillStyle
 

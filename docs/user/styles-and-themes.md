@@ -74,9 +74,9 @@ rather than the field's usual 1.5; set the fields you want in the style.
 
 | Style | Used by | Fields (defaults) |
 |---|---|---|
-| `LineStyle` | `plot`, `parametric`, `polar`, `implicit`, `polyline`, `slope_field` | `color=None`, `width=2.5`, `opacity=1.0` |
+| `LineStyle` | `plot`, `parametric`, `polar`, `implicit`, `polyline`, `slope_field` | `color=None`, `width=2.5`, `opacity=1.0`, `dash="solid"` ([dashed and dotted lines](#dashed-and-dotted-lines); slope fields are always solid) |
 | `PointStyle` | `points` | `color=None`, `radius=4.5` (`0` for none), `marker="circle"`, `edge_color=None`, `edge_width=1.5`, `opacity=1.0`, `error_width=1.5`, `error_cap=8.0` (error bars) |
-| `PolygonStyle` | `polygon` | `color=None`, `width=2.5`, `opacity=1.0`, `fill=True`, `fill_color=None`, `fill_opacity=0.25`, `fill_rule="nonzero"` |
+| `PolygonStyle` | `polygon` | `color=None`, `width=2.5`, `opacity=1.0`, `fill=True`, `fill_color=None`, `fill_opacity=0.25`, `fill_rule="nonzero"`, `dash="solid"` (the outline's) |
 | `FillStyle` | `fill_between`, `inequality` | `color=None`, `opacity=0.25` |
 | `ArrowStyle` | `arrow`, `vector_field` | `color=None`, `width=2.5`, `opacity=1.0`, `head_size=None` (in proportion to the width; `0` for none) |
 | `SequenceStyle` | `sequence` | `color=None`, `width=2.0` (stems; `0` for none), `radius=3.5` (markers; `0` for none), `marker="circle"`, `opacity=1.0` |
@@ -86,6 +86,69 @@ rather than the field's usual 1.5; set the fields you want in the style.
 Styles are immutable and validated when they are created, so a mistake such
 as a negative width raises a clear `ValueError` at once rather than in the
 middle of drawing. Derive variations with `dataclasses.replace`.
+
+## Dashed and dotted lines
+
+![A dashed tangent and dashed asymptotes, with dotted guides](../images/examples/line_styles.png)
+
+*A dashed tangent and dashed asymptotes, with dotted guides ([`examples/line_styles.py`](../../examples/line_styles.py))*
+
+Every line can be dashed or dotted with `dash=`: graphs (`plot`), curves
+(`parametric`, `polar`, `implicit`), polylines, and the outlines of
+polygons.
+
+```python
+grid.plot(screen, np.sin, dash="dashed")
+grid.plot(screen, np.cos, dash="dotted")
+grid.polyline(screen, [(-2, -3), (-2, 3)], dash=(12, 4, 0, 4))    # dash, dot, dash...
+grid.polygon(screen, [(0, 0), (2, 0), (1, 2)], fill=False, dash="dashed")
+
+construction = pgp.LineStyle(width=1.5, color="gray", dash="dashed")
+grid.plot(screen, lambda x: x / 2, style=construction)
+grid.plot(screen, lambda x: -x / 2, style=construction, dash="solid")  # this one whole
+```
+
+| `dash` | Draws |
+|---|---|
+| `"solid"` | A whole line (the default). |
+| `"dashed"` | Dashes `3 × width + 2` pixels long with gaps of `2 × width + 2` (9.5 and 7 pixels at the default width). |
+| `"dotted"` | Round dots as wide as the line, `2.5 × width + 1` pixels apart. |
+| `(12, 6)` | Your own pattern: the lengths in pixels of the dashes and the gaps between them, alternately, starting with a dash (any even number of lengths). A dash of `0` is a dot. |
+
+Lengths are measured along the line on screen, so a pattern looks the same
+at every zoom level and on log axes. The named patterns grow with the
+width, so a thick dashed line looks like a thin one enlarged; lengths you
+give stay as given. Dashes have round ends, like every line, and their
+length includes them: a dash shorter than the line's width is a dot as
+wide as the line.
+
+**The dashes stay put while panning.** The pattern is fixed to the plane,
+not to the edge of the window, so panning moves every dash exactly with
+its line, as it moves every plotted pixel. (It is laid out between points
+where the line crosses invisible lines fixed to the plane, a few dashes
+apart, and stretched or squeezed slightly to fit a whole number of dashes
+between them.) A polyline starts and ends with a dash and has a dash bent
+round each corner, as has a polygon's outline; a graph with a `domain`
+starts and ends with a dash at its ends, and a parametric curve at the
+ends of its range.
+
+**While zooming**, the dashes stay on the line as it grows or shrinks, and
+where a gap has room for another dash, one grows in smoothly. Once per
+doubling of the zoom the pattern is laid out afresh, so the dashes shift
+at that moment.
+
+Limits:
+
+- The pattern is a few percent longer or shorter in some places than in
+  others (up to about 9%), as it is fitted between its fixed points. In
+  some stretches between them, one dash is longer than the rest, or split
+  by a narrow gap: the next dash, growing in. Where a curve turns from
+  shallow to steep, a dash may also be a little longer or shorter.
+- Slope fields are always solid (their segments are too short for a
+  pattern); a dashed style raises `ValueError`.
+- A dashed curve costs a little more than a solid one, typically 10–30%,
+  as it is sampled a little beyond the plane: the pattern is fitted to
+  whole stretches of the line, including those running off the edge.
 
 ## Themes
 
